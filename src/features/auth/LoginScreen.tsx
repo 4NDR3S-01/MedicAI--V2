@@ -25,6 +25,7 @@ type LoginScreenProps = {
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSubmit: () => void;
+  onNavigateToRegister: () => void;
 };
 
 export function LoginScreen({
@@ -33,6 +34,7 @@ export function LoginScreen({
   onEmailChange,
   onPasswordChange,
   onSubmit,
+  onNavigateToRegister,
 }: Readonly<LoginScreenProps>) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
@@ -144,14 +146,14 @@ export function LoginScreen({
           </Text>
         </Pressable>
 
-        <Pressable style={styles.secondaryButton}>
+        <Pressable style={styles.secondaryButton} onPress={onNavigateToRegister}>
           <Text
             style={[
               styles.secondaryButtonText,
               { color: theme.colors.accentSecondary },
             ]}
           >
-            Recuperar acceso
+            Crear cuenta nueva
           </Text>
         </Pressable>
       </View>
