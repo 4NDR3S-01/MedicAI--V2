@@ -2,6 +2,7 @@
   "expo": {
     "name": "MedicAI",
     "slug": "MedicAI",
+    "scheme": "medicai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

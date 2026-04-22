@@ -1,6 +1,3 @@
-export type UserType = 'account';
-export type RelationType = 'ninguno' | 'padre' | 'madre' | 'hijo' | 'pareja' | 'cuidador';
-
 export type CountryOption = {
   iso: string;
   name: string;
@@ -25,7 +22,6 @@ export type AppointmentDraft = {
 };
 
 export type RegisterWizardPayload = {
-  userType: UserType;
   personalData: {
     fullName: string;
     birthDate: string;
@@ -59,14 +55,4 @@ export type RegisterWizardPayload = {
   medicationsDeferred: boolean;
   appointments: AppointmentDraft[];
   appointmentsDeferred: boolean;
-  relationships: {
-    relationType: RelationType;
-    responsiblePerson: string;
-  };
-  permissions: {
-    canViewMedications: boolean;
-    canViewAdherence: boolean;
-    canReceiveNotifications: boolean;
-    canEditMedicalInfo: boolean;
-  };
 };

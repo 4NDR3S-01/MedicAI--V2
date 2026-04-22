@@ -1,4 +1,4 @@
-import type { AppointmentDraft, MedicationDraft, RegisterWizardPayload } from './register.types';
+import type { AppointmentDraft, MedicationDraft, RegisterWizardPayload } from '../models/register.types';
 
 export function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
@@ -72,7 +72,6 @@ export function createAppointmentDraft(): AppointmentDraft {
 
 export function createInitialForm(): RegisterWizardPayload {
   return {
-    userType: 'account',
     personalData: {
       fullName: '',
       birthDate: '',
@@ -106,15 +105,5 @@ export function createInitialForm(): RegisterWizardPayload {
     medicationsDeferred: false,
     appointments: [createAppointmentDraft()],
     appointmentsDeferred: false,
-    relationships: {
-      relationType: 'ninguno',
-      responsiblePerson: '',
-    },
-    permissions: {
-      canViewMedications: false,
-      canViewAdherence: false,
-      canReceiveNotifications: false,
-      canEditMedicalInfo: false,
-    },
   };
 }

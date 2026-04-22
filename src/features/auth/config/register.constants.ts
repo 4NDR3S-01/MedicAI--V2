@@ -1,4 +1,4 @@
-import type { CountryOption } from './register.types';
+import type { CountryOption } from '../models/register.types';
 
 export const REGISTER_STEPS = [2, 3, 4, 5, 6] as const;
 

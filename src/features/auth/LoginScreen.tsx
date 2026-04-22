@@ -10,8 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { BackgroundDecor } from '../../components/BackgroundDecor';
-import { BrandLogo } from '../../components/BrandLogo';
+import { BackgroundDecor, BrandLogo } from '../../components';
 import type { AppTheme } from '../../theme';
 
 export type LoginFormState = {
@@ -22,18 +21,22 @@ export type LoginFormState = {
 type LoginScreenProps = {
   theme: AppTheme;
   form: LoginFormState;
+  isSubmitting?: boolean;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSubmit: () => void;
+  onForgotPassword: () => void;
   onNavigateToRegister: () => void;
 };
 
 export function LoginScreen({
   theme,
   form,
+  isSubmitting = false,
   onEmailChange,
   onPasswordChange,
   onSubmit,
+  onForgotPassword,
   onNavigateToRegister,
 }: Readonly<LoginScreenProps>) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -133,8 +136,11 @@ export function LoginScreen({
           style={[
             styles.primaryButton,
             { backgroundColor: theme.colors.accentPrimary },
+            isSubmitting && styles.buttonDisabled,
           ]}
           onPress={onSubmit}
+          disabled={isSubmitting}
+          accessibilityState={{ disabled: isSubmitting }}
         >
           <Text
             style={[
@@ -142,11 +148,32 @@ export function LoginScreen({
               { color: theme.colors.buttonText },
             ]}
           >
-            Entrar
+            {isSubmitting ? 'Entrando…' : 'Entrar'}
           </Text>
         </Pressable>
 
-        <Pressable style={styles.secondaryButton} onPress={onNavigateToRegister}>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={onForgotPassword}
+          disabled={isSubmitting}
+          accessibilityState={{ disabled: isSubmitting }}
+        >
+          <Text
+            style={[
+              styles.secondaryButtonText,
+              { color: theme.colors.textMuted },
+            ]}
+          >
+            Recuperar contrasena
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={onNavigateToRegister}
+          disabled={isSubmitting}
+          accessibilityState={{ disabled: isSubmitting }}
+        >
           <Text
             style={[
               styles.secondaryButtonText,
@@ -232,5 +259,8 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontWeight: '600',
     fontSize: 14,
+  },
+  buttonDisabled: {
+    opacity: 0.65,
   },
 });

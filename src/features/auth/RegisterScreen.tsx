@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { appStorage } from '../../services';
 import { Ionicons } from '@expo/vector-icons';
 import {
   KeyboardAvoidingView,
@@ -16,8 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BackgroundDecor } from '../../components/BackgroundDecor';
-import { BrandLogo } from '../../components/BrandLogo';
+import { BackgroundDecor, BrandLogo } from '../../components';
 import type { AppTheme } from '../../theme';
 import {
   COMMON_ALLERGIES,
@@ -26,8 +25,8 @@ import {
   PHONE_COUNTRIES,
   REGISTER_STEPS,
   STEP_TITLE,
-} from './register.constants';
-import type { AppointmentDraft, MedicationDraft, RegisterWizardPayload } from './register.types';
+} from './config/register.constants';
+import type { AppointmentDraft, MedicationDraft, RegisterWizardPayload } from './models/register.types';
 import {
   calculateAgeFromBirthDate,
   createAppointmentDraft,
@@ -36,13 +35,14 @@ import {
   formatBirthDate,
   getDaysInMonth,
   parseBirthDate,
-} from './register.utils';
+} from './utils/register.utils';
 
-export type { RegisterWizardPayload } from './register.types';
+export type { RegisterWizardPayload } from './models/register.types';
 
 type RegisterScreenProps = {
   theme: AppTheme;
-  onSubmit: (payload: RegisterWizardPayload) => void;
+  isSubmitting?: boolean;
+  onSubmit: (payload: RegisterWizardPayload) => void | Promise<void>;
   onNavigateToLogin: () => void;
   initialSpecialConditions?: RegisterWizardPayload['medicalInfo']['specialConditions'];
   initialSpecialConditionVigency?: RegisterWizardPayload['medicalInfo']['specialConditionVigency'];
@@ -146,7 +146,7 @@ const useRegisterWizardHydration = ({
 
     const hydrateWizardDraft = async () => {
       try {
-        const rawDraft = await AsyncStorage.getItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
+        const rawDraft = await appStorage.getItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
         if (!rawDraft || !isMounted) {
           return;
         }
@@ -196,7 +196,7 @@ const useRegisterWizardPersistence = (
 
     const persistWizardDraft = async () => {
       try {
-        await AsyncStorage.setItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+        await appStorage.setItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY, JSON.stringify(draft));
       } catch {
         // Si falla la persistencia local, no bloqueamos la experiencia.
       }
@@ -264,7 +264,7 @@ const validateMedicalInfoStep = (
 ): string | null => {
   const hasSpecialCondition = Object.values(medicalInfo.specialConditions).some(Boolean);
   if (!medicalInfo.conditions.trim() && !medicalInfo.allergies.trim() && !hasSpecialCondition) {
-    return 'Debes seleccionar "Ninguno" o ingresa al menos una condicion o alergia.';
+    return 'Debes seleccionar "Ninguno" o agregar al menos un antecedente hereditario, alergia o condicion especial.';
   }
   return null;
 };
@@ -328,6 +328,7 @@ const validateCurrentStep = (
 
 export function RegisterScreen({ // NOSONAR
   theme,
+  isSubmitting = false,
   onSubmit,
   onNavigateToLogin,
   initialSpecialConditions,
@@ -361,15 +362,22 @@ export function RegisterScreen({ // NOSONAR
   const [isWizardHydrated, setIsWizardHydrated] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+  const stepScrollRef = useRef<ScrollView | null>(null);
   const NONE_OPTION = 'Ninguno';
   const OTHER_OPTION = 'Otros';
 
   const currentStep = REGISTER_STEPS[stepIndex];
   const isLastStep = stepIndex === REGISTER_STEPS.length - 1;
 
+  let primaryActionLabel = 'Siguiente';
+  if (isLastStep) {
+    primaryActionLabel = isSubmitting ? 'Guardando…' : 'Guardar perfil';
+  }
+
   const isCompact = width < 390;
   const isShortScreen = height < 760;
   const isVeryShortScreen = height < 700;
+  const modalSolidBackground = theme.mode === 'dark' ? '#1A202C' : '#FFFFFF';
   let iosBottomExtra = 0;
   if (Platform.OS === 'ios') {
     iosBottomExtra = isShortScreen ? 12 : 18;
@@ -427,6 +435,10 @@ export function RegisterScreen({ // NOSONAR
     otherConditionItems,
     otherAllergyItems,
   });
+
+  useEffect(() => {
+    stepScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [stepIndex]);
 
   const updateMedicationField = (id: string, field: keyof Omit<MedicationDraft, 'id'>, value: string) => {
     setForm((previous) => ({
@@ -730,6 +742,10 @@ export function RegisterScreen({ // NOSONAR
   };
 
   const onNext = () => {
+    if (isSubmitting) {
+      return;
+    }
+
     const validationError = validateCurrentStep(currentStep, form, calculatedAge);
     if (validationError) {
       setStepError(validationError);
@@ -739,8 +755,8 @@ export function RegisterScreen({ // NOSONAR
     setStepError(null);
 
     if (isLastStep) {
-      void AsyncStorage.removeItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
-      onSubmit(form);
+      void appStorage.removeItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
+      void onSubmit(form);
       return;
     }
 
@@ -748,6 +764,9 @@ export function RegisterScreen({ // NOSONAR
   };
 
   const onBack = () => {
+    if (isSubmitting) {
+      return;
+    }
     setStepError(null);
     setStepIndex((previous) => Math.max(0, previous - 1));
   };
@@ -1246,14 +1265,13 @@ export function RegisterScreen({ // NOSONAR
 
     return (
       <View style={styles.group}>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Condiciones especiales: {activeConditions.length ? activeConditions.join(', ') : 'Ninguna'}</Text>
-        <Text style={[styles.summaryTitle, { color: theme.colors.textPrimary }]}>Resumen del registro</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Nombre: {form.personalData.fullName || '-'}</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Fecha de nacimiento: {form.personalData.birthDate || '-'}</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Edad: {form.personalData.age || '-'}</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Telefono: {form.personalData.phone ? `${form.personalData.phoneCountryCode} ${form.personalData.phone}` : '-'}</Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Condiciones: {form.medicalInfo.conditions || 'Ninguna'}</Text>
+        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Antecedentes hereditarios: {form.medicalInfo.conditions || 'Ninguna'}</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Alergias: {form.medicalInfo.allergies || 'Ninguna'}</Text>
+        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Condiciones especiales: {activeConditions.length ? activeConditions.join(', ') : 'Ninguna'}</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Vigencias temporales: {temporarySpecialConditionsCount}</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Medicamentos: {medicationsSummary}</Text>
         <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>Citas: {appointmentsSummary}</Text>
@@ -1297,6 +1315,7 @@ export function RegisterScreen({ // NOSONAR
         </View>
 
         <ScrollView
+          ref={stepScrollRef}
           style={styles.stepContent}
           contentContainerStyle={[styles.stepContentInner, { paddingBottom: isShortScreen ? 12 : 8 }]}
           showsVerticalScrollIndicator={false}
@@ -1311,6 +1330,8 @@ export function RegisterScreen({ // NOSONAR
           <Pressable
             style={[styles.secondaryAction, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}
             onPress={stepIndex === 0 ? onNavigateToLogin : onBack}
+            disabled={isSubmitting}
+            accessibilityState={{ disabled: isSubmitting }}
           >
             <Text style={[styles.secondaryActionText, { color: theme.colors.textSecondary }]}>
               {stepIndex === 0 ? 'Volver al login' : 'Anterior'}
@@ -1318,11 +1339,18 @@ export function RegisterScreen({ // NOSONAR
           </Pressable>
 
           <Pressable
-            style={[styles.primaryAction, isVeryShortScreen ? styles.primaryActionStacked : null, { backgroundColor: theme.colors.accentPrimary }]}
+            style={[
+              styles.primaryAction,
+              isVeryShortScreen ? styles.primaryActionStacked : null,
+              { backgroundColor: theme.colors.accentPrimary },
+              isSubmitting && styles.footerActionDisabled,
+            ]}
             onPress={onNext}
+            disabled={isSubmitting}
+            accessibilityState={{ disabled: isSubmitting }}
           >
             <Text style={[styles.primaryActionText, { color: theme.colors.buttonText }]}>
-              {isLastStep ? 'Guardar perfil' : 'Siguiente'}
+              {primaryActionLabel}
             </Text>
           </Pressable>
         </View>
@@ -1331,7 +1359,7 @@ export function RegisterScreen({ // NOSONAR
       <Modal visible={isBirthDateModalVisible} transparent animationType="fade" onRequestClose={() => setIsBirthDateModalVisible(false)}>
         <View style={styles.modalRoot}>
           <Pressable style={styles.modalOverlay} onPress={() => setIsBirthDateModalVisible(false)} />
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+          <View style={[styles.modalCard, { backgroundColor: modalSolidBackground, borderColor: theme.colors.surfaceBorder }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Selecciona fecha de nacimiento</Text>
 
             <View style={styles.datePickerGrid}>
@@ -1408,7 +1436,7 @@ export function RegisterScreen({ // NOSONAR
       <Modal visible={isCountryModalVisible} transparent animationType="fade" onRequestClose={() => setIsCountryModalVisible(false)}>
         <View style={styles.modalRoot}>
           <Pressable style={styles.modalOverlay} onPress={() => setIsCountryModalVisible(false)} />
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+          <View style={[styles.modalCard, { backgroundColor: modalSolidBackground, borderColor: theme.colors.surfaceBorder }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Selecciona pais</Text>
             <ScrollView style={styles.modalList}>
               {PHONE_COUNTRIES.map((country) => (
@@ -1440,7 +1468,7 @@ export function RegisterScreen({ // NOSONAR
       <Modal visible={isVigencyModalVisible} transparent animationType="fade" onRequestClose={() => setIsVigencyModalVisible(false)}>
         <View style={styles.modalRoot}>
           <Pressable style={styles.modalOverlay} onPress={() => setIsVigencyModalVisible(false)} />
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
+          <View style={[styles.modalCard, { backgroundColor: modalSolidBackground, borderColor: theme.colors.surfaceBorder }]}> 
             <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Vigencia de condiciones especiales</Text>
             <ScrollView style={styles.modalList}>
               {activeSpecialConditionKeys.length === 0 ? (
@@ -1491,8 +1519,6 @@ const styles = StyleSheet.create({
   header: { marginTop: 8, marginBottom: 14, gap: 8, alignItems: 'center' },
   title: { fontSize: 32, fontWeight: '800', textAlign: 'center' },
   titleCompact: { fontSize: 28 },
-  subtitle: { fontSize: 14, lineHeight: 20, maxWidth: '94%', textAlign: 'center' },
-  subtitleCompact: { fontSize: 13, lineHeight: 18 },
   card: { borderWidth: 1, borderRadius: 22, gap: 10, flex: 1, minHeight: 0, width: '100%', maxWidth: 640, alignSelf: 'center' },
   stepHeader: { gap: 2 },
   stepCount: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
@@ -1516,7 +1542,6 @@ const styles = StyleSheet.create({
   countryCode: { fontSize: 15, fontWeight: '700' },
   phoneInput: { flex: 1, marginBottom: 0 },
   helperText: { fontSize: 12, marginTop: -2, marginBottom: 8 },
-  multilineInput: { minHeight: 92, textAlignVertical: 'top' },
   medicalSelectorCard: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 4 },
   selectorSubtitle: { fontSize: 12, marginBottom: 10 },
   optionsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
@@ -1536,12 +1561,8 @@ const styles = StyleSheet.create({
   removeText: { fontSize: 13, fontWeight: '700' },
   addButton: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   addButtonText: { fontSize: 14, fontWeight: '700' },
-  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12 },
-  chipText: { fontSize: 13, fontWeight: '600' },
   permissionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
   permissionText: { fontSize: 14, flex: 1, paddingRight: 12 },
-  summaryTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
   summaryText: { fontSize: 13, lineHeight: 18 },
   errorText: { fontSize: 13, fontWeight: '600' },
   footerActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
@@ -1550,10 +1571,21 @@ const styles = StyleSheet.create({
   secondaryActionText: { fontSize: 14, fontWeight: '700' },
   primaryAction: { flex: 1.25, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   primaryActionStacked: { flex: 1 },
+  footerActionDisabled: { opacity: 0.65 },
   primaryActionText: { fontSize: 14, fontWeight: '800' },
   modalRoot: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
-  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
-  modalCard: { borderWidth: 1, borderRadius: 18, maxHeight: '70%', overflow: 'hidden' },
+  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.58)' },
+  modalCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    maxHeight: '70%',
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
   modalTitle: { fontSize: 16, fontWeight: '800', paddingHorizontal: 16, paddingVertical: 14 },
   modalList: { paddingHorizontal: 12, paddingBottom: 10 },
   modalItem: { borderBottomWidth: 1, paddingVertical: 12, paddingHorizontal: 6 },
