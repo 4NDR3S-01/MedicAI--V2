@@ -31,6 +31,7 @@ const SPLASH_DURATION_MS = 1200;
 const AUTH_STATE_STORAGE_KEY = 'medicai_auth_state_v1';
 const REGISTER_WIZARD_DRAFT_STORAGE_KEY = 'medicai_register_wizard_draft_v1';
 const EMAIL_ACTION_COOLDOWN_MS = 60_000;
+const MAX_EMAIL_COOLDOWN_SECONDS = 3_600;
 
 const DEFAULT_SPECIAL_CONDITIONS: RegisterWizardPayload['medicalInfo']['specialConditions'] = {
   pregnancy: false,
@@ -315,9 +316,11 @@ export function AppRoot() {
   };
 
   const syncEmailCooldownFromErrorMessage = (message: string) => {
-    const secondsMatch = /(\d+)\s+segundos?/.exec(message.toLowerCase());
+    const normalizedMessage = message.toLowerCase();
+    const secondsMatch = /(\d+)\s+segundos?/.exec(normalizedMessage)
+      ?? /after\s+(\d+)\s+seconds?/.exec(normalizedMessage);
     const seconds = secondsMatch ? Number(secondsMatch[1]) : 60;
-    if (Number.isFinite(seconds) && seconds > 0) {
+    if (Number.isFinite(seconds) && seconds > 0 && seconds <= MAX_EMAIL_COOLDOWN_SECONDS) {
       setEmailActionBlockedUntil(Date.now() + seconds * 1000);
       return;
     }
@@ -447,13 +450,13 @@ export function AppRoot() {
   const handleResendVerificationEmail = async () => {
     const email = pendingEmailVerification;
     if (!email) {
-      return;
+      return false;
     }
 
     const remainingCooldown = getRemainingCooldownSeconds();
     if (remainingCooldown > 0) {
       showEmailRateLimitAlert(remainingCooldown);
-      return;
+      return false;
     }
 
     try {
@@ -472,10 +475,11 @@ export function AppRoot() {
         const errorData = await response.json() as any;
         const errorMessage = errorData.message || 'Error al reenviar correo';
         // Parsear cooldown si existe en el error (para rate limiting)
-        const cooldownMatch = /after\s+(\d+)\s+seconds?/i.exec(errorMessage);
+        const cooldownMatch = /after\s+(\d+)\s+seconds?/i.exec(errorMessage)
+          ?? /(\d+)\s+segundos?/i.exec(errorMessage);
         if (cooldownMatch) {
           const seconds = Number(cooldownMatch[1]);
-          if (Number.isFinite(seconds) && seconds > 0 && seconds < 86400) {
+          if (Number.isFinite(seconds) && seconds > 0 && seconds <= MAX_EMAIL_COOLDOWN_SECONDS) {
             setEmailActionBlockedUntil(Date.now() + seconds * 1000);
           }
         }
@@ -487,9 +491,11 @@ export function AppRoot() {
         'Correo reenviado',
         'Hemos enviado un nuevo enlace de verificacion a tu correo. Revisa tu bandeja de entrada y spam.',
       );
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo reenviar el correo.';
       Alert.alert('Error al reenviar correo', message);
+      return false;
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -642,17 +648,24 @@ export function AppRoot() {
     }
 
     if (authScreen === 'verifyEmailPrompt' && pendingEmailVerification) {
-      const cooldownSeconds = Math.max(0, Math.ceil((emailActionBlockedUntil ?? 0 - Date.now()) / 1000));
+      const cooldownSeconds = Math.max(
+        0,
+        Math.min(
+          MAX_EMAIL_COOLDOWN_SECONDS,
+          Math.ceil(((emailActionBlockedUntil ?? 0) - Date.now()) / 1000),
+        ),
+      );
       return (
         <VerifyEmailPromptScreen
           theme={theme}
           email={pendingEmailVerification}
           isSubmitting={isSubmittingAuth}
           cooldownSeconds={cooldownSeconds}
-          onResendEmail={() => {
+          onResendEmail={async () => {
             if (!isSubmittingAuth) {
-              void handleResendVerificationEmail();
+              return handleResendVerificationEmail();
             }
+            return false;
           }}
           onBackToLogin={() => {
             setPendingEmailVerification(null);

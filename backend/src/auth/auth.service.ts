@@ -248,8 +248,7 @@ export class AuthService {
       },
     });
 
-    const baseUrl = this.configService.getOrThrow<string>('APP_BASE_URL');
-    const verificationUrl = `${baseUrl}/auth/verify-email?token=${token}`;
+    const verificationUrl = this.buildAppAuthLink('verify-email', token);
 
     await this.mailService.sendVerificationEmail({
       to: user.email,
@@ -270,8 +269,7 @@ export class AuthService {
       },
     });
 
-    const baseUrl = this.configService.getOrThrow<string>('APP_BASE_URL');
-    const resetUrl = `${baseUrl}/auth/reset-password?token=${token}`;
+    const resetUrl = this.buildAppAuthLink('reset-password', token);
 
     await this.mailService.sendPasswordResetEmail({
       to: user.email,
@@ -282,6 +280,15 @@ export class AuthService {
 
   private hashToken(rawToken: string) {
     return createHash('sha256').update(rawToken).digest('hex');
+  }
+
+  private buildAppAuthLink(route: 'verify-email' | 'reset-password', token: string) {
+    const deepLinkBase = (
+      this.configService.get<string>('APP_DEEP_LINK_BASE_URL')
+      || 'medicai://auth'
+    ).replace(/\/$/, '');
+
+    return `${deepLinkBase}/${route}?token=${encodeURIComponent(token)}`;
   }
 
   private async generateAuthTokens(userId: string, email: string) {

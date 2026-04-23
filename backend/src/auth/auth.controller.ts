@@ -1,13 +1,16 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Post,
   Query,
+  Redirect,
   UseGuards,
   Request,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { AuthService } from './auth.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -22,7 +25,10 @@ import { IpThrottleGuard } from './guards/ip-throttle.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @UseGuards(IpThrottleGuard)
   @Post('register')
@@ -60,9 +66,21 @@ export class AuthController {
     return this.authService.verifyEmailToken(dto.token);
   }
 
+  @Redirect()
   @Get('verify-email')
   verifyEmailFromLink(@Query('token') token: string) {
-    return this.authService.verifyEmailToken(token);
+    if (!token) {
+      throw new BadRequestException('Token de verificación requerido.');
+    }
+
+    const deepLinkBase = (
+      this.configService.get<string>('APP_DEEP_LINK_BASE_URL')
+      || 'medicai://auth'
+    ).replace(/\/$/, '');
+
+    return {
+      url: `${deepLinkBase}/verify-email?token=${encodeURIComponent(token)}`,
+    };
   }
 
   @Post('resend-verification')
@@ -78,5 +96,22 @@ export class AuthController {
   @Post('reset-password')
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto.token, dto.password);
+  }
+
+  @Redirect()
+  @Get('reset-password')
+  redirectResetPasswordFromLink(@Query('token') token: string) {
+    if (!token) {
+      throw new BadRequestException('Token de restablecimiento requerido.');
+    }
+
+    const deepLinkBase = (
+      this.configService.get<string>('APP_DEEP_LINK_BASE_URL')
+      || 'medicai://auth'
+    ).replace(/\/$/, '');
+
+    return {
+      url: `${deepLinkBase}/reset-password?token=${encodeURIComponent(token)}`,
+    };
   }
 }

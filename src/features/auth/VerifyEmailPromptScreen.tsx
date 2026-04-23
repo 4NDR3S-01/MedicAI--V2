@@ -18,7 +18,7 @@ type VerifyEmailPromptScreenProps = {
   email: string;
   isSubmitting?: boolean;
   cooldownSeconds?: number;
-  onResendEmail: () => void;
+  onResendEmail: () => Promise<boolean>;
   onBackToLogin: () => void;
 };
 
@@ -34,7 +34,10 @@ export function VerifyEmailPromptScreen({
   const insets = useSafeAreaInsets();
 
   const handleResend = async () => {
-    await onResendEmail();
+    const wasSent = await onResendEmail();
+    if (!wasSent) {
+      return;
+    }
     setIsEmailSent(true);
     setTimeout(() => setIsEmailSent(false), 3000);
   };
@@ -45,9 +48,21 @@ export function VerifyEmailPromptScreen({
   // Formatear cooldown para que sea más amigable
   const formatCooldown = () => {
     if (cooldownSeconds <= 0) return '';
-    if (cooldownSeconds <= 60) return `${Math.max(1, cooldownSeconds)}s`;
-    const minutes = Math.ceil(cooldownSeconds / 60);
-    return `${minutes}m`;
+
+    const normalizedSeconds = Math.min(cooldownSeconds, 3600);
+    if (normalizedSeconds < 60) {
+      return `${Math.max(1, normalizedSeconds)}s`;
+    }
+
+    const minutes = Math.floor(normalizedSeconds / 60);
+    const seconds = normalizedSeconds % 60;
+    if (minutes >= 60) {
+      return '60m';
+    }
+    if (seconds === 0) {
+      return `${minutes}m`;
+    }
+    return `${minutes}m ${seconds}s`;
   };
 
   const buttonText = isSubmitting

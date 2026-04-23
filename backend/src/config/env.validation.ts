@@ -53,6 +53,10 @@ class EnvironmentVariables {
 
   @IsUrl({ require_tld: false })
   APP_BASE_URL!: string;
+
+  @IsUrl({ require_tld: false })
+  @IsOptional()
+  APP_DEEP_LINK_BASE_URL?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {
