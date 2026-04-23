@@ -22,6 +22,7 @@ import {
   signUpWithProfile,
   updatePassword,
   verifyEmailToken,
+  VerifyEmailPromptScreen,
 } from '../features';
 import { appStorage } from '../services';
 import { useAppTheme } from '../theme';
@@ -47,7 +48,7 @@ const DEFAULT_SPECIAL_CONDITION_VIGENCY: RegisterWizardPayload['medicalInfo']['s
   anticoagulantTreatment: { isTemporary: false, until: '' },
 };
 
-type AuthScreenMode = 'login' | 'register' | 'forgotPassword' | 'resetPassword';
+type AuthScreenMode = 'login' | 'register' | 'forgotPassword' | 'resetPassword' | 'verifyEmailPrompt';
 
 export function AppRoot() {
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +77,7 @@ export function AppRoot() {
     confirmPassword: '',
   });
   const [passwordResetToken, setPasswordResetToken] = useState<string | null>(null);
+  const [pendingEmailVerification, setPendingEmailVerification] = useState<string | null>(null);
 
   const theme = useAppTheme();
 
@@ -263,6 +265,26 @@ export function AppRoot() {
     };
   }, []);
 
+  // Actualizar cooldown cada segundo
+  useEffect(() => {
+    if (emailActionBlockedUntil === null || authScreen !== 'verifyEmailPrompt') {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const remainingMs = (emailActionBlockedUntil ?? 0) - Date.now();
+      if (remainingMs <= 0) {
+        setEmailActionBlockedUntil(null);
+        clearInterval(interval);
+      } else {
+        // Trigger re-render para actualizar cooldownSeconds
+        setEmailActionBlockedUntil((prev) => prev);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [emailActionBlockedUntil, authScreen]);
+
   const statusBarStyle = useMemo(() => {
     return theme.mode === 'dark' ? 'light' : 'dark';
   }, [theme.mode]);
@@ -332,6 +354,14 @@ export function AppRoot() {
       setSession(nextSession);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo iniciar sesion.';
+      
+      // Detectar si el error es por email no verificado
+      if (message.toLowerCase().includes('verificar') || message.toLowerCase().includes('verified')) {
+        setPendingEmailVerification(email);
+        setAuthScreen('verifyEmailPrompt');
+        return;
+      }
+      
       Alert.alert('No fue posible iniciar sesion', message);
     } finally {
       setIsSubmittingAuth(false);
@@ -411,6 +441,51 @@ export function AppRoot() {
     } finally {
       setIsSubmittingAuth(false);
       resetRequestInFlightRef.current = false;
+    }
+  };
+
+  const handleResendVerificationEmail = async () => {
+    const email = pendingEmailVerification;
+    if (!email) {
+      return;
+    }
+
+    const remainingCooldown = getRemainingCooldownSeconds();
+    if (remainingCooldown > 0) {
+      showEmailRateLimitAlert(remainingCooldown);
+      return;
+    }
+
+    try {
+      setIsSubmittingAuth(true);
+      // Utilizar endpoint de resend-verification
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE_URL}/auth/resend-verification`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json() as any;
+        throw new Error(errorData.message || 'Error al reenviar correo');
+      }
+
+      setDefaultEmailCooldown();
+      Alert.alert(
+        'Correo reenviado',
+        'Hemos enviado un nuevo enlace de verificacion a tu correo. Revisa tu bandeja de entrada y spam.',
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo reenviar el correo.';
+      if (message.toLowerCase().includes('demasiadas solicitudes de correo')) {
+        syncEmailCooldownFromErrorMessage(message);
+      }
+      Alert.alert('Error al reenviar correo', message);
+    } finally {
+      setIsSubmittingAuth(false);
     }
   };
 
@@ -554,6 +629,27 @@ export function AppRoot() {
           onCancel={() => {
             setResetPasswordForm({ password: '', confirmPassword: '' });
             setPasswordResetToken(null);
+            setAuthScreen('login');
+          }}
+        />
+      );
+    }
+
+    if (authScreen === 'verifyEmailPrompt' && pendingEmailVerification) {
+      const cooldownSeconds = Math.max(0, Math.ceil((emailActionBlockedUntil ?? 0 - Date.now()) / 1000));
+      return (
+        <VerifyEmailPromptScreen
+          theme={theme}
+          email={pendingEmailVerification}
+          isSubmitting={isSubmittingAuth}
+          cooldownSeconds={cooldownSeconds}
+          onResendEmail={() => {
+            if (!isSubmittingAuth) {
+              void handleResendVerificationEmail();
+            }
+          }}
+          onBackToLogin={() => {
+            setPendingEmailVerification(null);
             setAuthScreen('login');
           }}
         />

@@ -2,6 +2,7 @@ export { ForgotPasswordScreen } from './ForgotPasswordScreen';
 export { LoginScreen } from './LoginScreen';
 export { RegisterScreen } from './RegisterScreen';
 export { ResetPasswordScreen } from './ResetPasswordScreen';
+export { VerifyEmailPromptScreen } from './VerifyEmailPromptScreen';
 
 export type { LoginFormState } from './LoginScreen';
 export type { RegisterWizardPayload } from './models/register.types';

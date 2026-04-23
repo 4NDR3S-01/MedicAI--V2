@@ -16,6 +16,7 @@ export const lightTheme: AppTheme = {
     inputBorder: '#C8D9EA',
     inputPlaceholder: '#7790A8',
     buttonText: '#073730',
+    success: '#10A85B',
   },
   blobs: {
     one: 'rgba(18, 165, 148, 0.20)',
@@ -40,6 +41,7 @@ export const darkTheme: AppTheme = {
     inputBorder: '#21435E',
     inputPlaceholder: '#7A879B',
     buttonText: '#03231F',
+    success: '#26D366',
   },
   blobs: {
     one: 'rgba(0, 191, 166, 0.24)',

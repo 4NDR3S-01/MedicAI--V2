@@ -16,6 +16,7 @@ export type AppTheme = {
     inputBorder: string;
     inputPlaceholder: string;
     buttonText: string;
+    success: string;
   };
   blobs: {
     one: string;
