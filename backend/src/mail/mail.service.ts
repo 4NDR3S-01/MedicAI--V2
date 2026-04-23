@@ -10,7 +10,10 @@ export class MailService {
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.getOrThrow<string>('RESEND_API_KEY');
-    this.fromEmail = this.configService.getOrThrow<string>('MAIL_FROM');
+    this.fromEmail = this.configService.get<string>('MAIL_FROM') || 'MedicAI <onboarding@resend.dev>';
+    if (!this.configService.get<string>('MAIL_FROM')) {
+      this.logger.warn('MAIL_FROM no está configurado. Se usará MedicAI <onboarding@resend.dev>.');
+    }
     this.resend = new Resend(apiKey);
   }
 

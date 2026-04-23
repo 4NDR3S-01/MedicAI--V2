@@ -18,11 +18,13 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { JwtAuthGuard } from './guards/jwt.guard';
+import { IpThrottleGuard } from './guards/ip-throttle.guard';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @UseGuards(IpThrottleGuard)
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);

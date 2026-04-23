@@ -5,11 +5,12 @@ import { MailModule } from '../mail/mail.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt.guard';
+import { IpThrottleGuard } from './guards/ip-throttle.guard';
 
 @Module({
   imports: [JwtModule.register({}), MailModule],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
+  providers: [AuthService, JwtAuthGuard, IpThrottleGuard],
   exports: [AuthService, JwtAuthGuard],
 })
 export class AuthModule {}

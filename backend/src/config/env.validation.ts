@@ -48,7 +48,7 @@ class EnvironmentVariables {
   RESEND_API_KEY!: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   MAIL_FROM!: string;
 
   @IsUrl({ require_tld: false })

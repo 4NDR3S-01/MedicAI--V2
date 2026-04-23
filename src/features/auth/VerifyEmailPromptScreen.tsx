@@ -4,11 +4,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundDecor, BrandLogo } from '../../components';
 import type { AppTheme } from '../../theme';
@@ -31,6 +31,7 @@ export function VerifyEmailPromptScreen({
   onBackToLogin,
 }: Readonly<VerifyEmailPromptScreenProps>) {
   const [isEmailSent, setIsEmailSent] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const handleResend = async () => {
     await onResendEmail();
@@ -40,20 +41,42 @@ export function VerifyEmailPromptScreen({
 
   const isButtonDisabled = isSubmitting || cooldownSeconds > 0;
   const maskedEmail = email.replace(/(.{2})(.*)(@.*)/, '$1***$3');
+  
+  // Formatear cooldown para que sea más amigable
+  const formatCooldown = () => {
+    if (cooldownSeconds <= 0) return '';
+    if (cooldownSeconds <= 60) return `${Math.max(1, cooldownSeconds)}s`;
+    const minutes = Math.ceil(cooldownSeconds / 60);
+    return `${minutes}m`;
+  };
+
+  const buttonText = isSubmitting
+    ? 'Reenviando…'
+    : cooldownSeconds > 0
+      ? `Reenviar en ${formatCooldown()}`
+      : 'Reenviar correo de verificación';
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.screen, { backgroundColor: theme.colors.background }]}
+      style={[
+        styles.screen,
+        {
+          backgroundColor: theme.colors.background,
+          paddingBottom: Math.max(insets.bottom, 16),
+        },
+      ]}
     >
       <BackgroundDecor theme={theme} />
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <View
+        style={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 34, 44) },
+        ]}
       >
         <View style={styles.header}>
-          <BrandLogo theme={theme} size={100} showName={false} />
+          <BrandLogo theme={theme} size={130} showName={false} />
         </View>
 
         <View
@@ -75,7 +98,7 @@ export function VerifyEmailPromptScreen({
             >
               <Ionicons
                 name="alert-circle-outline"
-                size={48}
+                size={42}
                 color={theme.colors.accentPrimary}
               />
             </View>
@@ -228,11 +251,7 @@ export function VerifyEmailPromptScreen({
                 { color: theme.colors.buttonText },
               ]}
             >
-              {isSubmitting
-                ? 'Reenviando…'
-                : cooldownSeconds > 0
-                  ? `Reenviar en ${cooldownSeconds}s`
-                  : 'Reenviar correo de verificación'}
+              {buttonText}
             </Text>
           </Pressable>
 
@@ -262,7 +281,7 @@ export function VerifyEmailPromptScreen({
         >
           ¿Necesitas ayuda? Contacta con soporte
         </Text>
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -272,41 +291,41 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 22,
     paddingTop: 24,
-    paddingBottom: 22,
+    paddingBottom: 24,
   },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
+  content: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 14,
     alignItems: 'center',
   },
   card: {
     borderWidth: 1,
     borderRadius: 22,
-    padding: 20,
-    gap: 14,
+    padding: 16,
+    gap: 10,
   },
   iconContainer: {
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   iconBox: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
     justifyContent: 'center',
     alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
   },
   emailBox: {
@@ -323,8 +342,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   instructionsContainer: {
-    gap: 14,
-    marginVertical: 8,
+    gap: 10,
+    marginVertical: 4,
   },
   instructionItem: {
     flexDirection: 'row',
@@ -332,9 +351,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   stepNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 2,
@@ -344,8 +363,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   instructionText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     flex: 1,
     paddingTop: 4,
   },
@@ -367,16 +386,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 14,
-    marginTop: 8,
+    marginTop: 4,
   },
   primaryButtonText: {
     fontWeight: '800',
     fontSize: 16,
   },
   secondaryButton: {
-    paddingVertical: 12,
+    paddingVertical: 8,
     alignItems: 'center',
   },
   secondaryButtonText: {
@@ -387,8 +406,8 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   helpText: {
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
-    marginTop: 24,
+    marginTop: 10,
   },
 });

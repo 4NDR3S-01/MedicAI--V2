@@ -470,7 +470,16 @@ export function AppRoot() {
 
       if (!response.ok) {
         const errorData = await response.json() as any;
-        throw new Error(errorData.message || 'Error al reenviar correo');
+        const errorMessage = errorData.message || 'Error al reenviar correo';
+        // Parsear cooldown si existe en el error (para rate limiting)
+        const cooldownMatch = /after\s+(\d+)\s+seconds?/i.exec(errorMessage);
+        if (cooldownMatch) {
+          const seconds = Number(cooldownMatch[1]);
+          if (Number.isFinite(seconds) && seconds > 0 && seconds < 86400) {
+            setEmailActionBlockedUntil(Date.now() + seconds * 1000);
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       setDefaultEmailCooldown();
@@ -480,9 +489,6 @@ export function AppRoot() {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo reenviar el correo.';
-      if (message.toLowerCase().includes('demasiadas solicitudes de correo')) {
-        syncEmailCooldownFromErrorMessage(message);
-      }
       Alert.alert('Error al reenviar correo', message);
     } finally {
       setIsSubmittingAuth(false);
@@ -671,7 +677,7 @@ export function AppRoot() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <StatusBar style={statusBarStyle} />
         <View style={{ flex: 1 }}>
           {renderContent()}
