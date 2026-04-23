@@ -21,6 +21,11 @@ const ensureApiConfigured = () => {
   if (!API_BASE_URL) {
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL en variables de entorno.');
   }
+  
+  // Validar HTTPS en producción
+  if (process.env.NODE_ENV === 'production' && !API_BASE_URL.startsWith('https://')) {
+    throw new Error('API_BASE_URL debe usar HTTPS en producción por seguridad.');
+  }
 };
 
 const parseApiError = async (response: Response) => {

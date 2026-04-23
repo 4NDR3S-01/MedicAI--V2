@@ -31,7 +31,7 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {
-      throw new BadRequestException('El correo ya esta registrado.');
+      throw new BadRequestException('Este correo ya está registrado.');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -56,16 +56,16 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      throw new UnauthorizedException('Credenciales invalidas.');
+      throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Credenciales invalidas.');
+      throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
 
     if (!user.isEmailVerified) {
-      throw new UnauthorizedException('Debes verificar tu correo antes de iniciar sesion.');
+      throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
 
     const tokens = await this.generateAuthTokens(user.id, user.email);
@@ -81,20 +81,24 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(refreshToken: string, userId: string) {
     const payload = await this.verifyRefreshToken(refreshToken);
+
+    if (payload.sub !== userId) {
+      throw new UnauthorizedException('Token no pertenece al usuario autenticado.');
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
 
     if (!user?.refreshTokenHash) {
-      throw new UnauthorizedException('Sesion invalida.');
+      throw new UnauthorizedException('Sesión inválida.');
     }
 
     const isValidRefresh = await bcrypt.compare(refreshToken, user.refreshTokenHash);
     if (!isValidRefresh) {
-      throw new UnauthorizedException('Sesion invalida.');
+      throw new UnauthorizedException('Sesión inválida.');
     }
 
     const tokens = await this.generateAuthTokens(user.id, user.email);
@@ -103,20 +107,28 @@ export class AuthService {
     return tokens;
   }
 
-  async logout(refreshToken: string) {
+  async logout(userId: string, refreshToken: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado.');
+    }
+
     const payload = await this.verifyRefreshToken(refreshToken);
+
+    if (payload.sub !== userId) {
+      throw new UnauthorizedException('Token no pertenece al usuario autenticado.');
+    }
 
     await this.prisma.user.update({
       where: { id: payload.sub },
       data: { refreshTokenHash: null },
     });
 
-    return { message: 'Sesion cerrada correctamente.' };
+    return { message: 'Sesión cerrada correctamente.' };
   }
 
   async verifyEmailToken(rawToken: string) {
     if (!rawToken) {
-      throw new BadRequestException('Token de verificacion requerido.');
+      throw new BadRequestException('Token de verificación requerido.');
     }
 
     const tokenHash = this.hashToken(rawToken);
@@ -126,7 +138,7 @@ export class AuthService {
     });
 
     if (!verification) {
-      throw new BadRequestException('Token invalido.');
+      throw new BadRequestException('Token inválido.');
     }
 
     if (verification.consumedAt) {
@@ -156,7 +168,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      return { message: 'Si el correo existe, se enviara un nuevo enlace.' };
+      return { message: 'Si el correo existe, se enviará un nuevo enlace.' };
     }
 
     if (user.isEmailVerified) {
@@ -165,7 +177,7 @@ export class AuthService {
 
     await this.issueAndSendEmailVerification(user);
 
-    return { message: 'Si el correo existe, se enviara un nuevo enlace.' };
+    return { message: 'Si el correo existe, se enviará un nuevo enlace.' };
   }
 
   private async issueAndSendEmailVerification(user: User) {
@@ -243,7 +255,7 @@ export class AuthService {
         },
       );
     } catch {
-      throw new UnauthorizedException('Refresh token invalido o expirado.');
+      throw new UnauthorizedException('Refresh token inválido o expirado.');
     }
   }
 }
