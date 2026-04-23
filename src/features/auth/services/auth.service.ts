@@ -106,8 +106,8 @@ export const signInWithEmail = async (email: string, password: string) => {
   return session;
 };
 
-export const requestPasswordReset = async (_email: string) => {
-  throw new Error('El flujo de recuperacion de contrasena aun no esta habilitado en el backend propio.');
+export const requestPasswordReset = async (email: string) => {
+  await apiRequest<{ message: string }>('/auth/forgot-password', { email: email.trim() });
 };
 
 export const signUpWithProfile = async (payload: RegisterWizardPayload) => {
@@ -122,8 +122,11 @@ export const signOut = async () => {
   await appStorage.removeItem(AUTH_SESSION_KEY);
 };
 
-export const updatePassword = async (_password: string) => {
-  throw new Error('La actualizacion de contrasena aun no esta habilitada en el backend propio.');
+export const updatePassword = async (password: string, token: string) => {
+  await apiRequest<{ message: string }>('/auth/reset-password', {
+    token,
+    password,
+  });
 };
 
 export const verifyEmailToken = async (token: string) => {

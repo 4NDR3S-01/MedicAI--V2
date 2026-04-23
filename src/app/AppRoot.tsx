@@ -75,6 +75,7 @@ export function AppRoot() {
     password: '',
     confirmPassword: '',
   });
+  const [passwordResetToken, setPasswordResetToken] = useState<string | null>(null);
 
   const theme = useAppTheme();
 
@@ -222,11 +223,21 @@ export function AppRoot() {
       const queryParams = parsedUrl.searchParams;
       const token = queryParams.get('token');
 
-      try {
-        if (!token) {
-          return;
-        }
+      if (!token) {
+        return;
+      }
 
+      const urlLower = url.toLowerCase();
+      const isResetPasswordLink = urlLower.includes('reset-password');
+
+      if (isResetPasswordLink) {
+        setPasswordResetToken(token);
+        setResetPasswordForm({ password: '', confirmPassword: '' });
+        setAuthScreen('resetPassword');
+        return;
+      }
+
+      try {
         await verifyEmailToken(token);
         Alert.alert('Correo verificado', 'Tu correo fue validado correctamente. Ya puedes iniciar sesion.');
         setAuthScreen('login');
@@ -425,9 +436,15 @@ export function AppRoot() {
     }
 
     try {
+      if (!passwordResetToken) {
+        Alert.alert('Token requerido', 'Abre el enlace de recuperacion enviado a tu correo para continuar.');
+        return;
+      }
+
       setIsSubmittingAuth(true);
-      await updatePassword(password);
+      await updatePassword(password, passwordResetToken);
       setResetPasswordForm({ password: '', confirmPassword: '' });
+      setPasswordResetToken(null);
       setAuthScreen('login');
       Alert.alert('Contrasena actualizada', 'Tu contrasena fue actualizada correctamente.');
     } catch (error) {
@@ -536,6 +553,7 @@ export function AppRoot() {
           }}
           onCancel={() => {
             setResetPasswordForm({ password: '', confirmPassword: '' });
+            setPasswordResetToken(null);
             setAuthScreen('login');
           }}
         />

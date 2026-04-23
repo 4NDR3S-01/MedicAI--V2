@@ -16,6 +16,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
 const EMAIL_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
+const PASSWORD_RESET_TOKEN_TTL_MS = 1000 * 60 * 30;
 
 @Injectable()
 export class AuthService {
@@ -65,7 +66,7 @@ export class AuthService {
     }
 
     if (!user.isEmailVerified) {
-      throw new UnauthorizedException('Correo o contraseña incorrectos.');
+      throw new UnauthorizedException('Debes verificar tu correo electronico antes de iniciar sesion.');
     }
 
     const tokens = await this.generateAuthTokens(user.id, user.email);
@@ -180,6 +181,61 @@ export class AuthService {
     return { message: 'Si el correo existe, se enviará un nuevo enlace.' };
   }
 
+  async requestPasswordReset(emailRaw: string) {
+    const email = emailRaw.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
+    }
+
+    await this.issueAndSendPasswordReset(user);
+
+    return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
+  }
+
+  async resetPassword(rawToken: string, newPassword: string) {
+    if (!rawToken) {
+      throw new BadRequestException('Token de restablecimiento requerido.');
+    }
+
+    const tokenHash = this.hashToken(rawToken);
+    const passwordReset = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
+
+    if (!passwordReset) {
+      throw new BadRequestException('Token inválido.');
+    }
+
+    if (passwordReset.consumedAt) {
+      throw new BadRequestException('Este token ya fue utilizado.');
+    }
+
+    if (passwordReset.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Token expirado. Solicita uno nuevo.');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: passwordReset.userId },
+        data: {
+          passwordHash,
+          refreshTokenHash: null,
+        },
+      }),
+      this.prisma.passwordResetToken.update({
+        where: { id: passwordReset.id },
+        data: { consumedAt: new Date() },
+      }),
+    ]);
+
+    return { message: 'Contraseña actualizada correctamente.' };
+  }
+
   private async issueAndSendEmailVerification(user: User) {
     const token = randomBytes(32).toString('hex');
     const tokenHash = this.hashToken(token);
@@ -199,6 +255,28 @@ export class AuthService {
       to: user.email,
       fullName: user.fullName,
       verificationUrl,
+    });
+  }
+
+  private async issueAndSendPasswordReset(user: User) {
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashToken(token);
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    const baseUrl = this.configService.getOrThrow<string>('APP_BASE_URL');
+    const resetUrl = `${baseUrl}/auth/reset-password?token=${token}`;
+
+    await this.mailService.sendPasswordResetEmail({
+      to: user.email,
+      fullName: user.fullName,
+      resetUrl,
     });
   }
 
