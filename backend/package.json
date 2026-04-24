@@ -4,6 +4,8 @@
   "description": "MedicAI backend with NestJS + Prisma + Resend",
   "main": "dist/main.js",
   "scripts": {
+    "clean": "node -e \"const fs=require('node:fs'); ['dist','tsconfig.tsbuildinfo','tsconfig.build.tsbuildinfo'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));\"",
+    "prebuild": "npm run clean",
     "build": "nest build",
     "start": "node dist/main.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
