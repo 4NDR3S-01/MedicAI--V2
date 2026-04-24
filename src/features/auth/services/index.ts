@@ -1,4 +1,5 @@
 export {
+  checkEmailAvailability,
   flushPendingProfileSync,
   getStoredSession,
   requestPasswordReset,

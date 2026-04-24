@@ -15,6 +15,11 @@ export type AppAuthSession = {
   refreshToken: string;
 };
 
+export type EmailAvailabilityResponse = {
+  available: boolean;
+  message: string;
+};
+
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 const ensureApiConfigured = () => {
@@ -115,6 +120,12 @@ export const signUpWithProfile = async (payload: RegisterWizardPayload) => {
     email: payload.personalData.email.trim(),
     password: payload.personalData.password,
     fullName: payload.personalData.fullName.trim(),
+  });
+};
+
+export const checkEmailAvailability = async (email: string) => {
+  return apiRequest<EmailAvailabilityResponse>('/auth/check-email', {
+    email: email.trim(),
   });
 };
 

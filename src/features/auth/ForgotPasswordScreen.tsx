@@ -31,7 +31,7 @@ export function ForgotPasswordScreen({
         <BrandLogo theme={theme} size={110} showName={false} />
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Recuperar contraseña</Text>
         <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Ingresa tu correo electronico y te enviaremos instrucciones seguras para restablecerla.
+          Ingresa tu correo electrónico y te enviaremos instrucciones seguras para restablecerla.
         </Text>
       </View>
 

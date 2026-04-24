@@ -13,6 +13,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 import { AuthService } from './auth.service';
+import { CheckEmailDto } from './dto/check-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -34,6 +35,11 @@ export class AuthController {
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Post('check-email')
+  checkEmail(@Body() dto: CheckEmailDto) {
+    return this.authService.checkEmailAvailability(dto.email);
   }
 
   @Post('login')

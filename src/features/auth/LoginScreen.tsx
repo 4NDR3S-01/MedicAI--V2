@@ -73,7 +73,7 @@ export function LoginScreen({
       >
         {/* Correo */}
         <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Correo profesional
+          Correo electrónico
         </Text>
         <TextInput
           value={form.email}

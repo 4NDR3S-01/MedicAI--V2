@@ -3,6 +3,7 @@ import { appStorage } from '../../services';
 import { Ionicons } from '@expo/vector-icons';
 import {
   KeyboardAvoidingView,
+  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -18,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundDecor, BrandLogo } from '../../components';
 import type { AppTheme } from '../../theme';
+import { checkEmailAvailability } from './services';
 import {
   COMMON_ALLERGIES,
   HEREDITARY_CONDITIONS,
@@ -362,7 +364,15 @@ export function RegisterScreen({ // NOSONAR
   const [isWizardHydrated, setIsWizardHydrated] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+  const [emailAvailabilityMessage, setEmailAvailabilityMessage] = useState<string | null>(null);
+  const [isCheckingEmailAvailability, setIsCheckingEmailAvailability] = useState(false);
   const stepScrollRef = useRef<ScrollView | null>(null);
+  const lastEmailAvailabilityRef = useRef<{ email: string; available: boolean } | null>(null);
+  const fieldOffsetsRef = useRef<Record<'email' | 'password' | 'confirmPassword', number>>({
+    email: 0,
+    password: 0,
+    confirmPassword: 0,
+  });
   const NONE_OPTION = 'Ninguno';
   const OTHER_OPTION = 'Otros';
 
@@ -370,6 +380,9 @@ export function RegisterScreen({ // NOSONAR
   const isLastStep = stepIndex === REGISTER_STEPS.length - 1;
 
   let primaryActionLabel = 'Siguiente';
+  if (currentStep === 2 && isCheckingEmailAvailability) {
+    primaryActionLabel = 'Validando correo…';
+  }
   if (isLastStep) {
     primaryActionLabel = isSubmitting ? 'Guardando…' : 'Guardar perfil';
   }
@@ -439,6 +452,19 @@ export function RegisterScreen({ // NOSONAR
   useEffect(() => {
     stepScrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [stepIndex]);
+
+  const registerFieldOffset = (field: 'email' | 'password' | 'confirmPassword') => (
+    event: LayoutChangeEvent,
+  ) => {
+    fieldOffsetsRef.current[field] = event.nativeEvent.layout.y;
+  };
+
+  const scrollToFocusedField = (field: 'email' | 'password' | 'confirmPassword') => {
+    setTimeout(() => {
+      const targetY = Math.max(0, fieldOffsetsRef.current[field] - 24);
+      stepScrollRef.current?.scrollTo({ y: targetY, animated: true });
+    }, 120);
+  };
 
   const updateMedicationField = (id: string, field: keyof Omit<MedicationDraft, 'id'>, value: string) => {
     setForm((previous) => ({
@@ -741,8 +767,8 @@ export function RegisterScreen({ // NOSONAR
     syncAllergiesText(selectedAllergies, nextOtherItems);
   };
 
-  const onNext = () => {
-    if (isSubmitting) {
+  const onNext = async () => {
+    if (isSubmitting || isCheckingEmailAvailability) {
       return;
     }
 
@@ -754,6 +780,38 @@ export function RegisterScreen({ // NOSONAR
 
     setStepError(null);
 
+    if (currentStep === 2) {
+      const normalizedEmail = form.personalData.email.trim().toLowerCase();
+      const lastCheck = lastEmailAvailabilityRef.current;
+
+      if (!lastCheck || lastCheck.email !== normalizedEmail) {
+        try {
+          setIsCheckingEmailAvailability(true);
+          const result = await checkEmailAvailability(normalizedEmail);
+          lastEmailAvailabilityRef.current = {
+            email: normalizedEmail,
+            available: result.available,
+          };
+
+          if (!result.available) {
+            setEmailAvailabilityMessage(result.message);
+            return;
+          }
+
+          setEmailAvailabilityMessage(null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'No se pudo validar el correo en este momento.';
+          setStepError(message);
+          return;
+        } finally {
+          setIsCheckingEmailAvailability(false);
+        }
+      } else if (!lastCheck.available) {
+        setEmailAvailabilityMessage('Este correo ya está en uso. Inicia sesión o recupera tu contraseña.');
+        return;
+      }
+    }
+
     if (isLastStep) {
       void appStorage.removeItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
       void onSubmit(form);
@@ -764,7 +822,7 @@ export function RegisterScreen({ // NOSONAR
   };
 
   const onBack = () => {
-    if (isSubmitting) {
+    if (isSubmitting || isCheckingEmailAvailability) {
       return;
     }
     setStepError(null);
@@ -837,20 +895,37 @@ export function RegisterScreen({ // NOSONAR
       <TextInput
         value={form.personalData.email}
         onChangeText={(value) =>
-          setForm((previous) => ({
-            ...previous,
-            personalData: { ...previous.personalData, email: value.trim() },
-          }))
+          setForm((previous) => {
+            const nextEmail = value.trim();
+            const normalizedNextEmail = nextEmail.toLowerCase();
+            const lastCheck = lastEmailAvailabilityRef.current;
+
+            if (lastCheck?.email !== normalizedNextEmail && emailAvailabilityMessage) {
+              setEmailAvailabilityMessage(null);
+            }
+
+            return {
+              ...previous,
+              personalData: { ...previous.personalData, email: nextEmail },
+            };
+          })
         }
+        onLayout={registerFieldOffset('email')}
+        onFocus={() => scrollToFocusedField('email')}
         style={[styles.input, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, color: theme.colors.textPrimary }]}
         placeholder="tu@dominio.com"
         keyboardType="email-address"
         autoCapitalize="none"
         placeholderTextColor={theme.colors.inputPlaceholder}
       />
+      {emailAvailabilityMessage ? (
+        <Text style={[styles.inlineValidationText, { color: '#C0392B' }]}>
+          {emailAvailabilityMessage}
+        </Text>
+      ) : null}
 
       <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Contrasena</Text>
-      <View style={styles.passwordWrap}>
+      <View style={styles.passwordWrap} onLayout={registerFieldOffset('password')}>
         <TextInput
           value={form.personalData.password}
           onChangeText={(value) =>
@@ -859,6 +934,7 @@ export function RegisterScreen({ // NOSONAR
               personalData: { ...previous.personalData, password: value },
             }))
           }
+          onFocus={() => scrollToFocusedField('password')}
           style={[styles.input, styles.passwordInput, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, color: theme.colors.textPrimary }]}
           placeholder="Minimo 6 caracteres"
           placeholderTextColor={theme.colors.inputPlaceholder}
@@ -881,7 +957,7 @@ export function RegisterScreen({ // NOSONAR
       </View>
 
       <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Confirmar contrasena</Text>
-      <View style={styles.passwordWrap}>
+      <View style={styles.passwordWrap} onLayout={registerFieldOffset('confirmPassword')}>
         <TextInput
           value={form.personalData.confirmPassword}
           onChangeText={(value) =>
@@ -890,6 +966,7 @@ export function RegisterScreen({ // NOSONAR
               personalData: { ...previous.personalData, confirmPassword: value },
             }))
           }
+          onFocus={() => scrollToFocusedField('confirmPassword')}
           style={[styles.input, styles.passwordInput, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, color: theme.colors.textPrimary }]}
           placeholder="Repite tu contrasena"
           placeholderTextColor={theme.colors.inputPlaceholder}
@@ -1292,12 +1369,24 @@ export function RegisterScreen({ // NOSONAR
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={keyboardOffset}
-      style={[styles.screen, { backgroundColor: theme.colors.background, paddingHorizontal: horizontalPadding, paddingTop: topPadding, paddingBottom: bottomPadding }]}
+    <View
+      style={[
+        styles.screen,
+        {
+          backgroundColor: theme.colors.background,
+          paddingHorizontal: horizontalPadding,
+          paddingTop: topPadding,
+          paddingBottom: bottomPadding,
+        },
+      ]}
     >
       <BackgroundDecor theme={theme} />
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={keyboardOffset}
+        style={styles.keyboardLayer}
+      >
 
       <View style={styles.header}>
         <BrandLogo theme={theme} size={logoSize} showName={false} />
@@ -1317,7 +1406,7 @@ export function RegisterScreen({ // NOSONAR
         <ScrollView
           ref={stepScrollRef}
           style={styles.stepContent}
-          contentContainerStyle={[styles.stepContentInner, { paddingBottom: isShortScreen ? 12 : 8 }]}
+          contentContainerStyle={[styles.stepContentInner, { paddingBottom: isShortScreen ? 16 : 12 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -1326,14 +1415,14 @@ export function RegisterScreen({ // NOSONAR
 
         {stepError ? <Text style={[styles.errorText, { color: '#D64545' }]}>{stepError}</Text> : null}
 
-        <View style={[styles.footerActions, isVeryShortScreen ? styles.footerActionsStacked : null, { paddingBottom: iosFooterPadding }]}>
+        <View style={[styles.footerActions, isVeryShortScreen ? styles.footerActionsStacked : null, { paddingBottom: iosFooterPadding }]}> 
           <Pressable
             style={[styles.secondaryAction, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}
             onPress={stepIndex === 0 ? onNavigateToLogin : onBack}
-            disabled={isSubmitting}
-            accessibilityState={{ disabled: isSubmitting }}
+            disabled={isSubmitting || isCheckingEmailAvailability}
+            accessibilityState={{ disabled: isSubmitting || isCheckingEmailAvailability }}
           >
-            <Text style={[styles.secondaryActionText, { color: theme.colors.textSecondary }]}>
+            <Text style={[styles.secondaryActionText, { color: theme.colors.textSecondary }]}> 
               {stepIndex === 0 ? 'Volver al login' : 'Anterior'}
             </Text>
           </Pressable>
@@ -1346,10 +1435,10 @@ export function RegisterScreen({ // NOSONAR
               isSubmitting && styles.footerActionDisabled,
             ]}
             onPress={onNext}
-            disabled={isSubmitting}
-            accessibilityState={{ disabled: isSubmitting }}
+            disabled={isSubmitting || isCheckingEmailAvailability}
+            accessibilityState={{ disabled: isSubmitting || isCheckingEmailAvailability }}
           >
-            <Text style={[styles.primaryActionText, { color: theme.colors.buttonText }]}>
+            <Text style={[styles.primaryActionText, { color: theme.colors.buttonText }]}> 
               {primaryActionLabel}
             </Text>
           </Pressable>
@@ -1510,12 +1599,14 @@ export function RegisterScreen({ // NOSONAR
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  keyboardLayer: { flex: 1 },
   header: { marginTop: 8, marginBottom: 14, gap: 8, alignItems: 'center' },
   title: { fontSize: 32, fontWeight: '800', textAlign: 'center' },
   titleCompact: { fontSize: 28 },
@@ -1542,6 +1633,7 @@ const styles = StyleSheet.create({
   countryCode: { fontSize: 15, fontWeight: '700' },
   phoneInput: { flex: 1, marginBottom: 0 },
   helperText: { fontSize: 12, marginTop: -2, marginBottom: 8 },
+  inlineValidationText: { fontSize: 12, marginTop: -2, marginBottom: 8, fontWeight: '600' },
   medicalSelectorCard: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 4 },
   selectorSubtitle: { fontSize: 12, marginBottom: 10 },
   optionsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },

@@ -332,12 +332,12 @@ export function AppRoot() {
     const password = form.password;
 
     if (!email) {
-      Alert.alert('Correo requerido', 'Ingresa tu correo electronico para continuar.');
+      Alert.alert('Correo requerido', 'Ingresa tu correo electrónico para continuar.');
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert('Correo invalido', 'Verifica el formato de tu correo electronico.');
+      Alert.alert('Correo invalido', 'Verifica el formato de tu correo electrónico.');
       return;
     }
 

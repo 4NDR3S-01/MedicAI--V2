@@ -8,24 +8,36 @@ type BackgroundDecorProps = {
   theme: AppTheme;
 };
 
+// Shared animated values keep continuity when navigating between screens.
+const sharedDriftA = new Animated.Value(0);
+const sharedDriftB = new Animated.Value(0);
+const sharedPulse = new Animated.Value(0.96);
+let hasStartedSharedAnimation = false;
+
 export function BackgroundDecor({ theme }: Readonly<BackgroundDecorProps>) {
-  const driftA = useRef(new Animated.Value(0)).current;
-  const driftB = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0.96)).current;
+  const driftA = useRef(sharedDriftA).current;
+  const driftB = useRef(sharedDriftB).current;
+  const pulse = useRef(sharedPulse).current;
 
   useEffect(() => {
+    if (hasStartedSharedAnimation) {
+      return;
+    }
+
+    hasStartedSharedAnimation = true;
+
     Animated.parallel([
       Animated.loop(
         Animated.sequence([
           Animated.timing(driftA, {
             toValue: 1,
-            duration: 4200,
+            duration: 3200,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
           Animated.timing(driftA, {
             toValue: 0,
-            duration: 4200,
+            duration: 3200,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
@@ -35,13 +47,13 @@ export function BackgroundDecor({ theme }: Readonly<BackgroundDecorProps>) {
         Animated.sequence([
           Animated.timing(driftB, {
             toValue: 1,
-            duration: 5200,
+            duration: 4000,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
           Animated.timing(driftB, {
             toValue: 0,
-            duration: 5200,
+            duration: 4000,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
@@ -50,14 +62,14 @@ export function BackgroundDecor({ theme }: Readonly<BackgroundDecorProps>) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulse, {
-            toValue: 1.04,
-            duration: 2600,
+            toValue: 1.1,
+            duration: 2000,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(pulse, {
-            toValue: 0.96,
-            duration: 2600,
+            toValue: 0.92,
+            duration: 2000,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
@@ -68,22 +80,22 @@ export function BackgroundDecor({ theme }: Readonly<BackgroundDecorProps>) {
 
   const driftATranslateY = driftA.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -10],
+    outputRange: [0, -22],
   });
 
   const driftBTranslateY = driftB.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 8],
+    outputRange: [0, 18],
   });
 
   const driftARotate = driftA.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '2deg'],
+    outputRange: ['0deg', '4deg'],
   });
 
   const driftBRotate = driftB.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '-2deg'],
+    outputRange: ['0deg', '-4deg'],
   });
 
   return (

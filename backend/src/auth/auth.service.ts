@@ -52,6 +52,23 @@ export class AuthService {
     };
   }
 
+  async checkEmailAvailability(emailRaw: string) {
+    const email = emailRaw.trim().toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+
+    if (existing) {
+      return {
+        available: false,
+        message: 'Este correo ya está en uso. Inicia sesión o recupera tu contraseña.',
+      };
+    }
+
+    return {
+      available: true,
+      message: 'Correo disponible.',
+    };
+  }
+
   async login(dto: LoginDto) {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
