@@ -34,9 +34,21 @@ export class MailService {
             Verificar correo
           </a>
         </p>
+        <p style="font-size:13px;color:#555;word-break:break-word;">
+          Si el botón no funciona, abre este enlace:
+          <br />
+          <a href="${params.verificationUrl}" style="color:#0f766e;">${params.verificationUrl}</a>
+        </p>
         <p>Si no solicitaste esta cuenta, ignora este mensaje.</p>
       </div>
     `;
+    const text = [
+      `Verifica tu correo en MedicAI`,
+      `Hola ${name},`,
+      `Confirma tu correo para activar tu cuenta.`,
+      `Si el botón no funciona, abre este enlace: ${params.verificationUrl}`,
+      `Si no solicitaste esta cuenta, ignora este mensaje.`,
+    ].join('\n\n');
 
     try {
       await this.resend.emails.send({
@@ -44,6 +56,7 @@ export class MailService {
         to: params.to,
         subject: 'Verifica tu correo de MedicAI',
         html,
+        text,
       });
     } catch (error) {
       this.logger.error('Failed to send verification email', error as Error);
@@ -68,9 +81,21 @@ export class MailService {
             Restablecer contraseña
           </a>
         </p>
+        <p style="font-size:13px;color:#555;word-break:break-word;">
+          Si el botón no funciona, abre este enlace:
+          <br />
+          <a href="${params.resetUrl}" style="color:#0f766e;">${params.resetUrl}</a>
+        </p>
         <p>Si no solicitaste este cambio, ignora este mensaje.</p>
       </div>
     `;
+    const text = [
+      `Restablece tu contraseña en MedicAI`,
+      `Hola ${name},`,
+      `Recibimos una solicitud para restablecer tu contraseña.`,
+      `Si el botón no funciona, abre este enlace: ${params.resetUrl}`,
+      `Si no solicitaste este cambio, ignora este mensaje.`,
+    ].join('\n\n');
 
     try {
       await this.resend.emails.send({
@@ -78,6 +103,7 @@ export class MailService {
         to: params.to,
         subject: 'Recuperación de contraseña de MedicAI',
         html,
+        text,
       });
     } catch (error) {
       this.logger.error('Failed to send password reset email', error as Error);

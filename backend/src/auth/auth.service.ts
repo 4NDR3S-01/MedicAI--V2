@@ -300,12 +300,9 @@ export class AuthService {
   }
 
   private buildAppAuthLink(route: 'verify-email' | 'reset-password', token: string) {
-    const deepLinkBase = (
-      this.configService.get<string>('APP_DEEP_LINK_BASE_URL')
-      || 'medicai://auth'
-    ).replace(/\/$/, '');
+    const webBaseUrl = this.configService.getOrThrow<string>('APP_BASE_URL').replace(/\/$/, '');
 
-    return `${deepLinkBase}/${route}?token=${encodeURIComponent(token)}`;
+    return `${webBaseUrl}/auth/${route}?token=${encodeURIComponent(token)}`;
   }
 
   private async generateAuthTokens(userId: string, email: string) {
