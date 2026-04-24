@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   Min,
   validateSync,
@@ -54,7 +55,9 @@ class EnvironmentVariables {
   @IsUrl({ require_tld: false })
   APP_BASE_URL!: string;
 
-  @IsUrl({ require_tld: false })
+  @Matches(/^[a-z][a-z0-9+.-]*:\/\/.+/i, {
+    message: 'APP_DEEP_LINK_BASE_URL must be a valid URI (e.g. medicai://auth)',
+  })
   @IsOptional()
   APP_DEEP_LINK_BASE_URL?: string;
 }
