@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { appStorage } from '../../services';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
@@ -17,9 +17,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BackgroundDecor, BrandLogo } from '../../components';
-import type { AppTheme } from '../../theme';
-import { checkEmailAvailability } from './services';
+import { appStorage } from '../../../shared/storage';
+import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import type { AppTheme } from '../../../shared/theme';
+import { checkEmailAvailability } from '../services';
 import {
   COMMON_ALLERGIES,
   HEREDITARY_CONDITIONS,
@@ -27,8 +28,8 @@ import {
   PHONE_COUNTRIES,
   REGISTER_STEPS,
   STEP_TITLE,
-} from './config/register.constants';
-import type { AppointmentDraft, MedicationDraft, RegisterWizardPayload } from './models/register.types';
+} from '../config/register.constants';
+import type { AppointmentDraft, MedicationDraft, RegisterWizardPayload } from '../models/register.types';
 import {
   calculateAgeFromBirthDate,
   createAppointmentDraft,
@@ -37,9 +38,19 @@ import {
   formatBirthDate,
   getDaysInMonth,
   parseBirthDate,
-} from './utils/register.utils';
+} from '../utils/register.utils';
 
-export type { RegisterWizardPayload } from './models/register.types';
+export type { RegisterWizardPayload } from '../models/register.types';
+
+type PersonalFieldKey =
+  | 'fullName'
+  | 'birthDate'
+  | 'phone'
+  | 'email'
+  | 'password'
+  | 'confirmPassword';
+
+type FocusablePersonalFieldKey = Exclude<PersonalFieldKey, 'birthDate'>;
 
 type RegisterScreenProps = {
   theme: AppTheme;
@@ -228,35 +239,70 @@ const validatePersonalStep = (
   personalData: RegisterWizardPayload['personalData'],
   calculatedAge: number | null,
 ): string | null => {
+  const validationIssue = getPersonalValidationIssue(personalData, calculatedAge);
+  return validationIssue?.message ?? null;
+};
+
+const getPersonalValidationIssue = (
+  personalData: RegisterWizardPayload['personalData'],
+  calculatedAge: number | null,
+): { field: PersonalFieldKey; message: string } | null => {
   const password = personalData.password ?? '';
   const confirmPassword = personalData.confirmPassword ?? '';
 
   if (!personalData.fullName.trim()) {
-    return 'El nombre completo es obligatorio.';
+    return {
+      field: 'fullName',
+      message: 'El nombre completo es obligatorio.',
+    };
   }
   if (!personalData.birthDate.trim() || calculatedAge === null) {
-    return 'Selecciona una fecha de nacimiento valida.';
+    return {
+      field: 'birthDate',
+      message: 'Selecciona una fecha de nacimiento valida.',
+    };
   }
   if (personalData.phone && !/^\d{9}$/.test(personalData.phone)) {
-    return 'El numero telefonico debe tener exactamente 9 digitos.';
+    return {
+      field: 'phone',
+      message: 'El numero telefonico debe tener exactamente 9 digitos.',
+    };
   }
   if (!personalData.email.trim()) {
-    return 'El correo es obligatorio.';
+    return {
+      field: 'email',
+      message: 'El correo es obligatorio.',
+    };
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personalData.email.trim())) {
-    return 'Ingresa un correo valido.';
+    return {
+      field: 'email',
+      message: 'Ingresa un correo valido.',
+    };
   }
   if (!password.trim()) {
-    return 'La contrasena es obligatoria.';
+    return {
+      field: 'password',
+      message: 'La contrasena es obligatoria.',
+    };
   }
   if (password.trim().length < 6) {
-    return 'La contrasena debe tener al menos 6 caracteres.';
+    return {
+      field: 'password',
+      message: 'La contrasena debe tener al menos 6 caracteres.',
+    };
   }
   if (!confirmPassword.trim()) {
-    return 'Confirma tu contrasena.';
+    return {
+      field: 'confirmPassword',
+      message: 'Confirma tu contrasena.',
+    };
   }
   if (password !== confirmPassword) {
-    return 'Las contrasenas no coinciden.';
+    return {
+      field: 'confirmPassword',
+      message: 'Las contrasenas no coinciden.',
+    };
   }
   return null;
 };
@@ -368,11 +414,22 @@ export function RegisterScreen({ // NOSONAR
   const [isCheckingEmailAvailability, setIsCheckingEmailAvailability] = useState(false);
   const stepScrollRef = useRef<ScrollView | null>(null);
   const lastEmailAvailabilityRef = useRef<{ email: string; available: boolean } | null>(null);
-  const fieldOffsetsRef = useRef<Record<'email' | 'password' | 'confirmPassword', number>>({
+  const fieldOffsetsRef = useRef<Record<PersonalFieldKey, number>>({
+    fullName: 0,
+    birthDate: 0,
+    phone: 0,
     email: 0,
     password: 0,
     confirmPassword: 0,
   });
+  const personalFieldRefs = useRef<Record<FocusablePersonalFieldKey, TextInput | null>>({
+    fullName: null,
+    phone: null,
+    email: null,
+    password: null,
+    confirmPassword: null,
+  });
+  const pendingBirthDateFollowUpRef = useRef<FocusablePersonalFieldKey | null>(null);
   const NONE_OPTION = 'Ninguno';
   const OTHER_OPTION = 'Otros';
 
@@ -453,17 +510,67 @@ export function RegisterScreen({ // NOSONAR
     stepScrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [stepIndex]);
 
-  const registerFieldOffset = (field: 'email' | 'password' | 'confirmPassword') => (
+  const registerFieldOffset = (field: PersonalFieldKey) => (
     event: LayoutChangeEvent,
   ) => {
     fieldOffsetsRef.current[field] = event.nativeEvent.layout.y;
   };
 
-  const scrollToFocusedField = (field: 'email' | 'password' | 'confirmPassword') => {
+  const registerPersonalFieldRef = (field: FocusablePersonalFieldKey) => (
+    ref: TextInput | null,
+  ) => {
+    personalFieldRefs.current[field] = ref;
+  };
+
+  const scrollToFocusedField = (field: PersonalFieldKey) => {
     setTimeout(() => {
       const targetY = Math.max(0, fieldOffsetsRef.current[field] - 24);
       stepScrollRef.current?.scrollTo({ y: targetY, animated: true });
     }, 120);
+  };
+
+  const focusPersonalField = (
+    field: PersonalFieldKey,
+    options?: { birthDateFollowUp?: FocusablePersonalFieldKey | null },
+  ) => {
+    scrollToFocusedField(field);
+
+    if (field === 'birthDate') {
+      pendingBirthDateFollowUpRef.current = options?.birthDateFollowUp ?? null;
+      Keyboard.dismiss();
+      setTimeout(() => {
+        openBirthDateModal();
+      }, 180);
+      return;
+    }
+
+    setTimeout(() => {
+      personalFieldRefs.current[field]?.focus();
+    }, 220);
+  };
+
+  const handlePersonalInputSubmit = (field: FocusablePersonalFieldKey) => {
+    const nextFieldMap: Record<FocusablePersonalFieldKey, PersonalFieldKey | 'submit'> = {
+      fullName: 'birthDate',
+      phone: 'email',
+      email: 'password',
+      password: 'confirmPassword',
+      confirmPassword: 'submit',
+    };
+
+    const nextField = nextFieldMap[field];
+
+    if (nextField === 'submit') {
+      void onNext();
+      return;
+    }
+
+    if (nextField === 'birthDate') {
+      focusPersonalField('birthDate', { birthDateFollowUp: 'phone' });
+      return;
+    }
+
+    focusPersonalField(nextField);
   };
 
   const updateMedicationField = (id: string, field: keyof Omit<MedicationDraft, 'id'>, value: string) => {
@@ -584,6 +691,15 @@ export function RegisterScreen({ // NOSONAR
     }));
 
     setIsBirthDateModalVisible(false);
+
+    const nextField = pendingBirthDateFollowUpRef.current;
+    pendingBirthDateFollowUpRef.current = null;
+
+    if (nextField) {
+      setTimeout(() => {
+        focusPersonalField(nextField);
+      }, 220);
+    }
   };
 
   const buildMedicalListText = (selectedItems: string[], otherItems: string[]) => {
@@ -772,6 +888,15 @@ export function RegisterScreen({ // NOSONAR
       return;
     }
 
+    if (currentStep === 2) {
+      const personalValidationIssue = getPersonalValidationIssue(form.personalData, calculatedAge);
+      if (personalValidationIssue) {
+        setStepError(personalValidationIssue.message);
+        focusPersonalField(personalValidationIssue.field);
+        return;
+      }
+    }
+
     const validationError = validateCurrentStep(currentStep, form, calculatedAge);
     if (validationError) {
       setStepError(validationError);
@@ -795,6 +920,7 @@ export function RegisterScreen({ // NOSONAR
 
           if (!result.available) {
             setEmailAvailabilityMessage(result.message);
+            focusPersonalField('email');
             return;
           }
 
@@ -808,6 +934,7 @@ export function RegisterScreen({ // NOSONAR
         }
       } else if (!lastCheck.available) {
         setEmailAvailabilityMessage('Este correo ya está en uso. Inicia sesión o recupera tu contraseña.');
+        focusPersonalField('email');
         return;
       }
     }
@@ -833,6 +960,7 @@ export function RegisterScreen({ // NOSONAR
     <View style={styles.group}>
       <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Nombre completo</Text>
       <TextInput
+        ref={registerPersonalFieldRef('fullName')}
         value={form.personalData.fullName}
         onChangeText={(value) =>
           setForm((previous) => ({
@@ -840,14 +968,19 @@ export function RegisterScreen({ // NOSONAR
             personalData: { ...previous.personalData, fullName: value },
           }))
         }
+        onLayout={registerFieldOffset('fullName')}
+        onFocus={() => scrollToFocusedField('fullName')}
+        onSubmitEditing={() => handlePersonalInputSubmit('fullName')}
         style={[styles.input, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, color: theme.colors.textPrimary }]}
         placeholder="Nombre y apellido"
         placeholderTextColor={theme.colors.inputPlaceholder}
         autoCapitalize="words"
+        returnKeyType="next"
       />
 
       <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Fecha de nacimiento</Text>
       <Pressable
+        onLayout={registerFieldOffset('birthDate')}
         style={[styles.selectorField, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder }]}
         onPress={openBirthDateModal}
       >
@@ -871,6 +1004,7 @@ export function RegisterScreen({ // NOSONAR
         </Pressable>
 
         <TextInput
+          ref={registerPersonalFieldRef('phone')}
           value={form.personalData.phone}
           onChangeText={(value) =>
             setForm((previous) => ({
@@ -881,11 +1015,15 @@ export function RegisterScreen({ // NOSONAR
               },
             }))
           }
+          onLayout={registerFieldOffset('phone')}
+          onFocus={() => scrollToFocusedField('phone')}
+          onSubmitEditing={() => handlePersonalInputSubmit('phone')}
           style={[styles.input, styles.phoneInput, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, color: theme.colors.textPrimary }]}
           placeholder="987654321"
           keyboardType="number-pad"
           placeholderTextColor={theme.colors.inputPlaceholder}
           maxLength={9}
+          returnKeyType="next"
         />
       </View>
 
@@ -893,6 +1031,7 @@ export function RegisterScreen({ // NOSONAR
 
       <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Correo</Text>
       <TextInput
+        ref={registerPersonalFieldRef('email')}
         value={form.personalData.email}
         onChangeText={(value) =>
           setForm((previous) => {
@@ -917,6 +1056,8 @@ export function RegisterScreen({ // NOSONAR
         keyboardType="email-address"
         autoCapitalize="none"
         placeholderTextColor={theme.colors.inputPlaceholder}
+        onSubmitEditing={() => handlePersonalInputSubmit('email')}
+        returnKeyType="next"
       />
       {emailAvailabilityMessage ? (
         <Text style={[styles.inlineValidationText, { color: '#C0392B' }]}>
@@ -927,6 +1068,7 @@ export function RegisterScreen({ // NOSONAR
       <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Contrasena</Text>
       <View style={styles.passwordWrap} onLayout={registerFieldOffset('password')}>
         <TextInput
+          ref={registerPersonalFieldRef('password')}
           value={form.personalData.password}
           onChangeText={(value) =>
             setForm((previous) => ({
@@ -940,6 +1082,8 @@ export function RegisterScreen({ // NOSONAR
           placeholderTextColor={theme.colors.inputPlaceholder}
           autoCapitalize="none"
           secureTextEntry={!isPasswordVisible}
+          onSubmitEditing={() => handlePersonalInputSubmit('password')}
+          returnKeyType="next"
         />
         <Pressable
           onPress={() => setIsPasswordVisible((previous) => !previous)}
@@ -959,6 +1103,7 @@ export function RegisterScreen({ // NOSONAR
       <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Confirmar contrasena</Text>
       <View style={styles.passwordWrap} onLayout={registerFieldOffset('confirmPassword')}>
         <TextInput
+          ref={registerPersonalFieldRef('confirmPassword')}
           value={form.personalData.confirmPassword}
           onChangeText={(value) =>
             setForm((previous) => ({
@@ -972,6 +1117,8 @@ export function RegisterScreen({ // NOSONAR
           placeholderTextColor={theme.colors.inputPlaceholder}
           autoCapitalize="none"
           secureTextEntry={!isConfirmPasswordVisible}
+          onSubmitEditing={() => handlePersonalInputSubmit('confirmPassword')}
+          returnKeyType="done"
         />
         <Pressable
           onPress={() => setIsConfirmPasswordVisible((previous) => !previous)}

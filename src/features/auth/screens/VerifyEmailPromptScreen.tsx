@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BackgroundDecor, BrandLogo } from '../../components';
-import type { AppTheme } from '../../theme';
+import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import type { AppTheme } from '../../../shared/theme';
 
 type VerifyEmailPromptScreenProps = {
   theme: AppTheme;

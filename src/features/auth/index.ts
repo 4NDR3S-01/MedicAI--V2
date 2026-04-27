@@ -1,10 +1,10 @@
-export { ForgotPasswordScreen } from './ForgotPasswordScreen';
-export { LoginScreen } from './LoginScreen';
-export { RegisterScreen } from './RegisterScreen';
-export { ResetPasswordScreen } from './ResetPasswordScreen';
-export { VerifyEmailPromptScreen } from './VerifyEmailPromptScreen';
+export { ForgotPasswordScreen } from './screens/ForgotPasswordScreen';
+export { LoginScreen } from './screens/LoginScreen';
+export { RegisterScreen } from './screens/RegisterScreen';
+export { ResetPasswordScreen } from './screens/ResetPasswordScreen';
+export { VerifyEmailPromptScreen } from './screens/VerifyEmailPromptScreen';
 
-export type { LoginFormState } from './LoginScreen';
+export type { LoginFormState } from './screens/LoginScreen';
 export type { RegisterWizardPayload } from './models/register.types';
 
 export {

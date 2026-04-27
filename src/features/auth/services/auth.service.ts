@@ -1,4 +1,4 @@
-import { appStorage } from '../../../services';
+import { appStorage } from '../../../shared/storage';
 
 import type { RegisterWizardPayload } from '../models/register.types';
 import { mapAuthError } from './authErrors';

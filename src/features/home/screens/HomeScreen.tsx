@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { BackgroundDecor, BrandLogo } from '../../components';
-import type { AppTheme } from '../../theme';
+import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import type { AppTheme } from '../../../shared/theme';
 
 export type HomeScreenProps = {
   theme: AppTheme;

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
-import { BackgroundDecor, BrandLogo } from '../../components';
-import type { AppTheme } from '../../theme';
+import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import type { AppTheme } from '../../../shared/theme';
 
 type LoadingScreenProps = {
   theme: AppTheme;

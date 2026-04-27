@@ -10,8 +10,8 @@ import {
   View,
 } from 'react-native';
 
-import { BackgroundDecor, BrandLogo } from '../../components';
-import type { AppTheme } from '../../theme';
+import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import type { AppTheme } from '../../../shared/theme';
 
 export type LoginFormState = {
   email: string;

@@ -3,10 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
-import { AuthModule } from './auth/auth.module';
-import { validateEnv } from './config/env.validation';
-import { MailModule } from './mail/mail.module';
-import { PrismaModule } from './prisma/prisma.module';
+import { validateEnv } from '../config/env.validation';
+import { MailModule } from '../infrastructure/mail/mail.module';
+import { PrismaModule } from '../infrastructure/prisma/prisma.module';
+import { AuthModule } from '../modules/auth/auth.module';
 
 @Module({
   imports: [

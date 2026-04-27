@@ -2,7 +2,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../theme';
 
-export const LOGO_SOURCE = require('../../assets/logo_app.png');
+export const LOGO_SOURCE = require('../../../assets/logo_app.png');
 
 type BrandLogoProps = {
   theme: AppTheme;

@@ -1,2 +1,2 @@
-export { HomeScreen } from './HomeScreen';
-export type { HomeScreenProps } from './HomeScreen';
+export { HomeScreen } from './screens/HomeScreen';
+export type { HomeScreenProps } from './screens/HomeScreen';

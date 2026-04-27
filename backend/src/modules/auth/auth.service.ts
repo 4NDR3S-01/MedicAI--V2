@@ -10,8 +10,8 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'node:crypto';
 import { SignOptions } from 'jsonwebtoken';
 
-import { MailService } from '../mail/mail.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../../infrastructure/mail/mail.service';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 

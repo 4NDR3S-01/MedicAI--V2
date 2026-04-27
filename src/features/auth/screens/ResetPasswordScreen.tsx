@@ -1,25 +1,29 @@
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { BackgroundDecor, BrandLogo } from '../../components';
-import type { AppTheme } from '../../theme';
+import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import type { AppTheme } from '../../../shared/theme';
 
-type ForgotPasswordScreenProps = {
+type ResetPasswordScreenProps = {
   theme: AppTheme;
-  email: string;
+  password: string;
+  confirmPassword: string;
   isSubmitting?: boolean;
-  onEmailChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
   onSubmit: () => void;
-  onBackToLogin: () => void;
+  onCancel: () => void;
 };
 
-export function ForgotPasswordScreen({
+export function ResetPasswordScreen({
   theme,
-  email,
+  password,
+  confirmPassword,
   isSubmitting = false,
-  onEmailChange,
+  onPasswordChange,
+  onConfirmPasswordChange,
   onSubmit,
-  onBackToLogin,
-}: Readonly<ForgotPasswordScreenProps>) {
+  onCancel,
+}: Readonly<ResetPasswordScreenProps>) {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -29,9 +33,9 @@ export function ForgotPasswordScreen({
 
       <View style={styles.header}>
         <BrandLogo theme={theme} size={110} showName={false} />
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Recuperar contraseña</Text>
+        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Nueva contrasena</Text>
         <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Ingresa tu correo electrónico y te enviaremos instrucciones seguras para restablecerla.
+          Crea una contrasena segura para proteger tu cuenta.
         </Text>
       </View>
 
@@ -44,10 +48,10 @@ export function ForgotPasswordScreen({
           },
         ]}
       >
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Correo</Text>
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Nueva contrasena</Text>
         <TextInput
-          value={email}
-          onChangeText={onEmailChange}
+          value={password}
+          onChangeText={onPasswordChange}
           style={[
             styles.input,
             {
@@ -56,9 +60,28 @@ export function ForgotPasswordScreen({
               color: theme.colors.textPrimary,
             },
           ]}
+          secureTextEntry
           autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="tu@dominio.com"
+          placeholder="Minimo 8 caracteres"
+          placeholderTextColor={theme.colors.inputPlaceholder}
+          editable={!isSubmitting}
+        />
+
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Confirmar contrasena</Text>
+        <TextInput
+          value={confirmPassword}
+          onChangeText={onConfirmPasswordChange}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.colors.inputBackground,
+              borderColor: theme.colors.inputBorder,
+              color: theme.colors.textPrimary,
+            },
+          ]}
+          secureTextEntry
+          autoCapitalize="none"
+          placeholder="Repite tu contrasena"
           placeholderTextColor={theme.colors.inputPlaceholder}
           editable={!isSubmitting}
         />
@@ -74,18 +97,18 @@ export function ForgotPasswordScreen({
           accessibilityState={{ disabled: isSubmitting }}
         >
           <Text style={[styles.primaryButtonText, { color: theme.colors.buttonText }]}>
-            {isSubmitting ? 'Enviando…' : 'Enviar enlace'}
+            {isSubmitting ? 'Actualizando…' : 'Actualizar contrasena'}
           </Text>
         </Pressable>
 
         <Pressable
           style={styles.secondaryButton}
-          onPress={onBackToLogin}
+          onPress={onCancel}
           disabled={isSubmitting}
           accessibilityState={{ disabled: isSubmitting }}
         >
           <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
-            Volver al inicio de sesion
+            Cancelar
           </Text>
         </Pressable>
       </View>

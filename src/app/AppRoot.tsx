@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import { LOGO_SOURCE } from '../components';
+import { LOGO_SOURCE } from '../shared/ui';
 import {
   ForgotPasswordScreen,
   getStoredSession,
@@ -24,8 +24,8 @@ import {
   verifyEmailToken,
   VerifyEmailPromptScreen,
 } from '../features';
-import { appStorage } from '../services';
-import { useAppTheme } from '../theme';
+import { appStorage } from '../shared/storage';
+import { useAppTheme } from '../shared/theme';
 
 const SPLASH_DURATION_MS = 1200;
 const AUTH_STATE_STORAGE_KEY = 'medicai_auth_state_v1';
