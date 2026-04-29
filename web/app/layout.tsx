@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://medicai.lat"),
   title: {
-    default: "MedicAI | Recordatorios de citas médicas y medicamentos",
+    default: "MedicAI",
     template: "%s | MedicAI",
   },
   description:
