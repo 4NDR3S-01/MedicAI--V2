@@ -1,5 +1,4 @@
-import type { Metadata, Viewport } from "next";
-import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,38 +29,18 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#00b9cf" },
-    { media: "(prefers-color-scheme: dark)", color: "#071315" },
-  ],
-};
 
-const THEME_BOOTSTRAP = `
-(() => {
-  try {
-    const stored = localStorage.getItem("medicai-theme");
-    const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    const theme = stored === "light" || stored === "dark" ? stored : system;
-    document.documentElement.setAttribute("data-theme", theme);
-  } catch {}
-})();
-`;
 
-interface RootLayoutProps {
-  readonly children: ReactNode;
-}
-
-export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="es" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
-      </head>
-      <body>
-        {children}
-      </body>
+    <html
+      lang="en"
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }
