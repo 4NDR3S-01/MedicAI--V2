@@ -46,6 +46,8 @@ type ScreenState = StatusState | ResetFormState;
 const APP_DEEP_LINK_BASE_URL = (
   process.env.NEXT_PUBLIC_APP_DEEP_LINK_BASE_URL ?? "medicai://auth"
 ).replace(/\/$/, "");
+const WEB_FALLBACK_DELAY_MS = 4000;
+const WEB_FALLBACK_RESUME_DELAY_MS = 350;
 
 const statusStyles: Record<StatusVariant, { accent: string; icon: string }> = {
   loading: { accent: "#12a594", icon: "..." },
@@ -63,11 +65,20 @@ export function AuthBridgeClient({
   const [screenState, setScreenState] = useState<ScreenState>(() => ({
     mode: "status",
     variant: "loading",
-    title: action === "reset-password" ? "Validando enlace" : "Confirmando correo",
-    message:
-      action === "reset-password"
+    title: hasToken ? "Abriendo MedicAI" : "Validando enlace",
+    message: hasToken
+      ? action === "reset-password"
+        ? "Estamos intentando abrir la app para que restablezcas tu contraseña ahí. Si no se abre, podrás continuar en esta página."
+        : "Estamos intentando abrir la app para confirmar tu correo ahí. Si no se abre, continuaremos en esta página."
+      : action === "reset-password"
         ? "Estamos comprobando tu enlace de recuperación para continuar de forma segura."
         : "Estamos validando tu enlace de confirmación para proteger tu cuenta.",
+    primaryAction: hasToken
+      ? {
+          label: "Abrir MedicAI",
+          target: "openApp",
+        }
+      : undefined,
   }));
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -84,8 +95,30 @@ export function AuthBridgeClient({
 
   useEffect(() => {
     let cancelled = false;
+    let fallbackStarted = false;
+    let openAppTimeout: number | null = null;
+    let fallbackTimeout: number | null = null;
 
-    const run = async () => {
+    const clearFallbackTimeout = () => {
+      if (fallbackTimeout) {
+        window.clearTimeout(fallbackTimeout);
+        fallbackTimeout = null;
+      }
+    };
+
+    const canRunWebFallback = () => (
+      document.visibilityState === "visible" &&
+      (typeof document.hasFocus !== "function" || document.hasFocus())
+    );
+
+    const runWebFallback = async () => {
+      if (cancelled || fallbackStarted || !canRunWebFallback()) {
+        return;
+      }
+
+      fallbackStarted = true;
+      clearFallbackTimeout();
+
       if (!hasToken) {
         setScreenState(
           action === "reset-password"
@@ -100,6 +133,16 @@ export function AuthBridgeClient({
         );
         return;
       }
+
+      setScreenState({
+        mode: "status",
+        variant: "loading",
+        title: action === "reset-password" ? "Validando enlace" : "Confirmando correo",
+        message:
+          action === "reset-password"
+            ? "Estamos comprobando tu enlace de recuperación para continuar de forma segura."
+            : "Estamos validando tu enlace de confirmación para proteger tu cuenta.",
+      });
 
       try {
         if (action === "reset-password") {
@@ -160,12 +203,52 @@ export function AuthBridgeClient({
       }
     };
 
-    void run();
+    const scheduleWebFallback = (delay: number) => {
+      if (fallbackStarted) {
+        return;
+      }
+
+      clearFallbackTimeout();
+      fallbackTimeout = window.setTimeout(() => {
+        void runWebFallback();
+      }, delay);
+    };
+
+    const handleBrowserReturn = () => {
+      if (!fallbackStarted && canRunWebFallback()) {
+        scheduleWebFallback(WEB_FALLBACK_RESUME_DELAY_MS);
+      }
+    };
+
+    if (!hasToken) {
+      void runWebFallback();
+      return () => {
+        cancelled = true;
+        clearFallbackTimeout();
+      };
+    }
+
+    document.addEventListener("visibilitychange", handleBrowserReturn);
+    window.addEventListener("focus", handleBrowserReturn);
+
+    openAppTimeout = window.setTimeout(() => {
+      if (!cancelled) {
+        window.location.href = deepLinkUrl;
+      }
+    }, WEB_FALLBACK_RESUME_DELAY_MS);
+
+    scheduleWebFallback(WEB_FALLBACK_DELAY_MS);
 
     return () => {
       cancelled = true;
+      if (openAppTimeout) {
+        window.clearTimeout(openAppTimeout);
+      }
+      clearFallbackTimeout();
+      document.removeEventListener("visibilitychange", handleBrowserReturn);
+      window.removeEventListener("focus", handleBrowserReturn);
     };
-  }, [action, hasToken, token]);
+  }, [action, deepLinkUrl, hasToken, token]);
 
   const openApp = () => {
     if (!deepLinkUrl) {
