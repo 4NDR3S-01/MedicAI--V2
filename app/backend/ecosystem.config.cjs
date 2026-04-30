@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'medicai-backend',
+      name: 'medicai',
       cwd: __dirname,
       script: 'dist/main.js',
       exec_mode: 'fork',
@@ -18,6 +18,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 4000,
         LOG_LEVEL: 'info',
+        LOG_FORMAT: 'pretty',
+        LOG_STACKS: 'false',
       },
     },
   ],

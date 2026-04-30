@@ -34,6 +34,15 @@ class EnvironmentVariables {
   LOG_LEVEL?: string;
 
   @IsString()
+  @IsIn(['pretty', 'json'])
+  @IsOptional()
+  LOG_FORMAT?: string;
+
+  @IsString()
+  @IsOptional()
+  LOG_STACKS?: string;
+
+  @IsString()
   @IsOptional()
   TRUST_PROXY?: string;
 

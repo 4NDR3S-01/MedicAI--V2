@@ -2,6 +2,7 @@ import { LoggerService } from '@nestjs/common';
 import { inspect } from 'node:util';
 
 type StructuredLogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'verbose';
+type StructuredLogFormat = 'pretty' | 'json';
 type LogMetadata = Record<string, unknown>;
 
 const LEVEL_WEIGHT: Record<StructuredLogLevel, number> = {
@@ -19,6 +20,9 @@ export class AppLogger implements LoggerService {
   private readonly serviceName = process.env.SERVICE_NAME || DEFAULT_SERVICE_NAME;
   private readonly environment = process.env.NODE_ENV || 'development';
   private readonly minLevel = this.resolveMinLevel(process.env.LOG_LEVEL);
+  private readonly format = this.resolveFormat(process.env.LOG_FORMAT);
+  private readonly includeStacks = this.isEnabled(process.env.LOG_STACKS)
+    || this.environment !== 'production';
 
   log(message: unknown, ...optionalParams: unknown[]) {
     this.write('info', message, this.parseParams(optionalParams));
@@ -65,7 +69,10 @@ export class AppLogger implements LoggerService {
       ...parsed.metadata,
     };
 
-    const line = this.stringify(entry);
+    const line = this.format === 'json'
+      ? this.stringify(entry)
+      : this.formatPretty(level, message, parsed);
+
     if (level === 'error' || level === 'fatal') {
       process.stderr.write(`${line}\n`);
       return;
@@ -131,6 +138,76 @@ export class AppLogger implements LoggerService {
     return process.env.NODE_ENV === 'production' ? 'info' : 'debug';
   }
 
+  private resolveFormat(value?: string): StructuredLogFormat {
+    return value?.toLowerCase() === 'json' ? 'json' : 'pretty';
+  }
+
+  private formatPretty(
+    level: StructuredLogLevel,
+    message: unknown,
+    parsed: { context?: string; metadata: LogMetadata },
+  ) {
+    const label = level.toUpperCase().padEnd(5);
+    const context = parsed.context ? ` [${parsed.context}]` : '';
+    const details = this.formatMetadata(parsed.metadata);
+
+    return `${label}${context} ${this.formatMessage(message)}${details ? ` ${details}` : ''}`;
+  }
+
+  private formatMetadata(metadata: LogMetadata) {
+    const visibleEntries = Object.entries(metadata)
+      .filter(([key, value]) => (
+        value !== undefined
+        && value !== null
+        && key !== 'stack'
+        && key !== 'service'
+        && key !== 'env'
+        && key !== 'pid'
+        && key !== 'pm_id'
+      ));
+
+    if (metadata.stack && this.includeStacks) {
+      visibleEntries.push(['stack', this.compactStack(String(metadata.stack))]);
+    }
+
+    return visibleEntries
+      .map(([key, value]) => `${key}=${this.formatMetadataValue(value)}`)
+      .join(' ');
+  }
+
+  private formatMetadataValue(value: unknown) {
+    if (value instanceof Error) {
+      return this.quoteIfNeeded(`${value.name}: ${value.message}`);
+    }
+
+    if (this.isPlainObject(value)) {
+      const nested = Object.entries(value)
+        .filter(([, nestedValue]) => nestedValue !== undefined && nestedValue !== null)
+        .map(([nestedKey, nestedValue]) => `${nestedKey}:${String(nestedValue)}`)
+        .join(',');
+
+      return this.quoteIfNeeded(nested);
+    }
+
+    if (Array.isArray(value)) {
+      return this.quoteIfNeeded(value.join(','));
+    }
+
+    return this.quoteIfNeeded(String(value));
+  }
+
+  private quoteIfNeeded(value: string) {
+    return /^[a-zA-Z0-9_.:/@-]+$/.test(value) ? value : JSON.stringify(value);
+  }
+
+  private compactStack(stack: string) {
+    return stack
+      .split('\n')
+      .map((line) => line.trim())
+      .slice(0, 6)
+      .join(' | ');
+  }
+
   private formatMessage(message: unknown) {
     if (message instanceof Error) {
       return message.message;
@@ -182,5 +259,9 @@ export class AppLogger implements LoggerService {
       && !(value instanceof Date)
       && !(value instanceof Error)
     );
+  }
+
+  private isEnabled(value?: string) {
+    return ['1', 'true', 'yes', 'on'].includes(value?.toLowerCase() || '');
   }
 }
