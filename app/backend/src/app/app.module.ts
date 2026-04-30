@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
+import { HealthController } from './health.controller';
 import { validateEnv } from '../config/env.validation';
 import { MailModule } from '../infrastructure/mail/mail.module';
 import { PrismaModule } from '../infrastructure/prisma/prisma.module';
@@ -33,5 +34,6 @@ import { AuthModule } from '../modules/auth/auth.module';
       useClass: ThrottlerGuard,
     },
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

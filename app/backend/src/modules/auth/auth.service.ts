@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -35,6 +36,8 @@ type PasswordResetTokenRecord = Prisma.PasswordResetTokenGetPayload<{
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -61,6 +64,10 @@ export class AuthService {
     });
 
     await this.issueAndSendEmailVerification(user);
+    this.logger.log('User registered', {
+      userId: user.id,
+      emailDomain: this.getEmailDomain(user.email),
+    });
 
     return {
       message: 'Cuenta creada. Revisa tu correo para verificar la cuenta.',
@@ -89,20 +96,34 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user) {
+      this.logger.warn('Login rejected', {
+        reason: 'invalid_credentials',
+        emailDomain: this.getEmailDomain(email),
+      });
       throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
+      this.logger.warn('Login rejected', {
+        reason: 'invalid_credentials',
+        userId: user.id,
+        emailDomain: this.getEmailDomain(user.email),
+      });
       throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
 
     if (!user.isEmailVerified) {
+      this.logger.warn('Login rejected', {
+        reason: 'email_not_verified',
+        userId: user.id,
+      });
       throw new UnauthorizedException('Debes verificar tu correo electronico antes de iniciar sesion.');
     }
 
     const tokens = await this.generateAuthTokens(user.id, user.email);
     await this.setRefreshToken(user.id, tokens.refreshToken);
+    this.logger.log('Login succeeded', { userId: user.id });
 
     return {
       user: {
@@ -155,6 +176,7 @@ export class AuthService {
       where: { id: payload.sub },
       data: { refreshTokenHash: null },
     });
+    this.logger.log('Logout succeeded', { userId: payload.sub });
 
     return { message: 'Sesión cerrada correctamente.' };
   }
@@ -209,6 +231,7 @@ export class AuthService {
         data: { consumedAt: new Date() },
       }),
     ]);
+    this.logger.log('Email verified', { userId: verification.userId });
 
     return { message: 'Correo verificado correctamente.' };
   }
@@ -226,6 +249,7 @@ export class AuthService {
     }
 
     await this.issueAndSendEmailVerification(user);
+    this.logger.log('Verification email resent', { userId: user.id });
 
     return { message: 'Si el correo existe, se enviará un nuevo enlace.' };
   }
@@ -239,6 +263,7 @@ export class AuthService {
     }
 
     await this.issueAndSendPasswordReset(user);
+    this.logger.log('Password reset requested', { userId: user.id });
 
     return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
   }
@@ -279,6 +304,7 @@ export class AuthService {
         data: { consumedAt: new Date() },
       }),
     ]);
+    this.logger.log('Password reset completed', { userId: passwordReset.userId });
 
     return { message: 'Contraseña actualizada correctamente.' };
   }
@@ -327,6 +353,11 @@ export class AuthService {
 
   private hashToken(rawToken: string) {
     return createHash('sha256').update(rawToken).digest('hex');
+  }
+
+  private getEmailDomain(email: string) {
+    const parts = email.split('@');
+    return parts[parts.length - 1]?.toLowerCase() || 'unknown';
   }
 
   private async findEmailVerificationToken(rawToken: string) {

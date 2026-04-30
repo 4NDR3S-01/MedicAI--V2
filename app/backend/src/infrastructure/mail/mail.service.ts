@@ -59,8 +59,13 @@ export class MailService {
         html: template.html,
         text: template.text,
       });
+      this.logger.log('Verification email sent', {
+        recipientDomain: this.getEmailDomain(params.to),
+      });
     } catch (error) {
-      this.logger.error('Failed to send verification email', error as Error);
+      this.logger.error('Failed to send verification email', error as Error, {
+        recipientDomain: this.getEmailDomain(params.to),
+      });
       throw error;
     }
   }
@@ -93,8 +98,13 @@ export class MailService {
         html: template.html,
         text: template.text,
       });
+      this.logger.log('Password reset email sent', {
+        recipientDomain: this.getEmailDomain(params.to),
+      });
     } catch (error) {
-      this.logger.error('Failed to send password reset email', error as Error);
+      this.logger.error('Failed to send password reset email', error as Error, {
+        recipientDomain: this.getEmailDomain(params.to),
+      });
       throw error;
     }
   }
@@ -217,5 +227,10 @@ export class MailService {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+  }
+
+  private getEmailDomain(email: string) {
+    const parts = email.split('@');
+    return parts[parts.length - 1]?.toLowerCase() || 'unknown';
   }
 }

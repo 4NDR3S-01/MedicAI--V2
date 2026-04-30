@@ -25,6 +25,19 @@ class EnvironmentVariables {
   NODE_ENV?: string;
 
   @IsString()
+  @IsOptional()
+  SERVICE_NAME?: string;
+
+  @IsString()
+  @IsIn(['fatal', 'error', 'warn', 'info', 'debug', 'verbose'])
+  @IsOptional()
+  LOG_LEVEL?: string;
+
+  @IsString()
+  @IsOptional()
+  TRUST_PROXY?: string;
+
+  @IsString()
   @IsNotEmpty()
   DATABASE_URL!: string;
 

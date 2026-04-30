@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { CanActivate, ExecutionContext } from '@nestjs/common';
 
 /**
@@ -8,6 +8,7 @@ import { CanActivate, ExecutionContext } from '@nestjs/common';
  */
 @Injectable()
 export class IpThrottleGuard implements CanActivate {
+  private readonly logger = new Logger(IpThrottleGuard.name);
   private requestCounts = new Map<string, { count: number; resetTime: number }>();
   private readonly MAX_REQUESTS = 5;
   private readonly WINDOW_MS = 60 * 60 * 1000; // 1 hora
@@ -32,6 +33,11 @@ export class IpThrottleGuard implements CanActivate {
     // Si se excedió el límite, lanzar error
     if (record.count > this.MAX_REQUESTS) {
       const remainingSeconds = Math.ceil((record.resetTime - now) / 1000);
+      this.logger.warn('Registration rate limit exceeded', {
+        ip,
+        remainingSeconds,
+        windowMs: this.WINDOW_MS,
+      });
       throw new BadRequestException(
         `Demasiados intentos de registro. Intenta de nuevo en ${remainingSeconds} segundos.`,
       );
