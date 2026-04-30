@@ -5,13 +5,14 @@ import {
   Get,
   Post,
   Query,
+  Req,
   Res,
   UseGuards,
   Request,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Response } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 
 type AuthBridgePageVariant = 'success' | 'warning' | 'error' | 'info';
 
@@ -82,9 +83,17 @@ export class AuthController {
   }
 
   @Get('verify-email')
-  async verifyEmailFromLink(@Query('token') token: string, @Res() res: Response) {
+  async verifyEmailFromLink(
+    @Query('token') token: string,
+    @Req() req: ExpressRequest,
+    @Res() res: Response,
+  ) {
     if (!token) {
       throw new BadRequestException('Token de verificación requerido.');
+    }
+
+    if (this.redirectToPublicAuthPageIfNeeded(req, res, 'verify-email', token)) {
+      return;
     }
 
     const deepLinkBase = (
@@ -131,9 +140,17 @@ export class AuthController {
   }
 
   @Get('reset-password')
-  async redirectResetPasswordFromLink(@Query('token') token: string, @Res() res: Response) {
+  async redirectResetPasswordFromLink(
+    @Query('token') token: string,
+    @Req() req: ExpressRequest,
+    @Res() res: Response,
+  ) {
     if (!token) {
       throw new BadRequestException('Token de restablecimiento requerido.');
+    }
+
+    if (this.redirectToPublicAuthPageIfNeeded(req, res, 'reset-password', token)) {
+      return;
     }
 
     const deepLinkBase = (
@@ -202,6 +219,30 @@ export class AuthController {
       default:
         return 'error';
     }
+  }
+
+  private redirectToPublicAuthPageIfNeeded(
+    req: ExpressRequest,
+    res: Response,
+    route: 'verify-email' | 'reset-password',
+    token: string,
+  ) {
+    const appBaseUrl = this.configService.getOrThrow<string>('APP_BASE_URL').replace(/\/$/, '');
+    const publicAuthUrl = `${appBaseUrl}/auth/${route}?token=${encodeURIComponent(token)}`;
+    const requestHost = req.get('host')?.toLowerCase();
+
+    try {
+      const publicHost = new URL(appBaseUrl).host.toLowerCase();
+
+      if (requestHost && requestHost !== publicHost) {
+        res.redirect(302, publicAuthUrl);
+        return true;
+      }
+    } catch {
+      return false;
+    }
+
+    return false;
   }
 
   private renderAuthBridgePage(params: {
