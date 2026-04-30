@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
@@ -24,6 +26,17 @@ export function ResetPasswordScreen({
   onSubmit,
   onCancel,
 }: Readonly<ResetPasswordScreenProps>) {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+
+  const togglePasswordVisibility = () => {
+    setIsPasswordVisible((prev) => !prev);
+  };
+
+  const toggleConfirmPasswordVisibility = () => {
+    setIsConfirmPasswordVisible((prev) => !prev);
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -49,42 +62,74 @@ export function ResetPasswordScreen({
         ]}
       >
         <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Nueva contrasena</Text>
-        <TextInput
-          value={password}
-          onChangeText={onPasswordChange}
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
-            },
-          ]}
-          secureTextEntry
-          autoCapitalize="none"
-          placeholder="Minimo 8 caracteres"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-          editable={!isSubmitting}
-        />
+        <View style={styles.passwordWrap}>
+          <TextInput
+            value={password}
+            onChangeText={onPasswordChange}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              {
+                backgroundColor: theme.colors.inputBackground,
+                borderColor: theme.colors.inputBorder,
+                color: theme.colors.textPrimary,
+              },
+            ]}
+            secureTextEntry={!isPasswordVisible}
+            autoCapitalize="none"
+            placeholder="Minimo 8 caracteres"
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            editable={!isSubmitting}
+          />
+          <Pressable
+            onPress={togglePasswordVisibility}
+            style={styles.passwordToggle}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={isPasswordVisible ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+          >
+            <Ionicons
+              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color={theme.colors.accentSecondary}
+            />
+          </Pressable>
+        </View>
 
         <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Confirmar contrasena</Text>
-        <TextInput
-          value={confirmPassword}
-          onChangeText={onConfirmPasswordChange}
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
-            },
-          ]}
-          secureTextEntry
-          autoCapitalize="none"
-          placeholder="Repite tu contrasena"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-          editable={!isSubmitting}
-        />
+        <View style={styles.passwordWrap}>
+          <TextInput
+            value={confirmPassword}
+            onChangeText={onConfirmPasswordChange}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              {
+                backgroundColor: theme.colors.inputBackground,
+                borderColor: theme.colors.inputBorder,
+                color: theme.colors.textPrimary,
+              },
+            ]}
+            secureTextEntry={!isConfirmPasswordVisible}
+            autoCapitalize="none"
+            placeholder="Repite tu contrasena"
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            editable={!isSubmitting}
+          />
+          <Pressable
+            onPress={toggleConfirmPasswordVisibility}
+            style={styles.passwordToggle}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={isConfirmPasswordVisible ? 'Ocultar contrasena de confirmacion' : 'Mostrar contrasena de confirmacion'}
+          >
+            <Ionicons
+              name={isConfirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color={theme.colors.accentSecondary}
+            />
+          </Pressable>
+        </View>
 
         <Pressable
           style={[
@@ -157,6 +202,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     marginBottom: 10,
+  },
+  passwordWrap: {
+    position: 'relative',
+  },
+  passwordInput: {
+    paddingRight: 74,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    zIndex: 3,
   },
   primaryButton: {
     paddingVertical: 14,

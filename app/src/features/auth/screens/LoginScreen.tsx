@@ -153,7 +153,7 @@ export function LoginScreen({
         </Pressable>
 
         <Pressable
-          style={styles.secondaryButton}
+          style={styles.forgotButton}
           onPress={onForgotPassword}
           disabled={isSubmitting}
           accessibilityState={{ disabled: isSubmitting }}
@@ -168,8 +168,10 @@ export function LoginScreen({
           </Text>
         </Pressable>
 
+        <View style={[styles.divider, { backgroundColor: theme.colors.surfaceBorder }]} />
+
         <Pressable
-          style={styles.secondaryButton}
+          style={styles.registerButton}
           onPress={onNavigateToRegister}
           disabled={isSubmitting}
           accessibilityState={{ disabled: isSubmitting }}
@@ -255,6 +257,22 @@ const styles = StyleSheet.create({
   secondaryButton: {
     paddingVertical: 12,
     alignItems: 'center',
+  },
+  forgotButton: {
+    paddingTop: 10,
+    paddingBottom: 8,
+    alignItems: 'center',
+  },
+  registerButton: {
+    paddingTop: 8,
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  divider: {
+    height: 1,
+    opacity: 0.55,
+    marginHorizontal: 8,
+    marginVertical: 2,
   },
   secondaryButtonText: {
     fontWeight: '600',
