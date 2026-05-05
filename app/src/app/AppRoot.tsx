@@ -9,7 +9,6 @@ import {
   AuthActionStatusScreen,
   ForgotPasswordScreen,
   getStoredSession,
-  HomeScreen,
   LoginScreen,
   LoadingScreen,
   type AppAuthSession,
@@ -28,6 +27,7 @@ import {
   verifyEmailToken,
   VerifyEmailPromptScreen,
 } from '../features';
+import { MainAppShell } from './MainAppShell';
 import { appStorage } from '../shared/storage';
 import { useAppTheme } from '../shared/theme';
 
@@ -871,7 +871,7 @@ export function AppRoot() {
 
     if (session) {
       return (
-        <HomeScreen
+        <MainAppShell
           theme={theme}
           userEmail={session.user.email ?? null}
           isSigningOut={isSubmittingAuth}

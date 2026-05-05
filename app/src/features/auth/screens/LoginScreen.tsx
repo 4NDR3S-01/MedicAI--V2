@@ -185,6 +185,7 @@ export function LoginScreen({
             Crear cuenta nueva
           </Text>
         </Pressable>
+
       </View>
     </KeyboardAvoidingView>
   );

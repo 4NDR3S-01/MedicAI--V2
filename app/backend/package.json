@@ -11,9 +11,9 @@
     "start:prod": "node dist/main.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
-    "pm2:restart": "pm2 restart medicai-backend --update-env",
+    "pm2:restart": "pm2 restart medicai --update-env",
     "pm2:monit": "pm2 monit",
-    "pm2:logs": "pm2 logs medicai-backend",
+    "pm2:logs": "pm2 logs medicai",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "test": "echo \"No tests configured yet\""
