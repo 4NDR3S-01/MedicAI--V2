@@ -873,6 +873,7 @@ export function AppRoot() {
       return (
         <MainAppShell
           theme={theme}
+          userFullName={session.user.fullName ?? null}
           userEmail={session.user.email ?? null}
           isSigningOut={isSubmittingAuth}
           onSignOut={() => {

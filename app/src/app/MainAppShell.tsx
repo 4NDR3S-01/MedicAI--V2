@@ -14,12 +14,19 @@ import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBotto
 
 export type MainAppShellProps = {
   theme: AppTheme;
+  userFullName: string | null;
   userEmail: string | null;
   isSigningOut: boolean;
   onSignOut: () => void;
 };
 
-export function MainAppShell({ theme, userEmail, isSigningOut, onSignOut }: Readonly<MainAppShellProps>) {
+export function MainAppShell({
+  theme,
+  userFullName,
+  userEmail,
+  isSigningOut,
+  onSignOut,
+}: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
   const [assistantOpen, setAssistantOpen] = useState(false);
   const contentBottomInset = useMainTabContentInset();
@@ -50,6 +57,7 @@ export function MainAppShell({ theme, userEmail, isSigningOut, onSignOut }: Read
       body = (
         <HomeScreen
           theme={theme}
+          userFullName={userFullName}
           userEmail={userEmail}
           contentBottomInset={contentBottomInset}
           onOpenMedications={() => setTab('medications')}
