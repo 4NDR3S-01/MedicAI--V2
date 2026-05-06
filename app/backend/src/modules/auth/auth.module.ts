@@ -11,6 +11,6 @@ import { IpThrottleGuard } from './guards/ip-throttle.guard';
   imports: [JwtModule.register({}), MailModule],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard, IpThrottleGuard],
-  exports: [AuthService, JwtAuthGuard],
+  exports: [AuthService, JwtAuthGuard, JwtModule],
 })
 export class AuthModule {}

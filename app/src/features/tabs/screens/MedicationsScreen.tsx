@@ -20,6 +20,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const isEmpty = medications.length === 0;
 
   const loadMedications = useCallback(async () => {
     try {
@@ -87,7 +88,11 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       <FlatList
         data={medications}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomInset }]}
+        contentContainerStyle={[
+          styles.listContent,
+          isEmpty && styles.listContentEmpty,
+          { paddingBottom: contentBottomInset },
+        ]}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => {
           setIsRefreshing(true);
           void loadMedications();
@@ -203,12 +208,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listContent: {
+    flexGrow: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
     gap: 12,
   },
+  listContentEmpty: {
+    justifyContent: 'center',
+  },
   emptyState: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
