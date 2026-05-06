@@ -1,3 +1,5 @@
+import { refreshStoredSession } from '../../auth';
+
 type MedicationData = {
   id: string;
   userId: string;
@@ -57,24 +59,48 @@ const parseApiErrorMessage = async (response: Response, fallback: string) => {
   return `${fallback} (HTTP ${response.status})`;
 };
 
+const executeAuthorizedRequest = async (
+  path: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  accessToken: string,
+  body?: unknown,
+) => {
+  try {
+    return await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
+  }
+};
+
+const requestWithAutoRefresh = async (
+  path: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  accessToken: string,
+  body?: unknown,
+) => {
+  let response = await executeAuthorizedRequest(path, method, accessToken, body);
+
+  if (response.status === 401) {
+    const refreshedSession = await refreshStoredSession();
+    response = await executeAuthorizedRequest(path, method, refreshedSession.accessToken, body);
+  }
+
+  return response;
+};
+
 export async function fetchMedications(accessToken: string): Promise<MedicationData[]> {
   if (!API_BASE_URL) {
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
   }
 
-  let response: Response;
-
-  try {
-    response = await fetch(`${API_BASE_URL}/medications`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-  } catch {
-    throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
-  }
+  const response = await requestWithAutoRefresh('/medications', 'GET', accessToken);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudieron cargar los medicamentos'));
@@ -91,20 +117,7 @@ export async function createMedication(
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
   }
 
-  let response: Response;
-
-  try {
-    response = await fetch(`${API_BASE_URL}/medications`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
-  }
+  const response = await requestWithAutoRefresh('/medications', 'POST', accessToken, payload);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo crear el medicamento'));
@@ -122,20 +135,12 @@ export async function updateMedication(
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
   }
 
-  let response: Response;
-
-  try {
-    response = await fetch(`${API_BASE_URL}/medications/${medicationId}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
-  }
+  const response = await requestWithAutoRefresh(
+    `/medications/${medicationId}`,
+    'PUT',
+    accessToken,
+    payload,
+  );
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo actualizar el medicamento'));
@@ -149,19 +154,7 @@ export async function deleteMedication(medicationId: string, accessToken: string
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
   }
 
-  let response: Response;
-
-  try {
-    response = await fetch(`${API_BASE_URL}/medications/${medicationId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-  } catch {
-    throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
-  }
+  const response = await requestWithAutoRefresh(`/medications/${medicationId}`, 'DELETE', accessToken);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo eliminar el medicamento'));

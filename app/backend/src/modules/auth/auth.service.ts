@@ -135,12 +135,8 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshToken: string, userId: string) {
+  async refresh(refreshToken: string) {
     const payload = await this.verifyRefreshToken(refreshToken);
-
-    if (payload.sub !== userId) {
-      throw new UnauthorizedException('Token no pertenece al usuario autenticado.');
-    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },

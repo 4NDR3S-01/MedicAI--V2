@@ -159,6 +159,28 @@ export const signOut = async () => {
   await appStorage.removeItem(AUTH_SESSION_KEY);
 };
 
+export const refreshStoredSession = async (): Promise<AppAuthSession> => {
+  const currentSession = await getStoredSession();
+
+  if (!currentSession?.refreshToken) {
+    throw new Error('No hay sesion activa para renovar.');
+  }
+
+  const refreshedTokens = await apiRequest<{ accessToken: string; refreshToken: string }>(
+    '/auth/refresh',
+    { refreshToken: currentSession.refreshToken },
+  );
+
+  const updatedSession: AppAuthSession = {
+    ...currentSession,
+    accessToken: refreshedTokens.accessToken,
+    refreshToken: refreshedTokens.refreshToken,
+  };
+
+  await persistSession(updatedSession);
+  return updatedSession;
+};
+
 export const updatePassword = async (password: string, token: string) => {
   await apiRequest<{ message: string }>('/auth/reset-password', {
     token,

@@ -8,7 +8,6 @@ import {
   Req,
   Res,
   UseGuards,
-  Request,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -52,14 +51,9 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Post('refresh')
-  refresh(@Body() dto: RefreshTokenDto, @Request() req: any) {
-    const userId = req.user?.sub;
-    if (!userId) {
-      throw new UnauthorizedException('Token inválido.');
-    }
-    return this.authService.refresh(dto.refreshToken, userId);
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto.refreshToken);
   }
 
   @UseGuards(JwtAuthGuard)
