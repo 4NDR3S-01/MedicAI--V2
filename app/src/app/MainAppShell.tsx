@@ -3,7 +3,6 @@ import { View } from 'react-native';
 
 import {
   AppointmentsScreen,
-  AssistantScreen,
   FamilyScreen,
   MedicationsScreen,
   ProfileScreen,
@@ -29,7 +28,6 @@ export function MainAppShell({
   onSignOut,
 }: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
-  const [assistantOpen, setAssistantOpen] = useState(false);
   const [chatVisible, setChatVisible] = useState(false);
   const contentBottomInset = useMainTabContentInset();
 
@@ -64,23 +62,15 @@ export function MainAppShell({
           contentBottomInset={contentBottomInset}
           onOpenMedications={() => setTab('medications')}
           onOpenAppointments={() => setTab('appointments')}
-          onOpenAssistant={() => setAssistantOpen(true)}
+          onOpenAssistant={() => setChatVisible(true)}
         />
       );
-  }
-
-  if (assistantOpen) {
-    return (
-      <View style={{ flex: 1 }}>
-        <AssistantScreen theme={theme} onClose={() => setAssistantOpen(false)} />
-      </View>
-    );
   }
 
   return (
     <View style={{ flex: 1 }}>
       {body}
-      <FloatingChatButton theme={theme} onPress={() => setChatVisible(true)} />
+      {tab === 'home' ? <FloatingChatButton theme={theme} onPress={() => setChatVisible(true)} /> : null}
       <ChatModal visible={chatVisible} onClose={() => setChatVisible(false)} theme={theme} />
       <AppBottomBar theme={theme} activeTab={tab} onSelect={setTab} />
     </View>

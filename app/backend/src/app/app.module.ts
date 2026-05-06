@@ -10,6 +10,7 @@ import { PrismaModule } from '../infrastructure/prisma/prisma.module';
 import { AuthModule } from '../modules/auth/auth.module';
 import { AiModule } from '../modules/ai/ai.module';
 import { MedicationsModule } from '../modules/medications/medications.module';
+import { AppointmentsModule } from '../modules/appointments/appointments.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { MedicationsModule } from '../modules/medications/medications.module';
     AuthModule,
     AiModule,
     MedicationsModule,
+    AppointmentsModule,
   ],
   providers: [
     {
