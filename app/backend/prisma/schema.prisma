@@ -57,6 +57,7 @@ model Medication {
   name         String
   dosage       String
   frequency    String
+  firstDoseTime String?
   notes        String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())

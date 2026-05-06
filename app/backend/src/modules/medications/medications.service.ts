@@ -41,6 +41,7 @@ export class MedicationsService {
         name: dto.name.trim(),
         dosage: dto.dosage.trim(),
         frequency: dto.frequency.trim(),
+        firstDoseTime: dto.firstDoseTime?.trim() || null,
         notes: dto.notes?.trim() || null,
       },
     });
@@ -59,6 +60,7 @@ export class MedicationsService {
         name: dto.name?.trim() || medication.name,
         dosage: dto.dosage?.trim() || medication.dosage,
         frequency: dto.frequency?.trim() || medication.frequency,
+        firstDoseTime: dto.firstDoseTime?.trim() || medication.firstDoseTime,
         notes: dto.notes?.trim() || medication.notes,
       },
     });

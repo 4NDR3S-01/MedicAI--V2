@@ -19,6 +19,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState<AppointmentData | null>(null);
 
   const isEmpty = appointments.length === 0;
 
@@ -73,20 +74,6 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
     ]);
   };
 
-  const formatAppointmentDate = useMemo(() => {
-    return (isoDate: string) => {
-      const parsed = new Date(isoDate);
-      if (Number.isNaN(parsed.getTime())) {
-        return 'Fecha invalida';
-      }
-
-      return parsed.toLocaleString('es-ES', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      });
-    };
-  }, []);
-
   if (isLoading) {
     return (
       <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
@@ -134,53 +121,100 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
             </View>
           )
         }
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.appointmentCard,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-            ]}
-          >
-            <View style={styles.appointmentInfo}>
-              <Text style={[styles.appointmentTitle, { color: theme.colors.textPrimary }]}>{item.title}</Text>
-              <Text style={[styles.appointmentMeta, { color: theme.colors.textSecondary }]}>{item.doctorName}</Text>
-              <Text style={[styles.appointmentMeta, { color: theme.colors.textSecondary }]}>{formatAppointmentDate(item.scheduledAt)}</Text>
-              {item.location ? (
-                <Text style={[styles.appointmentMeta, { color: theme.colors.textMuted }]}>📍 {item.location}</Text>
-              ) : null}
-              {item.notes ? (
-                <Text style={[styles.appointmentNotes, { color: theme.colors.textMuted }]}>{item.notes}</Text>
-              ) : null}
-            </View>
+        renderItem={({ item, index }) => {
+          const parsed = new Date(item.scheduledAt);
+          const isValid = !Number.isNaN(parsed.getTime());
+          const day = isValid ? parsed.getDate() : '--';
+          const month = isValid ? parsed.toLocaleString('es-ES', { month: 'short' }).toUpperCase() : '--';
+          const timeStr = isValid ? parsed.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+          const isLast = index === appointments.length - 1;
 
-            <View style={styles.appointmentActions}>
-              <Pressable
-                style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
-                onPress={() => handleDeleteAppointment(item.id, item.title)}
-              >
-                <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.accentTertiary} />
-              </Pressable>
+          return (
+            <View style={styles.timelineRow}>
+              <View style={styles.timelineLeft}>
+                <Text style={[styles.timelineDay, { color: theme.colors.textPrimary }]}>{day}</Text>
+                <Text style={[styles.timelineMonth, { color: theme.colors.accentSecondary }]}>{month}</Text>
+                <Text style={[styles.timelineTime, { color: theme.colors.textMuted }]}>{timeStr}</Text>
+              </View>
+              
+              <View style={styles.timelineSeparator}>
+                <View style={[styles.timelineDot, { backgroundColor: theme.colors.accentSecondary, borderColor: theme.colors.background }]} />
+                {!isLast && <View style={[styles.timelineLine, { backgroundColor: theme.colors.surfaceBorder }]} />}
+              </View>
+              
+              <View style={styles.timelineContent}>
+                <View style={[styles.appointmentCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.headerTexts}>
+                      <Text style={[styles.appointmentTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+                      <View style={styles.doctorBadge}>
+                        <MaterialCommunityIcons name="stethoscope" size={14} color={theme.colors.accentSecondary} />
+                        <Text style={[styles.doctorName, { color: theme.colors.accentSecondary }]} numberOfLines={1}>{item.doctorName}</Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.actionsWrapper}>
+                      <Pressable
+                        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                        onPress={() => { setEditingAppointment(item); setShowAddModal(true); }}
+                      >
+                        <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textSecondary} />
+                      </Pressable>
+                      <Pressable
+                        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                        onPress={() => handleDeleteAppointment(item.id, item.title)}
+                      >
+                        <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.accentTertiary} />
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {item.location ? (
+                    <View style={styles.locationBlock}>
+                      <MaterialCommunityIcons name="map-marker-outline" size={16} color={theme.colors.textSecondary} />
+                      <Text style={[styles.locationText, { color: theme.colors.textSecondary }]} numberOfLines={2}>{item.location}</Text>
+                    </View>
+                  ) : null}
+
+                  {item.notes ? (
+                    <View style={[styles.notesBlock, { borderLeftColor: theme.colors.surfaceBorder }]}>
+                      <Text style={[styles.notesText, { color: theme.colors.textMuted }]} numberOfLines={3}>{item.notes}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
             </View>
-          </View>
-        )}
+          );
+        }}
       />
 
       <Pressable
         style={[
           styles.fab,
-          { backgroundColor: theme.colors.accentSecondary, right: 18, bottom: contentBottomInset + 18 },
+          { backgroundColor: theme.colors.accentSecondary, right: 18, bottom: contentBottomInset + 18, shadowColor: theme.colors.accentSecondary },
         ]}
-        onPress={() => setShowAddModal(true)}
+        onPress={() => {
+          setEditingAppointment(null);
+          setShowAddModal(true);
+        }}
       >
-        <MaterialCommunityIcons name="plus" size={28} color={theme.colors.buttonText} />
+        <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
+        <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agendar</Text>
       </Pressable>
 
       <AddAppointmentModal
         visible={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => {
+          setShowAddModal(false);
+          setEditingAppointment(null);
+        }}
         onAppointmentAdded={(appointment) => {
           setAppointments((current) => [appointment, ...current]);
         }}
+        onAppointmentUpdated={(appointment) => {
+          setAppointments((current) => current.map((a) => (a.id === appointment.id ? appointment : a)));
+        }}
+        initialData={editingAppointment}
         theme={theme}
       />
     </View>
@@ -229,50 +263,136 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  timelineRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  timelineLeft: {
+    width: 64,
+    alignItems: 'center',
+    paddingTop: 12,
+  },
+  timelineDay: {
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    lineHeight: 30,
+  },
+  timelineMonth: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  timelineTime: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
+  },
+  timelineSeparator: {
+    width: 24,
+    alignItems: 'center',
+  },
+  timelineDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    marginTop: 20,
+    zIndex: 1,
+    borderWidth: 3,
+  },
+  timelineLine: {
+    position: 'absolute',
+    top: 34,
+    bottom: -16,
+    width: 2,
+    zIndex: 0,
+    opacity: 0.5,
+  },
+  timelineContent: {
+    flex: 1,
+    paddingLeft: 4,
+  },
   appointmentCard: {
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
+  },
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 12,
+    marginBottom: 12,
   },
-  appointmentInfo: {
+  headerTexts: {
     flex: 1,
-    gap: 6,
+    gap: 4,
+    paddingRight: 12,
   },
   appointmentTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
-  appointmentMeta: {
-    fontSize: 13,
+  doctorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  doctorName: {
+    fontSize: 14,
     fontWeight: '600',
   },
-  appointmentNotes: {
-    fontSize: 12,
+  actionsWrapper: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(150,150,150,0.1)',
+  },
+  locationBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  locationText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  notesBlock: {
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    marginTop: 4,
+  },
+  notesText: {
+    fontSize: 13,
     lineHeight: 18,
-  },
-  appointmentActions: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontStyle: 'italic',
   },
   fab: {
     position: 'absolute',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    flexDirection: 'row',
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 998,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    gap: 6,
+  },
+  fabText: {
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

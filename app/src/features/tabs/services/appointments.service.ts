@@ -140,4 +140,27 @@ export async function deleteAppointment(appointmentId: string, accessToken: stri
   }
 }
 
+export async function updateAppointment(
+  appointmentId: string,
+  accessToken: string,
+  payload: Partial<CreateAppointmentPayload> & { active?: boolean },
+): Promise<AppointmentData> {
+  if (!API_BASE_URL) {
+    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
+  }
+
+  const response = await requestWithAutoRefresh(
+    `/appointments/${appointmentId}`,
+    'PUT',
+    accessToken,
+    payload,
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseApiErrorMessage(response, 'No se pudo actualizar la cita'));
+  }
+
+  return readResponseBody<AppointmentData>(response);
+}
+
 export type { AppointmentData, CreateAppointmentPayload };

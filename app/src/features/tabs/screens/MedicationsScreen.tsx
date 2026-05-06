@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, Switch } from 'react-native';
 import { Alert } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
@@ -20,6 +20,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingMedication, setEditingMedication] = useState<MedicationData | null>(null);
   const isEmpty = medications.length === 0;
 
   const loadMedications = useCallback(async () => {
@@ -71,6 +72,19 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         },
       },
     ]);
+  };
+
+  const toggleMedicationStatus = async (med: MedicationData) => {
+    try {
+      const session = await getStoredSession();
+      if (!session?.accessToken) return;
+      
+      const updated = await medicationsAPI.updateMedication(med.id, session.accessToken, { active: !med.active });
+      setMedications((current) => current.map((m) => (m.id === med.id ? updated : m)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al actualizar el estado';
+      Alert.alert('Error', message);
+    }
   };
 
   if (isLoading) {
@@ -139,40 +153,69 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             style={[
               styles.medicationCard,
               { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+              !item.active && { opacity: 0.6 }
             ]}
           >
-            <View style={styles.medicationInfo}>
-              <Text style={[styles.medicationName, { color: theme.colors.textPrimary }]}>
-                {item.name}
-              </Text>
-              <View style={styles.medicationDetails}>
-                <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Dosis:</Text>
-                <Text style={[styles.detailValue, { color: theme.colors.textSecondary }]}>
-                  {item.dosage}
-                </Text>
-              </View>
-              <View style={styles.medicationDetails}>
-                <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Frecuencia:</Text>
-                <Text style={[styles.detailValue, { color: theme.colors.textSecondary }]}>
-                  {item.frequency}
-                </Text>
-              </View>
-              {item.notes ? (
-                <View style={styles.medicationDetails}>
-                  <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Notas:</Text>
-                  <Text style={[styles.detailValue, { color: theme.colors.textSecondary }]}>
-                    {item.notes}
+            <View style={styles.cardTop}>
+               <View style={styles.cardTopLeft}>
+                  <View style={[styles.iconBox, { backgroundColor: `${theme.colors.accentPrimary}15` }]}>
+                     <MaterialCommunityIcons name="pill" size={28} color={theme.colors.accentPrimary} />
+                  </View>
+                  <View style={styles.medHeaderInfo}>
+                     <Text style={[styles.medName, { color: theme.colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                     <Text style={[styles.medDosage, { color: theme.colors.textSecondary }]}>{item.dosage}</Text>
+                  </View>
+               </View>
+               <View style={styles.statusBadge}>
+                  <View style={[styles.statusDot, { backgroundColor: item.active ? theme.colors.accentSecondary : theme.colors.textMuted }]} />
+                  <Text style={[styles.statusText, { color: item.active ? theme.colors.accentSecondary : theme.colors.textMuted }]}>
+                    {item.active ? 'Activo' : 'Pausado'}
                   </Text>
-                </View>
-              ) : null}
+               </View>
             </View>
-            <View style={styles.medicationActions}>
-              <Pressable
-                style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
-                onPress={() => handleDeleteMedication(item.id, item.name)}
-              >
-                <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.accentTertiary} />
-              </Pressable>
+            
+            <View style={styles.chipsRow}>
+               <View style={[styles.chip, { borderColor: theme.colors.surfaceBorder }]}>
+                  <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.textSecondary} />
+                  <Text style={[styles.chipText, { color: theme.colors.textSecondary }]}>{item.frequency}</Text>
+               </View>
+               {item.firstDoseTime ? (
+                 <View style={[styles.chip, { borderColor: theme.colors.surfaceBorder }]}>
+                    <MaterialCommunityIcons name="alarm" size={14} color={theme.colors.textSecondary} />
+                    <Text style={[styles.chipText, { color: theme.colors.textSecondary }]}>{item.firstDoseTime}</Text>
+                 </View>
+               ) : null}
+            </View>
+
+            <View style={[styles.cardFooter, { borderTopColor: theme.colors.surfaceBorder }]}>
+               <View style={styles.footerLeft}>
+                  {item.notes ? (
+                    <Text style={[styles.medNotes, { color: theme.colors.textMuted }]} numberOfLines={1}>{item.notes}</Text>
+                  ) : null}
+               </View>
+               <View style={styles.footerRight}>
+                  <Switch
+                    value={item.active}
+                    onValueChange={() => toggleMedicationStatus(item)}
+                    trackColor={{ false: theme.colors.surfaceBorder, true: theme.colors.accentPrimary }}
+                    style={{ transform: [{ scale: 0.8 }], marginRight: 4 }}
+                  />
+                  <Pressable
+                    style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                    onPress={() => {
+                      setEditingMedication(item);
+                      setShowAddModal(true);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="pencil-outline" size={18} color={theme.colors.textSecondary} />
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                    onPress={() => handleDeleteMedication(item.id, item.name)}
+                  >
+                    <MaterialCommunityIcons name="trash-can-outline" size={18} color={theme.colors.accentTertiary} />
+                  </Pressable>
+               </View>
             </View>
           </View>
         )}
@@ -181,19 +224,30 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       <Pressable
         style={[
           styles.fab,
-          { backgroundColor: theme.colors.accentPrimary, right: 18, bottom: contentBottomInset + 18 },
+          { backgroundColor: theme.colors.accentPrimary, right: 18, bottom: contentBottomInset + 18, shadowColor: theme.colors.accentPrimary },
         ]}
-        onPress={() => setShowAddModal(true)}
+        onPress={() => {
+          setEditingMedication(null);
+          setShowAddModal(true);
+        }}
       >
-        <MaterialCommunityIcons name="plus" size={28} color={theme.colors.buttonText} />
+        <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
+        <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agregar</Text>
       </Pressable>
 
       <AddMedicationModal
         visible={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => {
+          setShowAddModal(false);
+          setEditingMedication(null);
+        }}
         onMedicationAdded={(medication) => {
           setMedications((current) => [medication, ...current]);
         }}
+        onMedicationUpdated={(medication) => {
+          setMedications((current) => current.map((m) => (m.id === medication.id ? medication : m)));
+        }}
+        initialData={editingMedication}
         theme={theme}
       />
     </View>
@@ -241,54 +295,123 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   medicationCard: {
+    borderRadius: 22,
+    padding: 16,
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
+    marginBottom: 12,
+  },
+  cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  cardTopLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
-  },
-  medicationInfo: {
     flex: 1,
-    gap: 8,
+    paddingRight: 10,
   },
-  medicationName: {
-    fontSize: 16,
+  iconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medHeaderInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  medName: {
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
-  medicationDetails: {
+  medDosage: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 4,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  footerLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  medNotes: {
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  footerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  detailLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  detailValue: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  medicationActions: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(150,150,150,0.1)',
   },
   fab: {
     position: 'absolute',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    flexDirection: 'row',
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 998,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    gap: 6,
+  },
+  fabText: {
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

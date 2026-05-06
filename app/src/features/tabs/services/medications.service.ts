@@ -6,6 +6,7 @@ type MedicationData = {
   name: string;
   dosage: string;
   frequency: string;
+  firstDoseTime: string | null;
   notes: string | null;
   active: boolean;
   createdAt: string;
@@ -16,6 +17,7 @@ type CreateMedicationPayload = {
   name: string;
   dosage: string;
   frequency: string;
+  firstDoseTime?: string;
   notes?: string;
 };
 
@@ -129,7 +131,7 @@ export async function createMedication(
 export async function updateMedication(
   medicationId: string,
   accessToken: string,
-  payload: Partial<CreateMedicationPayload>,
+  payload: Partial<CreateMedicationPayload> & { active?: boolean },
 ): Promise<MedicationData> {
   if (!API_BASE_URL) {
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');

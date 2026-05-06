@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class CreateMedicationDto {
   @IsString()
@@ -15,6 +15,11 @@ export class CreateMedicationDto {
   @IsNotEmpty()
   @MaxLength(200)
   frequency!: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
+  firstDoseTime?: string;
 
   @IsString()
   @IsOptional()
