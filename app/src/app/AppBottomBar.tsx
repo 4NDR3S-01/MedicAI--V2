@@ -39,6 +39,7 @@ export function useMainTabContentInset(): number {
 export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomBarProps>) {
   const isFamily = activeTab === 'family';
   const bottomPad = 0;
+  const barBackground = theme.mode === 'light' ? '#FFFFFF' : '#0A1C2D';
 
   return (
     <View style={[styles.outer, { paddingBottom: bottomPad }]} pointerEvents="box-none">
@@ -46,15 +47,20 @@ export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomB
         <View style={styles.fabStack} pointerEvents="box-none">
           <Pressable
             onPress={() => onSelect('family')}
-            style={({ pressed }) => [
-              styles.fab,
-              {
-                backgroundColor: theme.colors.accentPrimary,
-                borderColor: isFamily ? theme.colors.accentSecondary : `${theme.colors.background}F0`,
-                transform: [{ scale: pressed ? 0.94 : isFamily ? 1.06 : 1 }],
-                shadowColor: theme.mode === 'dark' ? '#000000' : theme.colors.accentPrimary,
-              },
-            ]}
+            style={({ pressed }) => {
+              let scale = 1;
+              if (pressed) scale = 0.94;
+              else if (isFamily) scale = 1.06;
+
+              return [
+                styles.fab,
+                {
+                  backgroundColor: theme.colors.accentPrimary,
+                  borderColor: isFamily ? theme.colors.accentSecondary : theme.colors.surface,
+                  transform: [{ scale }],
+                },
+              ];
+            }}
             accessibilityRole="tab"
             accessibilityState={{ selected: isFamily }}
             accessibilityLabel="Familia"
@@ -80,9 +86,9 @@ export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomB
           style={[
             styles.bar,
             {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: barBackground,
               borderColor: theme.colors.surfaceBorder,
-              shadowColor: theme.mode === 'dark' ? '#000000' : '#10243A',
+              opacity: 1,
             },
           ]}
           accessibilityRole="tablist"
@@ -151,16 +157,17 @@ function SideTab({
 const styles = StyleSheet.create({
   outer: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 12,
+    right: 12,
     bottom: 0,
     alignItems: 'center',
   },
   inner: {
     width: '100%',
     maxWidth: 520,
-    marginHorizontal: 12,
+    marginHorizontal: 0,
     marginTop: MAIN_TAB_FAB_OVERFLOW,
+    alignSelf: 'center',
   },
   fabStack: {
     position: 'absolute',
@@ -175,10 +182,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     minHeight: BAR_BODY_MIN_HEIGHT,
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 14,
-    elevation: 12,
   },
   barRow: {
     flexDirection: 'row',
@@ -220,10 +223,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.38,
-    shadowRadius: 12,
-    elevation: 16,
   },
   fabLabel: {
     fontSize: 11,
