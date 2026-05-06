@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nest
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
+import { UpdateMedicationDto } from './dto/update-medication.dto';
 
 @Injectable()
 export class MedicationsService {
@@ -51,7 +52,7 @@ export class MedicationsService {
     return medication;
   }
 
-  async update(medicationId: string, userId: string, dto: import('./dto/update-medication.dto').UpdateMedicationDto) {
+  async update(medicationId: string, userId: string, dto: UpdateMedicationDto) {
     const medication = await this.findById(medicationId, userId);
 
     const updated = await this.prisma.medication.update({

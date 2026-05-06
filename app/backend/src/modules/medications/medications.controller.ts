@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards } f
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { MedicationsService } from './medications.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
+import { UpdateMedicationDto } from './dto/update-medication.dto';
 
 @Controller('medications')
 @UseGuards(JwtAuthGuard)
@@ -30,7 +31,7 @@ export class MedicationsController {
   @Put(':id')
   update(
     @Param('id') medicationId: string,
-    @Body() dto: import('./dto/update-medication.dto').UpdateMedicationDto,
+    @Body() dto: UpdateMedicationDto,
     @Request() req: any,
   ) {
     const userId = req.user?.sub;
