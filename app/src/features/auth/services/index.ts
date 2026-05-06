@@ -2,6 +2,7 @@ export {
   checkEmailAvailability,
   flushPendingProfileSync,
   getStoredSession,
+  refreshStoredSession,
   requestPasswordReset,
   signInWithEmail,
   signOut,

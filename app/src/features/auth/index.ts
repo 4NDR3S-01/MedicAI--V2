@@ -11,6 +11,7 @@ export type { RegisterWizardPayload } from './models/register.types';
 export {
   flushPendingProfileSync,
   getStoredSession,
+  refreshStoredSession,
   requestPasswordReset,
   signInWithEmail,
   signOut,
