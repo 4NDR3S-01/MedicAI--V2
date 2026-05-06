@@ -221,19 +221,21 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         )}
       />
 
-      <Pressable
-        style={[
-          styles.fab,
-          { backgroundColor: theme.colors.accentPrimary, right: 18, bottom: contentBottomInset + 18, shadowColor: theme.colors.accentPrimary },
-        ]}
-        onPress={() => {
-          setEditingMedication(null);
-          setShowAddModal(true);
-        }}
-      >
-        <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
-        <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agregar</Text>
-      </Pressable>
+      {!error && (
+        <Pressable
+          style={[
+            styles.fab,
+            { backgroundColor: theme.colors.accentPrimary, right: 18, bottom: contentBottomInset + 18, shadowColor: theme.colors.accentPrimary },
+          ]}
+          onPress={() => {
+            setEditingMedication(null);
+            setShowAddModal(true);
+          }}
+        >
+          <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
+          <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agregar</Text>
+        </Pressable>
+      )}
 
       <AddMedicationModal
         visible={showAddModal}

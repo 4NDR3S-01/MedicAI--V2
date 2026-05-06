@@ -11,7 +11,7 @@ export class MedicationsService {
 
   async findAll(userId: string) {
     const medications = await this.prisma.medication.findMany({
-      where: { userId, active: true },
+      where: { userId },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -51,17 +51,18 @@ export class MedicationsService {
     return medication;
   }
 
-  async update(medicationId: string, userId: string, dto: Partial<CreateMedicationDto>) {
+  async update(medicationId: string, userId: string, dto: import('./dto/update-medication.dto').UpdateMedicationDto) {
     const medication = await this.findById(medicationId, userId);
 
     const updated = await this.prisma.medication.update({
       where: { id: medication.id },
       data: {
-        name: dto.name?.trim() || medication.name,
-        dosage: dto.dosage?.trim() || medication.dosage,
-        frequency: dto.frequency?.trim() || medication.frequency,
-        firstDoseTime: dto.firstDoseTime?.trim() || medication.firstDoseTime,
-        notes: dto.notes?.trim() || medication.notes,
+        name: dto.name !== undefined ? dto.name.trim() : medication.name,
+        dosage: dto.dosage !== undefined ? dto.dosage.trim() : medication.dosage,
+        frequency: dto.frequency !== undefined ? dto.frequency.trim() : medication.frequency,
+        firstDoseTime: dto.firstDoseTime !== undefined ? dto.firstDoseTime?.trim() || null : medication.firstDoseTime,
+        notes: dto.notes !== undefined ? dto.notes?.trim() || null : medication.notes,
+        active: dto.active !== undefined ? dto.active : medication.active,
       },
     });
 
@@ -73,9 +74,8 @@ export class MedicationsService {
   async delete(medicationId: string, userId: string) {
     const medication = await this.findById(medicationId, userId);
 
-    await this.prisma.medication.update({
+    await this.prisma.medication.delete({
       where: { id: medication.id },
-      data: { active: false },
     });
 
     this.logger.log('Medication deleted', { userId, medicationId });

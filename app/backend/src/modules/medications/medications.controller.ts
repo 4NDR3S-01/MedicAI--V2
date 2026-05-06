@@ -30,7 +30,7 @@ export class MedicationsController {
   @Put(':id')
   update(
     @Param('id') medicationId: string,
-    @Body() dto: Partial<CreateMedicationDto>,
+    @Body() dto: import('./dto/update-medication.dto').UpdateMedicationDto,
     @Request() req: any,
   ) {
     const userId = req.user?.sub;

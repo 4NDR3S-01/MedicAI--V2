@@ -188,19 +188,21 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         }}
       />
 
-      <Pressable
-        style={[
-          styles.fab,
-          { backgroundColor: theme.colors.accentSecondary, right: 18, bottom: contentBottomInset + 18, shadowColor: theme.colors.accentSecondary },
-        ]}
-        onPress={() => {
-          setEditingAppointment(null);
-          setShowAddModal(true);
-        }}
-      >
-        <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
-        <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agendar</Text>
-      </Pressable>
+      {!error && (
+        <Pressable
+          style={[
+            styles.fab,
+            { backgroundColor: theme.colors.accentSecondary, right: 18, bottom: contentBottomInset + 18, shadowColor: theme.colors.accentSecondary },
+          ]}
+          onPress={() => {
+            setEditingAppointment(null);
+            setShowAddModal(true);
+          }}
+        >
+          <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
+          <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agendar</Text>
+        </Pressable>
+      )}
 
       <AddAppointmentModal
         visible={showAddModal}
