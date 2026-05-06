@@ -16,7 +16,7 @@ export function FloatingChatButton({ theme, onPress }: Readonly<Props>) {
         style={({ pressed }) => [
           styles.button,
           {
-            backgroundColor: theme.colors.accentPrimary,
+            backgroundColor: theme.colors.accentSecondary,
             transform: [{ scale: pressed ? 0.96 : 1 }],
           },
         ]}

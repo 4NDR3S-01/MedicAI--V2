@@ -9,6 +9,7 @@ import { MailModule } from '../infrastructure/mail/mail.module';
 import { PrismaModule } from '../infrastructure/prisma/prisma.module';
 import { AuthModule } from '../modules/auth/auth.module';
 import { AiModule } from '../modules/ai/ai.module';
+import { MedicationsModule } from '../modules/medications/medications.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AiModule } from '../modules/ai/ai.module';
     MailModule,
     AuthModule,
     AiModule,
+    MedicationsModule,
   ],
   providers: [
     {

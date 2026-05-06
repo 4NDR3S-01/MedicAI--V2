@@ -41,6 +41,7 @@ export function ChatModal({ visible, onClose, theme }: Readonly<Props>) {
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const assistantBubbleBackground = theme.mode === 'dark' ? '#10253D' : '#F2F7FC';
+  const MAX_HISTORY_MESSAGES = 18;
 
   const apiBaseUrl = useMemo(() => {
     return (process.env.EXPO_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
@@ -83,7 +84,8 @@ export function ChatModal({ visible, onClose, theme }: Readonly<Props>) {
         body: JSON.stringify({
           message: text,
           history: nextMessages
-            .filter((message) => message.role !== 'assistant' || message.id !== DEFAULT_GREETING.id)
+            .filter((message) => message.id !== DEFAULT_GREETING.id)
+            .slice(-MAX_HISTORY_MESSAGES)
             .map((message) => ({ role: message.role, content: message.content })),
         }),
       });
@@ -94,7 +96,7 @@ export function ChatModal({ visible, onClose, theme }: Readonly<Props>) {
         throw new Error(data.message || 'No se pudo obtener respuesta de IA.');
       }
 
-      const assistantReply = (data.reply || '').trim();
+      const assistantReply = normalizeAssistantReply(data.reply || '');
       setMessages((current) => [
         ...current,
         {
@@ -207,6 +209,17 @@ export function ChatModal({ visible, onClose, theme }: Readonly<Props>) {
       </KeyboardAvoidingView>
     </Modal>
   );
+}
+
+function normalizeAssistantReply(reply: string) {
+  return reply
+    .replaceAll(/\*\*(.*?)\*\*/g, '$1')
+    .replaceAll(/__(.*?)__/g, '$1')
+    .replaceAll(/^\s*[-*+]\s+/gm, '• ')
+    .replaceAll(/`([^`]+)`/g, '$1')
+    .replaceAll(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replaceAll(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 const styles = StyleSheet.create({
