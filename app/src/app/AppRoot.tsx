@@ -703,19 +703,38 @@ export function AppRoot() {
     try {
       setIsSubmittingAuth(true);
       // Utilizar endpoint de resend-verification
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE_URL}/auth/resend-verification`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email }),
-        }
-      );
+      let response: Response;
+
+      try {
+        response = await fetch(
+          `${process.env.EXPO_PUBLIC_API_BASE_URL}/auth/resend-verification`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          }
+        );
+      } catch {
+        throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
+      }
 
       if (!response.ok) {
-      const errorData = await response.json();
-      const parsedError: any = errorData;
-      const errorMessage = parsedError?.message || 'Error al reenviar correo';
+        const rawError = await response.text();
+        let errorMessage = 'Error al reenviar correo';
+
+        if (response.status >= 500) {
+          errorMessage = 'El backend no esta disponible en este momento.';
+        } else if (rawError.trim()) {
+          try {
+            const parsedError = JSON.parse(rawError) as { message?: string };
+            if (typeof parsedError.message === 'string' && parsedError.message.trim()) {
+              errorMessage = parsedError.message;
+            }
+          } catch {
+            // no-op
+          }
+        }
+
         // Parsear cooldown si existe en el error (para rate limiting)
         const cooldownMatch = /after\s+(\d+)\s+seconds?/i.exec(errorMessage)
           ?? /(\d+)\s+segundos?/i.exec(errorMessage);

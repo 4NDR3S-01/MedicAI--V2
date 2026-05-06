@@ -76,23 +76,40 @@ export function ChatModal({ visible, onClose, theme }: Readonly<Props>) {
     setIsSending(true);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/ai/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: text,
-          history: nextMessages
-            .filter((message) => message.id !== DEFAULT_GREETING.id)
-            .slice(-MAX_HISTORY_MESSAGES)
-            .map((message) => ({ role: message.role, content: message.content })),
-        }),
-      });
+      let response: Response;
 
-      const data = (await response.json()) as { reply?: string; message?: string };
+      try {
+        response = await fetch(`${apiBaseUrl}/ai/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: text,
+            history: nextMessages
+              .filter((message) => message.id !== DEFAULT_GREETING.id)
+              .slice(-MAX_HISTORY_MESSAGES)
+              .map((message) => ({ role: message.role, content: message.content })),
+          }),
+        });
+      } catch {
+        throw new Error('No se pudo conectar con el backend del chat. Verifica que este activo.');
+      }
+
+      const rawBody = await response.text();
+      let data: { reply?: string; message?: string } = {};
+      if (rawBody.trim()) {
+        try {
+          data = JSON.parse(rawBody) as { reply?: string; message?: string };
+        } catch {
+          throw new Error('La respuesta del backend de chat no es valida.');
+        }
+      }
 
       if (!response.ok) {
+        if (response.status >= 500) {
+          throw new Error('El backend del chat no esta disponible en este momento.');
+        }
         throw new Error(data.message || 'No se pudo obtener respuesta de IA.');
       }
 

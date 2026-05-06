@@ -41,7 +41,7 @@ const ensureApiConfigured = () => {
 };
 
 const parseApiError = async (response: Response) => {
-  let fallback = `Request failed with status ${response.status}`;
+  let fallback = `Error del servidor (${response.status}).`;
 
   try {
     const body = (await response.json()) as {
@@ -64,26 +64,45 @@ const parseApiError = async (response: Response) => {
     // no-op
   }
 
+  if (response.status >= 500) {
+    return 'El backend esta temporalmente no disponible. Intenta nuevamente en unos minutos.';
+  }
+
   return fallback;
 };
 
 const apiRequest = async <T>(path: string, body?: Record<string, unknown>): Promise<T> => {
   ensureApiConfigured();
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: body ? 'POST' : 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('No se pudo conectar con el backend. Verifica que el servidor este activo.');
+  }
 
   if (!response.ok) {
     const errorMessage = await parseApiError(response);
     throw new Error(mapAuthError(errorMessage));
   }
 
-  return (await response.json()) as T;
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new Error('Respuesta invalida del backend. Verifica que la API este funcionando correctamente.');
+  }
 };
 
 const persistSession = async (session: AppAuthSession) => {
