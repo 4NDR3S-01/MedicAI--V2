@@ -71,6 +71,18 @@ class EnvironmentVariables {
   RESEND_API_KEY!: string;
 
   @IsString()
+  @IsNotEmpty()
+  GROQ_API_KEY!: string;
+
+  @IsString()
+  @IsOptional()
+  GROQ_MODEL?: string;
+
+  @IsString()
+  @IsOptional()
+  GROQ_BASE_URL?: string;
+
+  @IsString()
   @IsOptional()
   MAIL_FROM!: string;
 

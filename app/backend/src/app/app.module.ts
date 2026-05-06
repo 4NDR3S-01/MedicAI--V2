@@ -8,6 +8,7 @@ import { validateEnv } from '../config/env.validation';
 import { MailModule } from '../infrastructure/mail/mail.module';
 import { PrismaModule } from '../infrastructure/prisma/prisma.module';
 import { AuthModule } from '../modules/auth/auth.module';
+import { AiModule } from '../modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AuthModule } from '../modules/auth/auth.module';
     PrismaModule,
     MailModule,
     AuthModule,
+    AiModule,
   ],
   providers: [
     {

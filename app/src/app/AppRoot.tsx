@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import { LOGO_SOURCE, FloatingChatButton, ChatModal } from '../shared/ui';
+import { LOGO_SOURCE } from '../shared/ui';
 import {
   AuthActionStatusScreen,
   ForgotPasswordScreen,
@@ -261,7 +261,6 @@ export function AppRoot() {
   const [authActionStatus, setAuthActionStatus] = useState<AuthActionStatusState | null>(null);
 
   const theme = useAppTheme();
-  const [chatVisible, setChatVisible] = useState(false);
 
   const clearResetPasswordState = () => {
     setPasswordResetToken(null);
@@ -976,13 +975,6 @@ export function AppRoot() {
         <StatusBar style={statusBarStyle} />
         <View style={{ flex: 1 }}>
           {renderContent()}
-            {/* Floating chat button + modal - visible only when user is in session (main app) */}
-            {session && (
-              <>
-                <FloatingChatButton theme={theme} onPress={() => setChatVisible(true)} />
-                <ChatModal visible={chatVisible} onClose={() => setChatVisible(false)} theme={theme} />
-              </>
-            )}
         </View>
       </SafeAreaView>
     </SafeAreaProvider>

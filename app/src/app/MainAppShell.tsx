@@ -10,6 +10,7 @@ import {
 } from '../features/tabs';
 import { HomeScreen } from '../features/home';
 import type { AppTheme } from '../shared/theme';
+import { ChatModal, FloatingChatButton } from '../shared/ui';
 import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBottomBar';
 
 export type MainAppShellProps = {
@@ -29,6 +30,7 @@ export function MainAppShell({
 }: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [chatVisible, setChatVisible] = useState(false);
   const contentBottomInset = useMainTabContentInset();
 
   let body: ReactNode;
@@ -78,6 +80,8 @@ export function MainAppShell({
   return (
     <View style={{ flex: 1 }}>
       {body}
+      <FloatingChatButton theme={theme} onPress={() => setChatVisible(true)} />
+      <ChatModal visible={chatVisible} onClose={() => setChatVisible(false)} theme={theme} />
       <AppBottomBar theme={theme} activeTab={tab} onSelect={setTab} />
     </View>
   );
