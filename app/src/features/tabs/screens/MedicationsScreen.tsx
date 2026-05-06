@@ -1,6 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Alert } from 'react-native';
 
@@ -42,12 +41,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      setIsLoading(true);
-      void loadMedications();
-    }, [loadMedications]),
-  );
+  useEffect(() => {
+    setIsLoading(true);
+    void loadMedications();
+  }, [loadMedications]);
 
   const handleDeleteMedication = (medicationId: string, name: string) => {
     Alert.alert('Eliminar medicamento', `¿Estás seguro de que quieres eliminar "${name}"?`, [
@@ -119,7 +116,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           ) : (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons
-                name="pill-outline"
+                name="pill"
                 size={48}
                 color={theme.colors.textMuted}
               />
