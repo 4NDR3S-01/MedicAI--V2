@@ -85,7 +85,7 @@ function getSafeAvatar(data: string | null | undefined) {
   if (!data) return null;
   try {
     const parsed = JSON.parse(data);
-    if (parsed && parsed.icon && parsed.color && parsed.bgColor) return parsed;
+    if (parsed && parsed.url) return parsed;
   } catch (e) {
     // ignore
   }
@@ -131,7 +131,6 @@ export function HomeScreen({
             style={[
               styles.avatarContainer,
               { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-              parsedAvatar && { backgroundColor: parsedAvatar.bgColor, borderColor: parsedAvatar.bgColor }
             ]}
           >
             {parsedAvatar ? (

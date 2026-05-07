@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
   Alert,
+  Keyboard,
 } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
@@ -156,6 +157,8 @@ export function AddMedicationModal({
 
   const handleClose = () => {
     if (!isLoading) {
+      Keyboard.dismiss();
+      setTimePickerVisible(false);
       setName('');
       setDosageValue('');
       setDosageUnit('mg');
@@ -383,11 +386,11 @@ export function AddMedicationModal({
                   value={(() => { const d = new Date(); d.setHours(timeHour, timeMinute, 0, 0); return d; })()}
                   mode="time"
                   is24Hour={true}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  display="default"
                   themeVariant={theme.mode}
                   textColor={Platform.OS === 'ios' ? theme.colors.textPrimary : undefined}
                   onChange={(event: DateTimePickerEvent, selected?: Date | undefined) => {
-                    if (Platform.OS === 'android') setTimePickerVisible(false);
+                    setTimePickerVisible(false);
                     if (selected) {
                       const hh = String(selected.getHours()).padStart(2, '0');
                       const mm = String(selected.getMinutes()).padStart(2, '0');

@@ -67,7 +67,9 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          if (Platform.OS === 'android') {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          }
           try {
             const session = await getStoredSession();
             if (!session?.accessToken) {
@@ -116,6 +118,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
       <FlatList
         data={appointments}
         keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
         ListHeaderComponent={renderHeader}
         contentContainerStyle={[
           styles.listContent,

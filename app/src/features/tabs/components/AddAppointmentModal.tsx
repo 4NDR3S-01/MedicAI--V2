@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -219,6 +220,10 @@ export function AddAppointmentModal({
 
   const handleClose = () => {
     if (!isLoading) {
+      Keyboard.dismiss();
+      setDatePickerVisible(false);
+      setTimePickerVisible(false);
+      setMapVisible(false);
       clearForm();
       onClose();
     }
@@ -298,11 +303,11 @@ export function AddAppointmentModal({
                 <DateTimePicker
                   value={date ? new Date(`${date}T12:00:00`) : new Date()}
                   mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  display="default"
                   themeVariant={theme.mode}
                   textColor={Platform.OS === 'ios' ? theme.colors.textPrimary : undefined}
                   onChange={(event: DateTimePickerEvent, selected?: Date) => {
-                    if (Platform.OS === 'android') setDatePickerVisible(false);
+                    setDatePickerVisible(false);
                     if (selected) {
                       const yyyy = selected.getFullYear();
                       const mm = String(selected.getMonth() + 1).padStart(2, '0');
@@ -319,11 +324,11 @@ export function AddAppointmentModal({
                   value={time ? (() => { const d = new Date(); const [h, m] = time.split(':'); d.setHours(Number(h), Number(m), 0, 0); return d; })() : new Date()}
                   mode="time"
                   is24Hour={true}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  display="default"
                   themeVariant={theme.mode}
                   textColor={Platform.OS === 'ios' ? theme.colors.textPrimary : undefined}
                   onChange={(event: DateTimePickerEvent, selected?: Date) => {
-                    if (Platform.OS === 'android') setTimePickerVisible(false);
+                    setTimePickerVisible(false);
                     if (selected) {
                       const hh = String(selected.getHours()).padStart(2, '0');
                       const min = String(selected.getMinutes()).padStart(2, '0');

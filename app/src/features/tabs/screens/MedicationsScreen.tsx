@@ -69,7 +69,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          if (Platform.OS === 'android') {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          }
           try {
             const session = await getStoredSession();
             if (!session?.accessToken) {
@@ -89,7 +91,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   };
 
   const toggleMedicationStatus = async (med: MedicationData) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    // Disable LayoutAnimation on iOS to prevent weird animations
+    if (Platform.OS === 'android') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
     setMedications((current) =>
       current.map((m) => (m.id === med.id ? { ...m, active: !med.active } : m))
     );
@@ -97,7 +102,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     try {
       const session = await getStoredSession();
       if (!session?.accessToken) {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        if (Platform.OS === 'android') {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        }
         setMedications((current) =>
           current.map((m) => (m.id === med.id ? { ...m, active: med.active } : m))
         );
@@ -148,6 +155,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       <FlatList
         data={medications}
         keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
         ListHeaderComponent={renderHeader}
         contentContainerStyle={[
           styles.listContent,
