@@ -316,6 +316,14 @@ const validateMedicalInfoStep = (
   return null;
 };
 
+// Paso 2 unificado: identidad + cuenta
+const getPersonalValidationIssue = (
+  personalData: RegisterWizardPayload["personalData"],
+  calculatedAge: number | null,
+): { field: PersonalFieldKey; message: string } | null =>
+  getIdentityValidationIssue(personalData, calculatedAge) ??
+  getAccountValidationIssue(personalData);
+
 const validateCurrentStep = (
   step: number,
   form: RegisterWizardPayload,
@@ -323,10 +331,9 @@ const validateCurrentStep = (
 ) => {
   const stepValidators: Record<number, () => string | null> = {
     2: () =>
-      getIdentityValidationIssue(form.personalData, calculatedAge)?.message ??
+      getPersonalValidationIssue(form.personalData, calculatedAge)?.message ??
       null,
-    3: () => getAccountValidationIssue(form.personalData)?.message ?? null,
-    4: () => validateMedicalInfoStep(form.medicalInfo),
+    3: () => validateMedicalInfoStep(form.medicalInfo),
   };
 
   return stepValidators[step]?.() ?? null;
@@ -417,7 +424,7 @@ export function RegisterScreen({
   const isLastStep = stepIndex === REGISTER_STEPS.length - 1;
 
   let primaryActionLabel = "Siguiente";
-  if (currentStep === 3 && isCheckingEmailAvailability) {
+  if (currentStep === 2 && isCheckingEmailAvailability) {
     primaryActionLabel = "Validando correo…";
   }
   if (isLastStep) {
@@ -515,10 +522,16 @@ export function RegisterScreen({
     };
 
   const scrollToFocusedField = (field: PersonalFieldKey) => {
-    setTimeout(() => {
-      const targetY = Math.max(0, fieldOffsetsRef.current[field] - 24);
+    // El fieldBlock registra su posición dentro del contenido del ScrollView.
+    // Dejamos 60px arriba para que la etiqueta sea visible sobre el teclado.
+    const doScroll = () => {
+      const targetY = Math.max(0, fieldOffsetsRef.current[field] - 60);
       stepScrollRef.current?.scrollTo({ y: targetY, animated: true });
-    }, 120);
+    };
+    // Primera pasada: antes de que el teclado termine de subir
+    setTimeout(doScroll, 80);
+    // Segunda pasada: después de que el teclado haya terminado de animarse (iOS ~250ms, Android ~300ms)
+    setTimeout(doScroll, 380);
   };
 
   const focusPersonalField = (
@@ -547,7 +560,7 @@ export function RegisterScreen({
       PersonalFieldKey | "submit"
     > = {
       fullName: "birthDate",
-      phone: "submit",
+      phone: "email",
       email: "password",
       password: "confirmPassword",
       confirmPassword: "submit",
@@ -887,9 +900,9 @@ export function RegisterScreen({
 
     setStepError(null);
 
-    // Paso 2: validar identidad con foco en el campo fallido
+    // Paso 2: validar todos los datos personales con foco en el campo fallido
     if (currentStep === 2) {
-      const issue = getIdentityValidationIssue(
+      const issue = getPersonalValidationIssue(
         form.personalData,
         calculatedAge,
       );
@@ -898,17 +911,8 @@ export function RegisterScreen({
         focusPersonalField(issue.field);
         return;
       }
-    }
 
-    // Paso 3: validar cuenta con foco + verificar disponibilidad del correo
-    if (currentStep === 3) {
-      const issue = getAccountValidationIssue(form.personalData);
-      if (issue) {
-        setStepError(issue.message);
-        focusPersonalField(issue.field);
-        return;
-      }
-
+      // Verificar disponibilidad del correo
       const normalizedEmail = form.personalData.email.trim().toLowerCase();
       const lastCheck = lastEmailAvailabilityRef.current;
 
@@ -945,7 +949,7 @@ export function RegisterScreen({
       }
     }
 
-    // Paso 4: validar info médica (general, sin foco por campo)
+    // Pasos siguientes: validación general sin foco por campo
     const validationError = validateCurrentStep(
       currentStep,
       form,
@@ -975,290 +979,323 @@ export function RegisterScreen({
     setStepIndex((previous) => Math.max(0, previous - 1));
   };
 
-  // ─── Paso 2: Datos personales (identidad) ───────────────────────────────
-  const renderIdentityStep = () => (
-    <View style={styles.group}>
-      <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-        Nombre completo
-      </Text>
-      <TextInput
-        ref={registerPersonalFieldRef("fullName")}
-        value={form.personalData.fullName}
-        onChangeText={(value) =>
-          setForm((previous) => ({
-            ...previous,
-            personalData: { ...previous.personalData, fullName: value },
-          }))
-        }
-        onLayout={registerFieldOffset("fullName")}
-        onFocus={() => scrollToFocusedField("fullName")}
-        onSubmitEditing={() => handlePersonalInputSubmit("fullName")}
-        style={[
-          styles.input,
-          {
-            backgroundColor: theme.colors.inputBackground,
-            borderColor: theme.colors.inputBorder,
-            color: theme.colors.textPrimary,
-          },
-        ]}
-        placeholder="Nombre y apellido"
-        placeholderTextColor={theme.colors.inputPlaceholder}
-        autoCapitalize="words"
-        returnKeyType="next"
-      />
-
-      <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-        Fecha de nacimiento
-      </Text>
-      <Pressable
-        onLayout={registerFieldOffset("birthDate")}
-        style={[
-          styles.selectorField,
-          {
-            backgroundColor: theme.colors.inputBackground,
-            borderColor: theme.colors.inputBorder,
-          },
-        ]}
-        onPress={openBirthDateModal}
-      >
-        <Text
-          style={{
-            color: form.personalData.birthDate
-              ? theme.colors.textPrimary
-              : theme.colors.inputPlaceholder,
-            fontSize: 15,
-          }}
-        >
-          {form.personalData.birthDate || "Seleccionar fecha"}
-        </Text>
-        <Text style={{ color: theme.colors.textMuted }}>▼</Text>
-      </Pressable>
-
-      <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-        Edad: {calculatedAge ?? "-"}
-      </Text>
-
-      <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-        Telefono (opcional)
-      </Text>
+  // ─── Paso 2: Datos personales (unificado) ────────────────────────────
+  const renderPersonalStep = () => (
+    <View style={[styles.group, { gap: 12 }]}>
+      {/* Nombre completo */}
       <View
-        style={[styles.phoneRow, isCompact ? styles.phoneRowCompact : null]}
+        style={styles.fieldBlock}
+        onLayout={registerFieldOffset("fullName")}
       >
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+          Nombre completo
+        </Text>
+        <TextInput
+          ref={registerPersonalFieldRef("fullName")}
+          value={form.personalData.fullName}
+          onChangeText={(value) =>
+            setForm((previous) => ({
+              ...previous,
+              personalData: { ...previous.personalData, fullName: value },
+            }))
+          }
+          onFocus={() => scrollToFocusedField("fullName")}
+          onSubmitEditing={() => handlePersonalInputSubmit("fullName")}
+          style={[
+            styles.input,
+            {
+              marginBottom: 0,
+              backgroundColor: theme.colors.inputBackground,
+              borderColor: theme.colors.inputBorder,
+              color: theme.colors.textPrimary,
+            },
+          ]}
+          placeholder="Nombre y apellido"
+          placeholderTextColor={theme.colors.inputPlaceholder}
+          autoCapitalize="words"
+          returnKeyType="next"
+        />
+      </View>
+
+      {/* Fecha de nacimiento */}
+      <View
+        style={styles.fieldBlock}
+        onLayout={registerFieldOffset("birthDate")}
+      >
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+          Fecha de nacimiento
+        </Text>
         <Pressable
           style={[
-            styles.countrySelector,
+            styles.selectorField,
             {
+              marginBottom: 0,
               backgroundColor: theme.colors.inputBackground,
               borderColor: theme.colors.inputBorder,
             },
           ]}
-          onPress={() => setIsCountryModalVisible(true)}
+          onPress={openBirthDateModal}
         >
           <Text
-            style={[styles.countryFlag, { color: theme.colors.textPrimary }]}
+            style={{
+              color: form.personalData.birthDate
+                ? theme.colors.textPrimary
+                : theme.colors.inputPlaceholder,
+              fontSize: 15,
+            }}
           >
-            {selectedCountry.flag}
-          </Text>
-          <Text
-            style={[styles.countryCode, { color: theme.colors.textPrimary }]}
-          >
-            {selectedCountry.code}
+            {form.personalData.birthDate || "Seleccionar fecha"}
           </Text>
           <Text style={{ color: theme.colors.textMuted }}>▼</Text>
         </Pressable>
+        <Text
+          style={[
+            styles.helperText,
+            { marginBottom: 0, color: theme.colors.textMuted },
+          ]}
+        >
+          Edad actual: {calculatedAge ?? "-"}
+        </Text>
+      </View>
 
-        <TextInput
-          ref={registerPersonalFieldRef("phone")}
-          value={form.personalData.phone}
-          onChangeText={(value) =>
-            setForm((previous) => ({
-              ...previous,
-              personalData: {
-                ...previous.personalData,
-                phone: value.replaceAll(/\D/g, "").slice(0, 9),
+      {/* Teléfono */}
+      <View style={styles.fieldBlock} onLayout={registerFieldOffset("phone")}>
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+          Teléfono (opcional)
+        </Text>
+        <View
+          style={[styles.phoneRow, isCompact ? styles.phoneRowCompact : null]}
+        >
+          <Pressable
+            style={[
+              styles.countrySelector,
+              {
+                backgroundColor: theme.colors.inputBackground,
+                borderColor: theme.colors.inputBorder,
               },
-            }))
+            ]}
+            onPress={() => setIsCountryModalVisible(true)}
+          >
+            <Text
+              style={[styles.countryFlag, { color: theme.colors.textPrimary }]}
+            >
+              {selectedCountry.flag}
+            </Text>
+            <Text
+              style={[styles.countryCode, { color: theme.colors.textPrimary }]}
+            >
+              {selectedCountry.code}
+            </Text>
+            <Text style={{ color: theme.colors.textMuted }}>▼</Text>
+          </Pressable>
+          <TextInput
+            ref={registerPersonalFieldRef("phone")}
+            value={form.personalData.phone}
+            onChangeText={(value) =>
+              setForm((previous) => ({
+                ...previous,
+                personalData: {
+                  ...previous.personalData,
+                  phone: value.replaceAll(/\D/g, "").slice(0, 9),
+                },
+              }))
+            }
+            onFocus={() => scrollToFocusedField("phone")}
+            onSubmitEditing={() => handlePersonalInputSubmit("phone")}
+            style={[
+              styles.input,
+              styles.phoneInput,
+              {
+                marginBottom: 0,
+                backgroundColor: theme.colors.inputBackground,
+                borderColor: theme.colors.inputBorder,
+                color: theme.colors.textPrimary,
+              },
+            ]}
+            placeholder="987654321"
+            keyboardType="number-pad"
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            maxLength={9}
+            returnKeyType="next"
+          />
+        </View>
+        <Text
+          style={[
+            styles.helperText,
+            { marginBottom: 0, color: theme.colors.textMuted },
+          ]}
+        >
+          Formato Ecuador: 9 dígitos (ej. 987654321)
+        </Text>
+      </View>
+
+      {/* Correo */}
+      <View style={styles.fieldBlock} onLayout={registerFieldOffset("email")}>
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+          Correo electrónico
+        </Text>
+        <TextInput
+          ref={registerPersonalFieldRef("email")}
+          value={form.personalData.email}
+          onChangeText={(value) =>
+            setForm((previous) => {
+              const nextEmail = value.trim();
+              const normalizedNextEmail = nextEmail.toLowerCase();
+              const lastCheck = lastEmailAvailabilityRef.current;
+              if (
+                lastCheck?.email !== normalizedNextEmail &&
+                emailAvailabilityMessage
+              ) {
+                setEmailAvailabilityMessage(null);
+              }
+              return {
+                ...previous,
+                personalData: { ...previous.personalData, email: nextEmail },
+              };
+            })
           }
-          onLayout={registerFieldOffset("phone")}
-          onFocus={() => scrollToFocusedField("phone")}
-          onSubmitEditing={() => handlePersonalInputSubmit("phone")}
+          onFocus={() => scrollToFocusedField("email")}
           style={[
             styles.input,
-            styles.phoneInput,
             {
+              marginBottom: 0,
               backgroundColor: theme.colors.inputBackground,
               borderColor: theme.colors.inputBorder,
               color: theme.colors.textPrimary,
             },
           ]}
-          placeholder="987654321"
-          keyboardType="number-pad"
+          placeholder="tu@dominio.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
           placeholderTextColor={theme.colors.inputPlaceholder}
-          maxLength={9}
+          onSubmitEditing={() => handlePersonalInputSubmit("email")}
           returnKeyType="next"
         />
+        {emailAvailabilityMessage ? (
+          <Text
+            style={[
+              styles.inlineValidationText,
+              { marginBottom: 0, color: "#C0392B" },
+            ]}
+          >
+            {emailAvailabilityMessage}
+          </Text>
+        ) : null}
       </View>
 
-      <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-        Formato Ecuador: 9 digitos (ej. 987654321)
-      </Text>
-    </View>
-  );
-
-  // ─── Paso 3: Cuenta (correo y contraseña) ────────────────────────────────
-  const renderAccountStep = () => (
-    <View style={styles.group}>
-      <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-        Correo
-      </Text>
-      <TextInput
-        ref={registerPersonalFieldRef("email")}
-        value={form.personalData.email}
-        onChangeText={(value) =>
-          setForm((previous) => {
-            const nextEmail = value.trim();
-            const normalizedNextEmail = nextEmail.toLowerCase();
-            const lastCheck = lastEmailAvailabilityRef.current;
-
-            if (
-              lastCheck?.email !== normalizedNextEmail &&
-              emailAvailabilityMessage
-            ) {
-              setEmailAvailabilityMessage(null);
-            }
-
-            return {
-              ...previous,
-              personalData: { ...previous.personalData, email: nextEmail },
-            };
-          })
-        }
-        onLayout={registerFieldOffset("email")}
-        onFocus={() => scrollToFocusedField("email")}
-        style={[
-          styles.input,
-          {
-            backgroundColor: theme.colors.inputBackground,
-            borderColor: theme.colors.inputBorder,
-            color: theme.colors.textPrimary,
-          },
-        ]}
-        placeholder="tu@dominio.com"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        placeholderTextColor={theme.colors.inputPlaceholder}
-        onSubmitEditing={() => handlePersonalInputSubmit("email")}
-        returnKeyType="next"
-      />
-      {emailAvailabilityMessage ? (
-        <Text style={[styles.inlineValidationText, { color: "#C0392B" }]}>
-          {emailAvailabilityMessage}
-        </Text>
-      ) : null}
-
-      <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-        Contrasena
-      </Text>
+      {/* Contraseña */}
       <View
-        style={styles.passwordWrap}
+        style={styles.fieldBlock}
         onLayout={registerFieldOffset("password")}
       >
-        <TextInput
-          ref={registerPersonalFieldRef("password")}
-          value={form.personalData.password}
-          onChangeText={(value) =>
-            setForm((previous) => ({
-              ...previous,
-              personalData: { ...previous.personalData, password: value },
-            }))
-          }
-          onFocus={() => scrollToFocusedField("password")}
-          style={[
-            styles.input,
-            styles.passwordInput,
-            {
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
-            },
-          ]}
-          placeholder="Minimo 6 caracteres"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-          autoCapitalize="none"
-          secureTextEntry={!isPasswordVisible}
-          onSubmitEditing={() => handlePersonalInputSubmit("password")}
-          returnKeyType="next"
-        />
-        <Pressable
-          onPress={() => setIsPasswordVisible((previous) => !previous)}
-          style={styles.passwordToggle}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isPasswordVisible ? "Ocultar contrasena" : "Mostrar contrasena"
-          }
-        >
-          <Ionicons
-            name={isPasswordVisible ? "eye-off-outline" : "eye-outline"}
-            size={20}
-            color={theme.colors.accentSecondary}
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+          Contraseña
+        </Text>
+        <View style={styles.passwordWrap}>
+          <TextInput
+            ref={registerPersonalFieldRef("password")}
+            value={form.personalData.password}
+            onChangeText={(value) =>
+              setForm((previous) => ({
+                ...previous,
+                personalData: { ...previous.personalData, password: value },
+              }))
+            }
+            onFocus={() => scrollToFocusedField("password")}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              {
+                marginBottom: 0,
+                backgroundColor: theme.colors.inputBackground,
+                borderColor: theme.colors.inputBorder,
+                color: theme.colors.textPrimary,
+              },
+            ]}
+            placeholder="Mínimo 6 caracteres"
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            autoCapitalize="none"
+            secureTextEntry={!isPasswordVisible}
+            onSubmitEditing={() => handlePersonalInputSubmit("password")}
+            returnKeyType="next"
           />
-        </Pressable>
+          <Pressable
+            onPress={() => setIsPasswordVisible((previous) => !previous)}
+            style={styles.passwordToggle}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isPasswordVisible ? "Ocultar contrasena" : "Mostrar contrasena"
+            }
+          >
+            <Ionicons
+              name={isPasswordVisible ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color={theme.colors.accentSecondary}
+            />
+          </Pressable>
+        </View>
       </View>
 
-      <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-        Confirmar contrasena
-      </Text>
+      {/* Confirmar contraseña */}
       <View
-        style={styles.passwordWrap}
+        style={styles.fieldBlock}
         onLayout={registerFieldOffset("confirmPassword")}
       >
-        <TextInput
-          ref={registerPersonalFieldRef("confirmPassword")}
-          value={form.personalData.confirmPassword}
-          onChangeText={(value) =>
-            setForm((previous) => ({
-              ...previous,
-              personalData: {
-                ...previous.personalData,
-                confirmPassword: value,
+        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+          Confirmar contraseña
+        </Text>
+        <View style={styles.passwordWrap}>
+          <TextInput
+            ref={registerPersonalFieldRef("confirmPassword")}
+            value={form.personalData.confirmPassword}
+            onChangeText={(value) =>
+              setForm((previous) => ({
+                ...previous,
+                personalData: {
+                  ...previous.personalData,
+                  confirmPassword: value,
+                },
+              }))
+            }
+            onFocus={() => scrollToFocusedField("confirmPassword")}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              {
+                marginBottom: 0,
+                backgroundColor: theme.colors.inputBackground,
+                borderColor: theme.colors.inputBorder,
+                color: theme.colors.textPrimary,
               },
-            }))
-          }
-          onFocus={() => scrollToFocusedField("confirmPassword")}
-          style={[
-            styles.input,
-            styles.passwordInput,
-            {
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
-            },
-          ]}
-          placeholder="Repite tu contrasena"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-          autoCapitalize="none"
-          secureTextEntry={!isConfirmPasswordVisible}
-          onSubmitEditing={() => handlePersonalInputSubmit("confirmPassword")}
-          returnKeyType="done"
-        />
-        <Pressable
-          onPress={() => setIsConfirmPasswordVisible((previous) => !previous)}
-          style={styles.passwordToggle}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isConfirmPasswordVisible
-              ? "Ocultar confirmacion de contrasena"
-              : "Mostrar confirmacion de contrasena"
-          }
-        >
-          <Ionicons
-            name={isConfirmPasswordVisible ? "eye-off-outline" : "eye-outline"}
-            size={20}
-            color={theme.colors.accentSecondary}
+            ]}
+            placeholder="Repite tu contraseña"
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            autoCapitalize="none"
+            secureTextEntry={!isConfirmPasswordVisible}
+            onSubmitEditing={() => handlePersonalInputSubmit("confirmPassword")}
+            returnKeyType="done"
           />
-        </Pressable>
+          <Pressable
+            onPress={() => setIsConfirmPasswordVisible((previous) => !previous)}
+            style={styles.passwordToggle}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isConfirmPasswordVisible
+                ? "Ocultar confirmacion de contrasena"
+                : "Mostrar confirmacion de contrasena"
+            }
+          >
+            <Ionicons
+              name={
+                isConfirmPasswordVisible ? "eye-off-outline" : "eye-outline"
+              }
+              size={20}
+              color={theme.colors.accentSecondary}
+            />
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -1529,94 +1566,60 @@ export function RegisterScreen({
   const renderSpecialConditionsStep = () => (
     <View style={styles.group}>
       <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-        Activa las que apliquen. Son opcionales y puedes cambiarlas despues
-        desde tu perfil.
+        Activa las que apliquen. Son opcionales y puedes cambiarlas desde tu
+        perfil.
       </Text>
 
-      <View style={styles.permissionRow}>
-        <Text
-          style={[styles.permissionText, { color: theme.colors.textPrimary }]}
-        >
-          Embarazo
-        </Text>
-        <Switch
-          value={form.medicalInfo.specialConditions.pregnancy}
-          onValueChange={(value) => updateSpecialCondition("pregnancy", value)}
-          trackColor={{
-            false: theme.colors.inputBorder,
-            true: theme.colors.accentPrimary,
-          }}
-        />
-      </View>
-
-      <View style={styles.permissionRow}>
-        <Text
-          style={[styles.permissionText, { color: theme.colors.textPrimary }]}
-        >
-          Lactancia
-        </Text>
-        <Switch
-          value={form.medicalInfo.specialConditions.lactation}
-          onValueChange={(value) => updateSpecialCondition("lactation", value)}
-          trackColor={{
-            false: theme.colors.inputBorder,
-            true: theme.colors.accentPrimary,
-          }}
-        />
-      </View>
-
-      <View style={styles.permissionRow}>
-        <Text
-          style={[styles.permissionText, { color: theme.colors.textPrimary }]}
-        >
-          Cirugías recientes
-        </Text>
-        <Switch
-          value={form.medicalInfo.specialConditions.recentSurgeries}
-          onValueChange={(value) =>
-            updateSpecialCondition("recentSurgeries", value)
-          }
-          trackColor={{
-            false: theme.colors.inputBorder,
-            true: theme.colors.accentPrimary,
-          }}
-        />
-      </View>
-
-      <View style={styles.permissionRow}>
-        <Text
-          style={[styles.permissionText, { color: theme.colors.textPrimary }]}
-        >
-          Inmunosupresion
-        </Text>
-        <Switch
-          value={form.medicalInfo.specialConditions.immunosuppression}
-          onValueChange={(value) =>
-            updateSpecialCondition("immunosuppression", value)
-          }
-          trackColor={{
-            false: theme.colors.inputBorder,
-            true: theme.colors.accentPrimary,
-          }}
-        />
-      </View>
-
-      <View style={styles.permissionRow}>
-        <Text
-          style={[styles.permissionText, { color: theme.colors.textPrimary }]}
-        >
-          Tratamiento anticoagulante
-        </Text>
-        <Switch
-          value={form.medicalInfo.specialConditions.anticoagulantTreatment}
-          onValueChange={(value) =>
-            updateSpecialCondition("anticoagulantTreatment", value)
-          }
-          trackColor={{
-            false: theme.colors.inputBorder,
-            true: theme.colors.accentPrimary,
-          }}
-        />
+      {/* Card agrupada con divisores — elimina el espacio excesivo entre filas */}
+      <View
+        style={[
+          styles.conditionsCard,
+          {
+            backgroundColor: theme.colors.inputBackground,
+            borderColor: theme.colors.inputBorder,
+          },
+        ]}
+      >
+        {(
+          [
+            { key: "pregnancy", label: "Embarazo" },
+            { key: "lactation", label: "Lactancia" },
+            { key: "recentSurgeries", label: "Cirugías recientes" },
+            { key: "immunosuppression", label: "Inmunosupresión" },
+            {
+              key: "anticoagulantTreatment",
+              label: "Tratamiento anticoagulante",
+            },
+          ] as const
+        ).map((item, index, arr) => (
+          <View
+            key={item.key}
+            style={[
+              styles.conditionRow,
+              index < arr.length - 1 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.inputBorder,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.permissionText,
+                { color: theme.colors.textPrimary },
+              ]}
+            >
+              {item.label}
+            </Text>
+            <Switch
+              value={form.medicalInfo.specialConditions[item.key]}
+              onValueChange={(value) => updateSpecialCondition(item.key, value)}
+              trackColor={{
+                false: theme.colors.inputBorder,
+                true: theme.colors.accentPrimary,
+              }}
+            />
+          </View>
+        ))}
       </View>
 
       <Pressable
@@ -1694,10 +1697,9 @@ export function RegisterScreen({
 
   const renderStep = () => {
     const stepRenderers: Partial<Record<number, () => React.JSX.Element>> = {
-      2: renderIdentityStep,
-      3: renderAccountStep,
-      4: renderMedicalInfoStep,
-      5: renderSpecialConditionsStep,
+      2: renderPersonalStep,
+      3: renderMedicalInfoStep,
+      4: renderSpecialConditionsStep,
     };
 
     const renderer = stepRenderers[currentStep];
@@ -2375,6 +2377,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   addButtonText: { fontSize: 14, fontWeight: "700" },
+  // Campo compacto: label + input sin marginBottom acumulado
+  fieldBlock: { gap: 3 },
+  // Card de condiciones especiales
+  conditionsCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: "hidden" as const,
+  },
+  conditionRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
   permissionRow: {
     flexDirection: "row",
     alignItems: "center",

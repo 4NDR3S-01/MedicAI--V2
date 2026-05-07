@@ -1,13 +1,12 @@
 import type { CountryOption } from "../models/register.types";
 
-export const REGISTER_STEPS = [2, 3, 4, 5, 6] as const;
+export const REGISTER_STEPS = [2, 3, 4, 5] as const;
 
 export const STEP_TITLE: Record<number, string> = {
   2: "Datos personales",
-  3: "Cuenta",
-  4: "Antecedentes y alergias",
-  5: "Condiciones especiales",
-  6: "Resumen",
+  3: "Antecedentes y alergias",
+  4: "Condiciones especiales",
+  5: "Resumen",
 };
 
 export const PHONE_COUNTRIES: CountryOption[] = [
