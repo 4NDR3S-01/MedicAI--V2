@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Query,
   Request,
   Req,
@@ -25,6 +26,7 @@ import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { TokenDto } from './dto/token.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { JwtAuthGuard } from './guards/jwt.guard';
 import { IpThrottleGuard } from './guards/ip-throttle.guard';
@@ -132,6 +134,16 @@ export class AuthController {
   @Post('reset-password/validate')
   validateResetPasswordToken(@Body() dto: TokenDto) {
     return this.authService.validatePasswordResetToken(dto.token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('avatar')
+  updateAvatar(@Body() dto: UpdateAvatarDto, @Request() req: any) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedException('Token inválido.');
+    }
+    return this.authService.updateAvatar(userId, dto.avatar);
   }
 
   @Get('reset-password')

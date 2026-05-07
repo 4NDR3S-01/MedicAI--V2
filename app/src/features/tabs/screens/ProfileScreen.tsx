@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Modal, Image } from 'react-native';
 import { useState, useMemo } from 'react';
+import { updateAvatarOnBackend } from '../../auth/services/auth.service';
 
 const PREDEFINED_SEEDS = [
   { seed: 'Alexander', bg: 'e0f2fe' },
@@ -117,9 +118,30 @@ export function ProfileScreen({
   onSignOut,
 }: Readonly<ProfileScreenProps>) {
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const name = userFullName ? userFullName : displayNameFromEmail(userEmail);
   const initial = initialFromName(name);
   const parsedAvatar = useMemo(() => getSafeAvatar(avatarData), [avatarData]);
+
+  const handleAvatarSelect = async (avatar: typeof PREDEFINED_AVATARS[0]) => {
+    setIsSavingAvatar(true);
+    try {
+      const avatarStr = JSON.stringify(avatar);
+      await updateAvatarOnBackend(avatarStr);
+      if (onSetAvatar) {
+        onSetAvatar(avatarStr);
+      }
+      setIsEditingAvatar(false);
+    } catch (error) {
+      Alert.alert(
+        'Error al guardar avatar',
+        error instanceof Error ? error.message : 'No se pudo guardar el avatar. Intenta de nuevo.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSavingAvatar(false);
+    }
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
@@ -271,14 +293,15 @@ export function ProfileScreen({
                     styles.galleryItem,
                     isSelected && { borderColor: theme.colors.accentPrimary },
                   ]}
-                  onPress={() => {
-                    if (onSetAvatar) {
-                      onSetAvatar(JSON.stringify(avatar));
-                    }
-                    setIsEditingAvatar(false);
-                  }}
+                  onPress={() => handleAvatarSelect(avatar)}
+                  disabled={isSavingAvatar}
                 >
                   <Image source={{ uri: avatar.url }} style={styles.galleryImage} />
+                  {isSavingAvatar && isSelected && (
+                    <View style={styles.galleryLoadingOverlay}>
+                      <Text style={{ color: theme.colors.textPrimary }}>Guardando...</Text>
+                    </View>
+                  )}
                 </Pressable>
               );
             })}
@@ -370,6 +393,15 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
+  },
+  galleryLoadingOverlay: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   name: {
     fontSize: 28,

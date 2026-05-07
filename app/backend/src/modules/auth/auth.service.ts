@@ -130,6 +130,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        avatar: user.avatar,
       },
       ...tokens,
     };
@@ -498,5 +499,32 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Refresh token inválido o expirado.');
     }
+  }
+
+  async updateAvatar(userId: string, avatarData: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado.');
+    }
+
+    if (!avatarData || avatarData.trim() === '') {
+      throw new BadRequestException('Datos de avatar inválidos.');
+    }
+
+    // Validar que sea JSON válido
+    try {
+      JSON.parse(avatarData);
+    } catch {
+      throw new BadRequestException('Los datos del avatar deben ser JSON válido.');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatar: avatarData },
+    });
+
+    return {
+      message: 'Avatar actualizado correctamente.',
+      avatar: user.avatar,
+    };
   }
 }

@@ -895,6 +895,7 @@ export function AppRoot() {
           theme={theme}
           userFullName={session.user.fullName ?? null}
           userEmail={session.user.email ?? null}
+          avatarData={session.user.avatar ?? null}
           isSigningOut={isSubmittingAuth}
           onSignOut={() => {
             if (!isSubmittingAuth) {

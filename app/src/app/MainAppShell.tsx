@@ -17,6 +17,7 @@ export type MainAppShellProps = {
   theme: AppTheme;
   userFullName: string | null;
   userEmail: string | null;
+  avatarData?: string | null;
   isSigningOut: boolean;
   onSignOut: () => void;
 };
@@ -25,19 +26,23 @@ export function MainAppShell({
   theme,
   userFullName,
   userEmail,
+  avatarData: initialAvatarData,
   isSigningOut,
   onSignOut,
 }: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
   const [chatVisible, setChatVisible] = useState(false);
-  const [avatarData, setAvatarData] = useState<string | null>(null);
+  const [avatarData, setAvatarData] = useState<string | null>(initialAvatarData ?? null);
   const contentBottomInset = useMainTabContentInset();
 
   useEffect(() => {
-    AsyncStorage.getItem('user_avatar_data').then((val) => {
-      if (val) setAvatarData(val);
-    }).catch(() => {});
-  }, []);
+    // Si el backend no tiene avatar, intenta cargar del almacenamiento local (fallback)
+    if (!initialAvatarData) {
+      AsyncStorage.getItem('user_avatar_data').then((val) => {
+        if (val) setAvatarData(val);
+      }).catch(() => {});
+    }
+  }, [initialAvatarData]);
 
   const handleSetAvatar = async (data: string) => {
     setAvatarData(data);

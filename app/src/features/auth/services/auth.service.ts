@@ -10,6 +10,7 @@ export type AppAuthSession = {
     id: string;
     email: string;
     fullName?: string | null;
+    avatar?: string | null;
   };
   accessToken: string;
   refreshToken: string;
@@ -198,4 +199,43 @@ export const verifyEmailToken = async (token: string) => {
 
 export const validateEmailVerificationToken = async (token: string) => {
   return apiRequest<AuthTokenValidationResponse>('/auth/verify-email/validate', { token });
+};
+
+export const updateAvatarOnBackend = async (avatarData: string) => {
+  ensureApiConfigured();
+  
+  const session = await getStoredSession();
+  if (!session) {
+    throw new Error('No hay sesión activa. Por favor inicia sesión nuevamente.');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/avatar`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.accessToken}`,
+      },
+      body: JSON.stringify({ avatar: avatarData }),
+    });
+  } catch {
+    throw new Error('No se pudo conectar con el backend. Verifica que el servidor este activo.');
+  }
+
+  if (!response.ok) {
+    const errorMessage = await parseApiError(response);
+    throw new Error(mapAuthError(errorMessage));
+  }
+
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    return {} as { message: string; avatar: string };
+  }
+
+  try {
+    return JSON.parse(rawBody) as { message: string; avatar: string };
+  } catch {
+    throw new Error('Respuesta invalida del backend. Verifica que la API este funcionando correctamente.');
+  }
 };
