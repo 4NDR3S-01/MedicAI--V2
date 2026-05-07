@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   AppointmentsScreen,
@@ -29,7 +30,19 @@ export function MainAppShell({
 }: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
   const [chatVisible, setChatVisible] = useState(false);
+  const [avatarData, setAvatarData] = useState<string | null>(null);
   const contentBottomInset = useMainTabContentInset();
+
+  useEffect(() => {
+    AsyncStorage.getItem('user_avatar_data').then((val) => {
+      if (val) setAvatarData(val);
+    }).catch(() => {});
+  }, []);
+
+  const handleSetAvatar = async (data: string) => {
+    setAvatarData(data);
+    await AsyncStorage.setItem('user_avatar_data', data).catch(() => {});
+  };
 
   let body: ReactNode;
   switch (tab) {
@@ -46,7 +59,10 @@ export function MainAppShell({
       body = (
         <ProfileScreen
           theme={theme}
+          userFullName={userFullName}
           userEmail={userEmail}
+          avatarData={avatarData}
+          onSetAvatar={handleSetAvatar}
           contentBottomInset={contentBottomInset}
           isSigningOut={isSigningOut}
           onSignOut={onSignOut}
@@ -59,6 +75,7 @@ export function MainAppShell({
           theme={theme}
           userFullName={userFullName}
           userEmail={userEmail}
+          avatarData={avatarData}
           contentBottomInset={contentBottomInset}
           onOpenMedications={() => setTab('medications')}
           onOpenAppointments={() => setTab('appointments')}

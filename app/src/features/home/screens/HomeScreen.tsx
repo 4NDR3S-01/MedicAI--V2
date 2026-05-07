@@ -1,13 +1,16 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Dimensions, Image } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
+
+const { width } = Dimensions.get('window');
 
 export type HomeScreenProps = {
   theme: AppTheme;
   userFullName: string | null;
   userEmail: string | null;
+  avatarData?: string | null;
   /** Espacio inferior para la barra de pestañas y el FAB central. */
   contentBottomInset: number;
   /** Si se define, sustituye el aviso «En desarrollo» al abrir Medicamentos. */
@@ -78,19 +81,22 @@ function openOrStub(label: string, handler?: () => void) {
   };
 }
 
-type QuickActionSpec = {
-  key: string;
-  label: string;
-  subtitle: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  accent: 'accentPrimary' | 'accentSecondary' | 'accentTertiary';
-  onPress?: () => void;
-};
+function getSafeAvatar(data: string | null | undefined) {
+  if (!data) return null;
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed && parsed.icon && parsed.color && parsed.bgColor) return parsed;
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
 
 export function HomeScreen({
   theme,
   userFullName,
   userEmail,
+  avatarData,
   contentBottomInset,
   onOpenMedications,
   onOpenAppointments,
@@ -104,221 +110,132 @@ export function HomeScreen({
   );
   const avatarLetter = useMemo(() => initialFromName(displayName), [displayName]);
   const firstName = useMemo(() => displayName.split(' ')[0] ?? displayName, [displayName]);
-
-  const quickActions: QuickActionSpec[] = useMemo(
-    () => [
-      {
-        key: 'meds',
-        label: 'Medicamentos',
-        subtitle: 'Control de dosis y stock',
-        icon: 'pill',
-        accent: 'accentPrimary',
-        onPress: openOrStub('Medicamentos', onOpenMedications),
-      },
-      {
-        key: 'appts',
-        label: 'Citas',
-        subtitle: 'Agenda y seguimiento',
-        icon: 'calendar-clock',
-        accent: 'accentSecondary',
-        onPress: openOrStub('Citas', onOpenAppointments),
-      },
-      {
-        key: 'remind',
-        label: 'Alertas',
-        subtitle: 'Recordatorios de salud',
-        icon: 'bell-ring-outline',
-        accent: 'accentTertiary',
-        onPress: openOrStub('Alertas', onOpenReminders),
-      },
-      {
-        key: 'ai',
-        label: 'Asistente IA',
-        subtitle: 'Preguntas y guía',
-        icon: 'robot-outline',
-        accent: 'accentPrimary',
-        onPress: openOrStub('Asistente IA', onOpenAssistant),
-      },
-    ],
-    [onOpenMedications, onOpenAppointments, onOpenReminders, onOpenAssistant],
-  );
+  const parsedAvatar = useMemo(() => getSafeAvatar(avatarData), [avatarData]);
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomInset }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomInset + 20 }]}
         keyboardShouldPersistTaps="handled"
       >
-        <View
-          style={[
-            styles.heroCard,
-            {
-              backgroundColor: `${theme.colors.accentPrimary}14`,
-              borderColor: `${theme.colors.accentPrimary}40`,
-            },
-          ]}
-        >
-          <View style={styles.heroTop}>
-            <View style={styles.heroTextBlock}>
-              <Text style={[styles.greeting, { color: theme.colors.textMuted }]}>{greeting}</Text>
-              <Text style={[styles.heroName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                {displayName}
-              </Text>
-              <Text style={[styles.heroHelper, { color: theme.colors.textSecondary }]}>
-                {`Hola ${firstName}, aquí tienes tu panel de salud.`}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.avatar,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: `${theme.colors.accentPrimary}55`,
-                },
-              ]}
-            >
-              <Text style={[styles.avatarLetter, { color: theme.colors.accentPrimary }]}>
+        {/* Header Section */}
+        <View style={styles.header}>
+          <View style={styles.headerTextContainer}>
+            <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>{greeting},</Text>
+            <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+              {firstName}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.avatarContainer,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+              parsedAvatar && { backgroundColor: parsedAvatar.bgColor, borderColor: parsedAvatar.bgColor }
+            ]}
+          >
+            {parsedAvatar ? (
+              <Image source={{ uri: parsedAvatar.url }} style={styles.avatarImage} />
+            ) : (
+              <Text style={[styles.avatarText, { color: theme.colors.accentPrimary }]}>
                 {avatarLetter}
               </Text>
-            </View>
+            )}
           </View>
-          {userEmail ? (
-            <Text style={[styles.heroEmail, { color: theme.colors.textMuted }]} numberOfLines={1}>
-              {userEmail}
-            </Text>
-          ) : null}
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Resumen de hoy</Text>
-          <Text style={[styles.sectionAction, { color: theme.colors.accentPrimary }]}>Ver detalle</Text>
-        </View>
-        <View style={styles.metricsGrid}>
-          {[
-            {
-              label: 'Medicamentos',
-              value: '--',
-              hint: 'Tratamientos activos',
-              icon: 'pill-multiple' as const,
-              accent: theme.colors.accentPrimary,
-            },
-            {
-              label: 'Próxima cita',
-              value: '--',
-              hint: 'Agenda médica',
-              icon: 'calendar-month-outline' as const,
-              accent: theme.colors.accentSecondary,
-            },
-            {
-              label: 'Recordatorios',
-              value: '--',
-              hint: 'Pendientes hoy',
-              icon: 'bell-outline' as const,
-              accent: theme.colors.accentTertiary,
-            },
-            {
-              label: 'IA',
-              value: 'Online',
-              hint: 'Asistente disponible',
-              icon: 'robot-outline' as const,
-              accent: theme.colors.accentPrimary,
-            },
-          ].map((stat) => (
-            <View
-              key={stat.label}
-              style={[
-                styles.metricCard,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.surfaceBorder,
-                },
-              ]}
-              accessibilityRole="text"
-              accessibilityLabel={`${stat.label}: ${stat.value}. ${stat.hint}`}
-            >
-              <View style={[styles.metricIconWrap, { backgroundColor: `${stat.accent}22` }]}>
-                <MaterialCommunityIcons name={stat.icon} size={18} color={stat.accent} />
-              </View>
-              <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]}>{stat.value}</Text>
-              <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>{stat.label}</Text>
-              <Text style={[styles.metricHint, { color: theme.colors.textMuted }]}>{stat.hint}</Text>
-            </View>
-          ))}
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Accesos rápidos</Text>
-        <View style={styles.quickGrid}>
-          {quickActions.map((action) => {
-            const accent = theme.colors[action.accent];
-            return (
-              <Pressable
-                key={action.key}
-                onPress={action.onPress}
-                style={({ pressed }) => [
-                  styles.quickCard,
-                  {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: `${accent}55`,
-                    transform: [{ scale: pressed ? 0.98 : 1 }],
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={action.label}
-                accessibilityHint={action.subtitle}
-              >
-                <View
-                  style={[
-                    styles.quickIconWrap,
-                    { backgroundColor: `${accent}20`, borderColor: `${accent}45` },
-                  ]}
-                >
-                  <MaterialCommunityIcons name={action.icon} size={22} color={accent} />
-                </View>
-                <Text style={[styles.quickTitle, { color: theme.colors.textPrimary }]}>{action.label}</Text>
-                <Text style={[styles.quickSubtitle, { color: theme.colors.textMuted }]}>
-                  {action.subtitle}
-                </Text>
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={18}
-                  color={theme.colors.textMuted}
-                  style={styles.quickChevron}
-                />
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View
-          style={[
-            styles.timelineCard,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.surfaceBorder,
-            },
+        {/* Hero AI Banner */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.heroBanner,
+            { backgroundColor: theme.colors.accentPrimary, transform: [{ scale: pressed ? 0.98 : 1 }] },
           ]}
+          onPress={openOrStub('Asistente IA', onOpenAssistant)}
         >
-          <View style={styles.timelineHeader}>
-            <Text style={[styles.timelineTitle, { color: theme.colors.textPrimary }]}>Próximos pasos</Text>
-            <MaterialCommunityIcons name="clock-outline" size={18} color={theme.colors.textMuted} />
+          <View style={styles.heroContent}>
+            <View style={[styles.badge, { backgroundColor: theme.colors.buttonText }]}>
+              <MaterialCommunityIcons name="star-four-points" size={14} color={theme.colors.accentPrimary} />
+              <Text style={[styles.badgeText, { color: theme.colors.accentPrimary }]}>MedicAI Activo</Text>
+            </View>
+            <Text style={[styles.heroTitle, { color: theme.colors.buttonText }]}>¿Cómo te sientes hoy?</Text>
+            <Text style={[styles.heroSubtitle, { color: theme.colors.buttonText }]}>
+              Habla con tu asistente médico inteligente para recibir ayuda inmediata.
+            </Text>
           </View>
-          <View style={styles.timelineList}>
-            {[
-              'Registrar tus medicamentos activos',
-              'Configurar recordatorios diarios',
-              'Añadir tu próxima cita médica',
-            ].map((item) => (
-              <View key={item} style={styles.timelineItem}>
-                <View style={[styles.timelineDot, { backgroundColor: theme.colors.accentPrimary }]} />
-                <Text style={[styles.timelineText, { color: theme.colors.textSecondary }]}>{item}</Text>
-              </View>
-            ))}
-          </View>
-          <Text style={[styles.timelineCaption, { color: theme.colors.textMuted }]}>
-            Completa estos pasos para desbloquear recomendaciones personalizadas.
-          </Text>
+          <MaterialCommunityIcons
+            name="robot-outline"
+            size={110}
+            color="rgba(255,255,255,0.15)"
+            style={styles.heroIcon}
+          />
+        </Pressable>
+
+        {/* Bento Grid */}
+        <View style={styles.bentoGrid}>
+          {/* Medications */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.bentoSquare,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.surfaceBorder,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              },
+            ]}
+            onPress={openOrStub('Medicamentos', onOpenMedications)}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: `${theme.colors.accentPrimary}15` }]}>
+              <MaterialCommunityIcons name="pill" size={32} color={theme.colors.accentPrimary} />
+            </View>
+            <View style={styles.bentoTextWrap}>
+              <Text style={[styles.bentoTitle, { color: theme.colors.textPrimary }]}>Botiquín</Text>
+              <Text style={[styles.bentoSubtitle, { color: theme.colors.textSecondary }]}>Tus recetas</Text>
+            </View>
+          </Pressable>
+
+          {/* Appointments */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.bentoSquare,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.surfaceBorder,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              },
+            ]}
+            onPress={openOrStub('Citas', onOpenAppointments)}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: `${theme.colors.accentSecondary}15` }]}>
+              <MaterialCommunityIcons name="calendar-month" size={32} color={theme.colors.accentSecondary} />
+            </View>
+            <View style={styles.bentoTextWrap}>
+              <Text style={[styles.bentoTitle, { color: theme.colors.textPrimary }]}>Agenda</Text>
+              <Text style={[styles.bentoSubtitle, { color: theme.colors.textSecondary }]}>Próximas citas</Text>
+            </View>
+          </Pressable>
         </View>
+
+        {/* Radar / Resumen Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Hoy en tu radar</Text>
+          <View style={[styles.radarCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+            <View style={styles.radarItem}>
+              <View style={[styles.radarDot, { backgroundColor: theme.colors.accentPrimary }]} />
+              <Text style={[styles.radarText, { color: theme.colors.textPrimary }]}>Actualiza tu registro de síntomas con la IA</Text>
+            </View>
+            <View style={[styles.radarDivider, { backgroundColor: theme.colors.background }]} />
+            <View style={styles.radarItem}>
+              <View style={[styles.radarDot, { backgroundColor: theme.colors.accentSecondary }]} />
+              <Text style={[styles.radarText, { color: theme.colors.textPrimary }]}>Revisa la disponibilidad de tus medicamentos</Text>
+            </View>
+            <View style={[styles.radarDivider, { backgroundColor: theme.colors.background }]} />
+            <View style={styles.radarItem}>
+              <View style={[styles.radarDot, { backgroundColor: theme.colors.textMuted }]} />
+              <Text style={[styles.radarText, { color: theme.colors.textSecondary }]}>No hay citas programadas para hoy</Text>
+            </View>
+          </View>
+        </View>
+
       </ScrollView>
     </View>
   );
@@ -329,180 +246,176 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 22,
-    paddingTop: 14,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     gap: 20,
   },
-  heroCard: {
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 18,
-    gap: 10,
-  },
-  heroTop: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 14,
+    paddingHorizontal: 4,
+    marginBottom: 4,
   },
-  heroTextBlock: {
+  headerTextContainer: {
     flex: 1,
-    gap: 4,
-    minWidth: 0,
   },
   greeting: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.2,
-  },
-  heroName: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  heroEmail: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  heroHelper: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarLetter: {
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionAction: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  metricCard: {
-    width: '48%',
-    flexGrow: 1,
-    minWidth: '46%',
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    gap: 4,
-  },
-  metricIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 2,
   },
-  metricValue: {
-    fontSize: 18,
-    fontWeight: '800',
+  name: {
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -0.8,
   },
-  metricLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  metricHint: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  quickCard: {
-    width: '48%',
-    flexGrow: 1,
-    minWidth: '46%',
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 14,
-    gap: 8,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  quickChevron: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-  },
-  quickIconWrap: {
-    alignSelf: 'flex-start',
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  avatarContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickTitle: {
-    fontSize: 15,
-    fontWeight: '800',
+  avatarText: {
+    fontSize: 22,
+    fontWeight: '900',
   },
-  quickSubtitle: {
-    fontSize: 12,
-    lineHeight: 16,
+  avatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
-  timelineCard: {
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 18,
+  heroBanner: {
+    borderRadius: 32,
+    padding: 24,
+    overflow: 'hidden',
+    position: 'relative',
+    minHeight: 180,
+    justifyContent: 'center',
+  },
+  heroContent: {
+    position: 'relative',
+    zIndex: 2,
+    width: '75%',
     gap: 12,
   },
-  timelineHeader: {
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  heroTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    lineHeight: 30,
+  },
+  heroSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+    opacity: 0.9,
+  },
+  heroIcon: {
+    position: 'absolute',
+    right: -15,
+    bottom: -15,
+    zIndex: 1,
+    transform: [{ rotate: '-10deg' }],
+  },
+  bentoGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  bentoSquare: {
+    flex: 1,
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 20,
+    aspectRatio: 1,
+    justifyContent: 'space-between',
+  },
+  iconCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bentoTextWrap: {
+    gap: 4,
+  },
+  bentoTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  bentoSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  bentoRect: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 20,
   },
-  timelineTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  timelineList: {
-    gap: 10,
-  },
-  timelineItem: {
+  bentoRectLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 16,
   },
-  timelineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
+  section: {
+    marginTop: 8,
+    gap: 16,
   },
-  timelineText: {
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    paddingHorizontal: 4,
+  },
+  radarCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  radarItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+  },
+  radarDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  radarText: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 22,
   },
-  timelineCaption: {
-    fontSize: 12,
-    lineHeight: 16,
+  radarDivider: {
+    height: 2,
+    borderRadius: 1,
   },
 });

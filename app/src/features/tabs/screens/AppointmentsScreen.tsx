@@ -1,6 +1,18 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+  LayoutAnimation,
+  UIManager,
+  Platform,
+} from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
 import { getStoredSession } from '../../auth';
@@ -55,6 +67,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           try {
             const session = await getStoredSession();
             if (!session?.accessToken) {
@@ -64,7 +77,6 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
             await appointmentsAPI.deleteAppointment(appointmentId, session.accessToken);
             setAppointments((current) => current.filter((item) => item.id !== appointmentId));
-            Alert.alert('Cita eliminada', 'La cita fue eliminada correctamente.');
           } catch (err) {
             const message = err instanceof Error ? err.message : 'No se pudo eliminar la cita.';
             Alert.alert('Error', message);
@@ -72,6 +84,21 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         },
       },
     ]);
+  };
+
+  const renderHeader = () => {
+    if (isLoading || isEmpty) return null;
+    return (
+      <View style={styles.headerContainer}>
+        <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Mis Citas</Text>
+        <View style={[styles.headerBadge, { backgroundColor: `${theme.colors.accentSecondary}15` }]}>
+          <MaterialCommunityIcons name="calendar-check" size={16} color={theme.colors.accentSecondary} />
+          <Text style={[styles.headerBadgeText, { color: theme.colors.accentSecondary }]}>
+            {appointments.length} programada{appointments.length !== 1 ? 's' : ''}
+          </Text>
+        </View>
+      </View>
+    );
   };
 
   if (isLoading) {
@@ -89,35 +116,47 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
       <FlatList
         data={appointments}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderHeader}
         contentContainerStyle={[
           styles.listContent,
           isEmpty && styles.listContentEmpty,
-          { paddingBottom: contentBottomInset },
+          { paddingBottom: contentBottomInset + 80 },
         ]}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => {
-          setIsRefreshing(true);
-          void loadAppointments();
-        }} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadAppointments();
+            }}
+          />
+        }
         ListEmptyComponent={
           error ? (
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={48} color={theme.colors.textMuted} />
+              <View style={[styles.emptyIconBox, { backgroundColor: `${theme.colors.accentTertiary}15` }]}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={48} color={theme.colors.accentTertiary} />
+              </View>
               <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>{error}</Text>
               <Pressable
                 onPress={() => {
                   setIsLoading(true);
                   void loadAppointments();
                 }}
-                style={[styles.retryButton, { backgroundColor: theme.colors.accentSecondary }]}
+                style={[styles.retryButton, { backgroundColor: theme.colors.textPrimary }]}
               >
-                <Text style={[styles.retryButtonText, { color: theme.colors.buttonText }]}>Intentar de nuevo</Text>
+                <Text style={[styles.retryButtonText, { color: theme.colors.background }]}>Intentar de nuevo</Text>
               </Pressable>
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="calendar-clock" size={48} color={theme.colors.textMuted} />
-              <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>No hay citas registradas</Text>
-              <Text style={[styles.emptySubtext, { color: theme.colors.textMuted }]}>Agrega tu proxima cita medica</Text>
+              <View style={[styles.emptyIconBox, { backgroundColor: `${theme.colors.accentSecondary}15` }]}>
+                <MaterialCommunityIcons name="calendar-blank" size={56} color={theme.colors.accentSecondary} />
+              </View>
+              <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>Tu agenda está libre</Text>
+              <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
+                Programa tus próximas citas médicas para mantener un control óptimo de tu salud.
+              </Text>
             </View>
           )
         }
@@ -126,61 +165,82 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
           const isValid = !Number.isNaN(parsed.getTime());
           const day = isValid ? parsed.getDate() : '--';
           const month = isValid ? parsed.toLocaleString('es-ES', { month: 'short' }).toUpperCase() : '--';
-          const timeStr = isValid ? parsed.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+          const timeStr = isValid
+            ? parsed.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+            : '--:--';
           const isLast = index === appointments.length - 1;
 
           return (
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineLeft}>
-                <Text style={[styles.timelineDay, { color: theme.colors.textPrimary }]}>{day}</Text>
-                <Text style={[styles.timelineMonth, { color: theme.colors.accentSecondary }]}>{month}</Text>
-                <Text style={[styles.timelineTime, { color: theme.colors.textMuted }]}>{timeStr}</Text>
-              </View>
-              
-              <View style={styles.timelineSeparator}>
-                <View style={[styles.timelineDot, { backgroundColor: theme.colors.accentSecondary, borderColor: theme.colors.background }]} />
+            <View style={styles.appointmentRow}>
+              <View style={styles.dateColumn}>
+                <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{day}</Text>
+                <Text style={[styles.dateMonth, { color: theme.colors.accentSecondary }]}>{month}</Text>
                 {!isLast && <View style={[styles.timelineLine, { backgroundColor: theme.colors.surfaceBorder }]} />}
               </View>
-              
-              <View style={styles.timelineContent}>
-                <View style={[styles.appointmentCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.headerTexts}>
-                      <Text style={[styles.appointmentTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
-                      <View style={styles.doctorBadge}>
-                        <MaterialCommunityIcons name="stethoscope" size={14} color={theme.colors.accentSecondary} />
-                        <Text style={[styles.doctorName, { color: theme.colors.accentSecondary }]} numberOfLines={1}>{item.doctorName}</Text>
-                      </View>
+
+              <View
+                style={[
+                  styles.cardContent,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+                ]}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={styles.titleWrapper}>
+                    <Text style={[styles.appointmentTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                  </View>
+                  <View style={[styles.timeChip, { backgroundColor: theme.colors.background }]}>
+                    <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.textSecondary} />
+                    <Text style={[styles.timeText, { color: theme.colors.textSecondary }]}>{timeStr}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailsContainer}>
+                  <View style={styles.detailItem}>
+                    <MaterialCommunityIcons name="stethoscope" size={16} color={theme.colors.accentSecondary} />
+                    <Text style={[styles.detailText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                      {item.doctorName}
+                    </Text>
+                  </View>
+                  {item.location ? (
+                    <View style={styles.detailItem}>
+                      <MaterialCommunityIcons name="map-marker-outline" size={16} color={theme.colors.textSecondary} />
+                      <Text style={[styles.detailText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                        {item.location}
+                      </Text>
                     </View>
-                    
-                    <View style={styles.actionsWrapper}>
-                      <Pressable
-                        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
-                        onPress={() => { setEditingAppointment(item); setShowAddModal(true); }}
-                      >
-                        <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textSecondary} />
-                      </Pressable>
-                      <Pressable
-                        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
-                        onPress={() => handleDeleteAppointment(item.id, item.title)}
-                      >
-                        <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.accentTertiary} />
-                      </Pressable>
-                    </View>
+                  ) : null}
+                </View>
+
+                <View style={[styles.cardFooter, { borderTopColor: theme.colors.surfaceBorder }]}>
+                  <View style={styles.notesContainer}>
+                    {item.notes ? (
+                      <Text style={[styles.notesText, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                        <MaterialCommunityIcons name="information-outline" size={12} /> {item.notes}
+                      </Text>
+                    ) : (
+                      <View />
+                    )}
                   </View>
 
-                  {item.location ? (
-                    <View style={styles.locationBlock}>
-                      <MaterialCommunityIcons name="map-marker-outline" size={16} color={theme.colors.textSecondary} />
-                      <Text style={[styles.locationText, { color: theme.colors.textSecondary }]} numberOfLines={2}>{item.location}</Text>
-                    </View>
-                  ) : null}
-
-                  {item.notes ? (
-                    <View style={[styles.notesBlock, { borderLeftColor: theme.colors.surfaceBorder }]}>
-                      <Text style={[styles.notesText, { color: theme.colors.textMuted }]} numberOfLines={3}>{item.notes}</Text>
-                    </View>
-                  ) : null}
+                  <View style={styles.actionsContainer}>
+                    <Pressable
+                      style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.5 }]}
+                      onPress={() => {
+                        setEditingAppointment(item);
+                        setShowAddModal(true);
+                      }}
+                    >
+                      <MaterialCommunityIcons name="pencil" size={20} color={theme.colors.textSecondary} />
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.5 }]}
+                      onPress={() => handleDeleteAppointment(item.id, item.title)}
+                    >
+                      <MaterialCommunityIcons name="trash-can" size={20} color={theme.colors.accentTertiary} />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>
@@ -192,7 +252,12 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         <Pressable
           style={[
             styles.fab,
-            { backgroundColor: theme.colors.accentSecondary, right: 18, bottom: contentBottomInset + 18, shadowColor: theme.colors.accentSecondary },
+            {
+              backgroundColor: theme.colors.accentSecondary,
+              right: 20,
+              bottom: contentBottomInset + 20,
+              shadowColor: theme.colors.accentSecondary,
+            },
           ]}
           onPress={() => {
             setEditingAppointment(null);
@@ -211,9 +276,11 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
           setEditingAppointment(null);
         }}
         onAppointmentAdded={(appointment) => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setAppointments((current) => [appointment, ...current]);
         }}
         onAppointmentUpdated={(appointment) => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setAppointments((current) => current.map((a) => (a.id === appointment.id ? appointment : a)));
         }}
         initialData={editingAppointment}
@@ -233,168 +300,191 @@ const styles = StyleSheet.create({
   listContent: {
     flexGrow: 1,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    gap: 12,
+    paddingTop: 16,
+    gap: 16,
   },
   listContentEmpty: {
     justifyContent: 'center',
   },
-  emptyState: {
+  headerContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 16,
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
-  emptySubtext: {
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
+  headerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
   },
-  retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  retryButtonText: {
+  headerBadgeText: {
     fontSize: 14,
     fontWeight: '700',
   },
-  timelineRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 24,
+    gap: 16,
   },
-  timelineLeft: {
+  emptyIconBox: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  emptySubtext: {
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  retryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  appointmentRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  dateColumn: {
     width: 64,
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 8,
   },
-  timelineDay: {
+  dateDay: {
     fontSize: 26,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: -0.5,
     lineHeight: 30,
   },
-  timelineMonth: {
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  timelineTime: {
+  dateMonth: {
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-  timelineSeparator: {
-    width: 24,
-    alignItems: 'center',
-  },
-  timelineDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    marginTop: 20,
-    zIndex: 1,
-    borderWidth: 3,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginTop: 2,
   },
   timelineLine: {
     position: 'absolute',
-    top: 34,
-    bottom: -16,
+    top: 56,
+    bottom: -24,
     width: 2,
-    zIndex: 0,
+    borderRadius: 1,
     opacity: 0.5,
   },
-  timelineContent: {
+  cardContent: {
     flex: 1,
-    paddingLeft: 4,
-  },
-  appointmentCard: {
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 24,
+    padding: 18,
     borderWidth: 1,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
   },
-  headerTexts: {
+  titleWrapper: {
     flex: 1,
-    gap: 4,
-    paddingRight: 12,
+    paddingRight: 16,
   },
   appointmentTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '800',
     letterSpacing: -0.3,
+    marginBottom: 4,
   },
-  doctorBadge: {
+  timeChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
     gap: 4,
   },
-  doctorName: {
-    fontSize: 14,
-    fontWeight: '600',
+  timeText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
-  actionsWrapper: {
-    flexDirection: 'row',
-    gap: 6,
+  detailsContainer: {
+    marginTop: 12,
+    marginBottom: 16,
+    gap: 8,
   },
-  iconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(150,150,150,0.1)',
-  },
-  locationBlock: {
+  detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
   },
-  locationText: {
+  detailText: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  notesBlock: {
-    paddingLeft: 12,
-    borderLeftWidth: 2,
-    marginTop: 4,
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  notesContainer: {
+    flex: 1,
+    paddingRight: 16,
   },
   notesText: {
     fontSize: 13,
+    fontWeight: '500',
     lineHeight: 18,
-    fontStyle: 'italic',
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    padding: 6,
   },
   fab: {
     position: 'absolute',
     flexDirection: 'row',
-    height: 52,
-    paddingHorizontal: 16,
-    borderRadius: 26,
+    height: 56,
+    paddingHorizontal: 20,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 998,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-    gap: 6,
+    shadowRadius: 12,
+    elevation: 6,
+    gap: 8,
   },
   fabText: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 });
