@@ -1,10 +1,12 @@
-import type { AppointmentDraft, MedicationDraft, RegisterWizardPayload } from '../models/register.types';
+import type { RegisterWizardPayload } from "../models/register.types";
 
 export function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
-export function parseBirthDate(value: string): { year: number; month: number; day: number } | null {
+export function parseBirthDate(
+  value: string,
+): { year: number; month: number; day: number } | null {
   const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!parsed) {
     return null;
@@ -17,8 +19,12 @@ export function parseBirthDate(value: string): { year: number; month: number; da
   };
 }
 
-export function formatBirthDate(year: number, month: number, day: number): string {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+export function formatBirthDate(
+  year: number,
+  month: number,
+  day: number,
+): string {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export function calculateAgeFromBirthDate(value: string): number | null {
@@ -29,7 +35,10 @@ export function calculateAgeFromBirthDate(value: string): number | null {
 
   const { year, month, day } = parsed;
   const date = new Date(year, month - 1, day);
-  const validDate = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  const validDate =
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day;
   if (!validDate) {
     return null;
   }
@@ -37,7 +46,8 @@ export function calculateAgeFromBirthDate(value: string): number | null {
   const today = new Date();
   let age = today.getFullYear() - year;
   const alreadyBirthday =
-    today.getMonth() > month - 1 || (today.getMonth() === month - 1 && today.getDate() >= day);
+    today.getMonth() > month - 1 ||
+    (today.getMonth() === month - 1 && today.getDate() >= day);
 
   if (!alreadyBirthday) {
     age -= 1;
@@ -50,42 +60,22 @@ export function calculateAgeFromBirthDate(value: string): number | null {
   return age;
 }
 
-export function createMedicationDraft(): MedicationDraft {
-  return {
-    id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    name: '',
-    dose: '',
-    schedule: '',
-    frequency: '',
-  };
-}
-
-export function createAppointmentDraft(): AppointmentDraft {
-  return {
-    id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    specialty: '',
-    date: '',
-    time: '',
-    place: '',
-  };
-}
-
 export function createInitialForm(): RegisterWizardPayload {
   return {
     personalData: {
-      fullName: '',
-      birthDate: '',
-      age: '',
-      phone: '',
-      phoneCountryCode: '+593',
-      phoneCountryIso: 'EC',
-      email: '',
-      password: '',
-      confirmPassword: '',
+      fullName: "",
+      birthDate: "",
+      age: "",
+      phone: "",
+      phoneCountryCode: "+593",
+      phoneCountryIso: "EC",
+      email: "",
+      password: "",
+      confirmPassword: "",
     },
     medicalInfo: {
-      conditions: '',
-      allergies: '',
+      conditions: "",
+      allergies: "",
       specialConditions: {
         pregnancy: false,
         lactation: false,
@@ -94,16 +84,12 @@ export function createInitialForm(): RegisterWizardPayload {
         anticoagulantTreatment: false,
       },
       specialConditionVigency: {
-        pregnancy: { isTemporary: false, until: '' },
-        lactation: { isTemporary: false, until: '' },
-        recentSurgeries: { isTemporary: false, until: '' },
-        immunosuppression: { isTemporary: false, until: '' },
-        anticoagulantTreatment: { isTemporary: false, until: '' },
+        pregnancy: { isTemporary: false, until: "" },
+        lactation: { isTemporary: false, until: "" },
+        recentSurgeries: { isTemporary: false, until: "" },
+        immunosuppression: { isTemporary: false, until: "" },
+        anticoagulantTreatment: { isTemporary: false, until: "" },
       },
     },
-    medications: [createMedicationDraft()],
-    medicationsDeferred: false,
-    appointments: [createAppointmentDraft()],
-    appointmentsDeferred: false,
   };
 }

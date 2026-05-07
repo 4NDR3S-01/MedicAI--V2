@@ -55,23 +55,89 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        fullName: dto.fullName?.trim() || null,
-      },
-    });
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        // Create user with all profile data
+        const newUser = await tx.user.create({
+          data: {
+            email,
+            passwordHash,
+            fullName: dto.fullName?.trim() || null,
+            birthDate: dto.birthDate || null,
+            phone: dto.phone || null,
+            conditions: dto.conditions || null,
+            allergies: dto.allergies || null,
+            pregnancy: dto.specialConditions?.pregnancy ?? false,
+            lactation: dto.specialConditions?.lactation ?? false,
+            recentSurgeries: dto.specialConditions?.recentSurgeries ?? false,
+            immunosuppression: dto.specialConditions?.immunosuppression ?? false,
+            anticoagulantTreatment: dto.specialConditions?.anticoagulantTreatment ?? false,
+          },
+        });
 
-    await this.issueAndSendEmailVerification(user);
-    this.logger.log('User registered', {
-      userId: user.id,
-      emailDomain: this.getEmailDomain(user.email),
-    });
+        // Create medications if not deferred
+        if (dto.medications && dto.medications.length > 0 && !dto.medicationsDeferred) {
+          for (const med of dto.medications) {
+            await tx.medication.create({
+              data: {
+                userId: newUser.id,
+                name: med.name.trim(),
+                dosage: med.dose.trim(),
+                frequency: med.frequency.trim(),
+                firstDoseTime: med.schedule.trim() || null,
+              },
+            });
+          }
+        }
 
-    return {
-      message: 'Cuenta creada. Revisa tu correo para verificar la cuenta.',
-    };
+        // Create appointments if not deferred
+        if (dto.appointments && dto.appointments.length > 0 && !dto.appointmentsDeferred) {
+          for (const apt of dto.appointments) {
+            try {
+              const [dateStr, timeStr] = [apt.date.trim(), apt.time.trim()];
+              const dateTime = new Date(`${dateStr}T${timeStr}:00`);
+
+              if (Number.isNaN(dateTime.getTime())) {
+                this.logger.warn('Invalid appointment date/time', { dateStr, timeStr, userId: newUser.id });
+                continue;
+              }
+
+              await tx.appointment.create({
+                data: {
+                  userId: newUser.id,
+                  title: apt.specialty.trim(),
+                  doctorName: '', // No se proporcionó en el registro
+                  scheduledAt: dateTime,
+                  location: apt.place.trim() || null,
+                },
+              });
+            } catch (error) {
+              this.logger.warn('Failed to create appointment', { appointment: apt, error });
+            }
+          }
+        }
+
+        return newUser;
+      });
+
+      await this.issueAndSendEmailVerification(user);
+      this.logger.log('User registered with profile', {
+        userId: user.id,
+        emailDomain: this.getEmailDomain(user.email),
+        medicationsCount: dto.medicationsDeferred ? 0 : dto.medications?.length || 0,
+        appointmentsCount: dto.appointmentsDeferred ? 0 : dto.appointments?.length || 0,
+      });
+
+      return {
+        message: 'Cuenta creada. Revisa tu correo para verificar la cuenta.',
+      };
+    } catch (error) {
+      this.logger.error('Registration failed', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('Error al registrar la cuenta. Intenta de nuevo.');
+    }
   }
 
   async checkEmailAvailability(emailRaw: string) {

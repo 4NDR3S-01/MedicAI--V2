@@ -11,10 +11,19 @@ model User {
   id               String                   @id @default(cuid())
   email            String                   @unique
   fullName         String?
+  birthDate        String?
+  phone            String?
   passwordHash     String
   isEmailVerified  Boolean                  @default(false)
   refreshTokenHash String?
   avatar           String?
+  conditions       String?
+  allergies        String?
+  pregnancy        Boolean                  @default(false)
+  lactation        Boolean                  @default(false)
+  recentSurgeries  Boolean                  @default(false)
+  immunosuppression Boolean                 @default(false)
+  anticoagulantTreatment Boolean            @default(false)
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 

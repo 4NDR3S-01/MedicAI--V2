@@ -1,6 +1,1 @@
-export type {
-  AppointmentDraft,
-  CountryOption,
-  MedicationDraft,
-  RegisterWizardPayload,
-} from './register.types';
+export type { CountryOption, RegisterWizardPayload } from "./register.types";
