@@ -84,7 +84,7 @@ export class AuthService {
                 name: med.name.trim(),
                 dosage: med.dose.trim(),
                 frequency: med.frequency.trim(),
-                firstDoseTime: med.schedule.trim() || null,
+                times: med.schedule ? [med.schedule.trim()] : [],
               },
             });
           }
