@@ -42,7 +42,7 @@ export class MedicationsService {
         name: dto.name.trim(),
         dosage: dto.dosage.trim(),
         frequency: dto.frequency.trim(),
-        firstDoseTime: dto.firstDoseTime?.trim() || null,
+        times: dto.times || [],
         notes: dto.notes?.trim() || null,
       },
     });
@@ -61,7 +61,7 @@ export class MedicationsService {
         name: dto.name !== undefined ? dto.name.trim() : medication.name,
         dosage: dto.dosage !== undefined ? dto.dosage.trim() : medication.dosage,
         frequency: dto.frequency !== undefined ? dto.frequency.trim() : medication.frequency,
-        firstDoseTime: dto.firstDoseTime !== undefined ? dto.firstDoseTime?.trim() || null : medication.firstDoseTime,
+        times: dto.times !== undefined ? dto.times : medication.times,
         notes: dto.notes !== undefined ? dto.notes?.trim() || null : medication.notes,
         active: dto.active !== undefined ? dto.active : medication.active,
       },
@@ -82,5 +82,20 @@ export class MedicationsService {
     this.logger.log('Medication deleted', { userId, medicationId });
 
     return { message: 'Medicamento eliminado correctamente.' };
+  }
+
+  async logAction(medicationId: string, userId: string, action: string) {
+    const medication = await this.findById(medicationId, userId);
+
+    const log = await this.prisma.medicationLog.create({
+      data: {
+        medicationId: medication.id,
+        action: action.toUpperCase(),
+      },
+    });
+
+    this.logger.log('Medication action logged', { userId, medicationId, action });
+
+    return log;
   }
 }

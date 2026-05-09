@@ -23,6 +23,7 @@ import { getStoredSession } from '../../auth';
 import type { AppTheme } from '../../../shared/theme';
 import type { AppointmentData } from '../services/appointments.service';
 import * as appointmentsAPI from '../services/appointments.service';
+import { scheduleAppointmentReminder } from '../../../shared/services/notifications.service';
 
 export type AddAppointmentModalProps = {
   visible: boolean;
@@ -195,6 +196,10 @@ export function AddAppointmentModal({
           location: location.trim() || undefined,
           notes: notes.trim() || undefined,
         });
+        
+        // Schedule notification
+        void scheduleAppointmentReminder(appointment);
+        
         onAppointmentUpdated?.(appointment);
         Alert.alert('Cita actualizada', 'La cita se actualizó correctamente.');
       } else {
@@ -205,6 +210,10 @@ export function AddAppointmentModal({
           location: location.trim() || undefined,
           notes: notes.trim() || undefined,
         });
+        
+        // Schedule notification
+        void scheduleAppointmentReminder(appointment);
+        
         onAppointmentAdded(appointment);
         Alert.alert('Cita creada', 'La cita se registro correctamente.');
       }

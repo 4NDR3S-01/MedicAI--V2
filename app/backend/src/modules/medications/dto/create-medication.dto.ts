@@ -16,10 +16,10 @@ export class CreateMedicationDto {
   @MaxLength(200)
   frequency!: string;
 
-  @IsString()
+  @IsString({ each: true })
   @IsOptional()
-  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
-  firstDoseTime?: string;
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { each: true })
+  times?: string[];
 
   @IsString()
   @IsOptional()

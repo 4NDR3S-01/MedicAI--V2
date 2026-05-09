@@ -1,8 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,7 +11,6 @@ import {
   Text,
   View,
   LayoutAnimation,
-  UIManager,
   Platform,
 } from 'react-native';
 
@@ -19,6 +19,7 @@ import { getStoredSession } from '../../auth';
 import { AddAppointmentModal } from '../components/AddAppointmentModal';
 import type { AppointmentData } from '../services/appointments.service';
 import * as appointmentsAPI from '../services/appointments.service';
+import { cancelNotificationsByDataId } from '../../../shared/services/notifications.service';
 
 export type AppointmentsScreenProps = {
   theme: AppTheme;
@@ -33,6 +34,10 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentData | null>(null);
 
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
   const isEmpty = appointments.length === 0;
 
   const loadAppointments = useCallback(async () => {
@@ -46,6 +51,12 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
       const data = await appointmentsAPI.fetchAppointments(session.accessToken);
       setAppointments(data || []);
+
+      // Trigger entry animation
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al cargar citas';
       setError(message);
@@ -53,7 +64,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -78,6 +89,10 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
             }
 
             await appointmentsAPI.deleteAppointment(appointmentId, session.accessToken);
+            
+            // Cancel pending reminders
+            await cancelNotificationsByDataId(appointmentId);
+            
             setAppointments((current) => current.filter((item) => item.id !== appointmentId));
           } catch (err) {
             const message = err instanceof Error ? err.message : 'No se pudo eliminar la cita.';
@@ -91,15 +106,39 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   const renderHeader = () => {
     if (isLoading || isEmpty) return null;
     return (
-      <View style={styles.headerContainer}>
-        <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Mis Citas</Text>
-        <View style={[styles.headerBadge, { backgroundColor: `${theme.colors.accentSecondary}15` }]}>
-          <MaterialCommunityIcons name="calendar-check" size={16} color={theme.colors.accentSecondary} />
-          <Text style={[styles.headerBadgeText, { color: theme.colors.accentSecondary }]}>
-            {appointments.length} programada{appointments.length !== 1 ? 's' : ''}
-          </Text>
+      <Animated.View style={[styles.headerWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <View style={styles.headerTitleRow}>
+          <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Mi Agenda</Text>
+          <View style={[styles.dateBadge, { backgroundColor: `${theme.colors.accentSecondary}10` }]}>
+            <Text style={[styles.dateBadgeText, { color: theme.colors.accentSecondary }]}>Mayo 2026</Text>
+          </View>
         </View>
-      </View>
+
+        {/* Weekly Mini Calendar Selector (Visual only for now) */}
+        <View style={styles.calendarStrip}>
+          {[
+            { day: 'Lun', num: '04' },
+            { day: 'Mar', num: '05' },
+            { day: 'Mié', num: '06' },
+            { day: 'Jue', num: '07' },
+            { day: 'Vie', num: '08' },
+            { day: 'Sáb', num: '09', active: true },
+            { day: 'Dom', num: '10' },
+          ].map((item) => (
+            <View
+              key={item.num}
+              style={[
+                styles.calendarDay,
+                item.active && { backgroundColor: theme.colors.accentSecondary, borderColor: theme.colors.accentSecondary },
+                !item.active && { borderColor: theme.colors.surfaceBorder },
+              ]}
+            >
+              <Text style={[styles.dayName, { color: item.active ? '#FFF' : theme.colors.textMuted }]}>{item.day}</Text>
+              <Text style={[styles.dayNum, { color: item.active ? '#FFF' : theme.colors.textPrimary }]}>{item.num}</Text>
+            </View>
+          ))}
+        </View>
+      </Animated.View>
     );
   };
 
@@ -123,7 +162,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         contentContainerStyle={[
           styles.listContent,
           isEmpty && styles.listContentEmpty,
-          { paddingBottom: contentBottomInset + 80 },
+          { paddingBottom: contentBottomInset + 100 },
         ]}
         refreshControl={
           <RefreshControl
@@ -154,7 +193,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
           ) : (
             <View style={styles.emptyState}>
               <View style={[styles.emptyIconBox, { backgroundColor: `${theme.colors.accentSecondary}15` }]}>
-                <MaterialCommunityIcons name="calendar-blank" size={56} color={theme.colors.accentSecondary} />
+                <MaterialCommunityIcons name="calendar-blank" size={64} color={theme.colors.accentSecondary} />
               </View>
               <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>Tu agenda está libre</Text>
               <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
@@ -171,106 +210,103 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
           const timeStr = isValid
             ? parsed.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
             : '--:--';
-          const isLast = index === appointments.length - 1;
 
           return (
-            <View style={styles.appointmentRow}>
-              <View style={styles.dateColumn}>
-                <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{day}</Text>
-                <Text style={[styles.dateMonth, { color: theme.colors.accentSecondary }]}>{month}</Text>
-                {!isLast && <View style={[styles.timelineLine, { backgroundColor: theme.colors.surfaceBorder }]} />}
-              </View>
-
-              <View
-                style={[
-                  styles.cardContent,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-                ]}
-              >
-                <View style={styles.cardHeader}>
-                  <View style={styles.titleWrapper}>
-                    <Text style={[styles.appointmentTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-                  </View>
-                  <View style={[styles.timeChip, { backgroundColor: theme.colors.background }]}>
-                    <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.textSecondary} />
-                    <Text style={[styles.timeText, { color: theme.colors.textSecondary }]}>{timeStr}</Text>
-                  </View>
+            <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+              <View style={styles.appointmentCardWrapper}>
+                <View style={styles.dateColumn}>
+                  <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{day}</Text>
+                  <Text style={[styles.dateMonth, { color: theme.colors.accentSecondary }]}>{month}</Text>
+                  <View style={[styles.dateLine, { backgroundColor: theme.colors.surfaceBorder }]} />
                 </View>
 
-                <View style={styles.detailsContainer}>
-                  <View style={styles.detailItem}>
-                    <MaterialCommunityIcons name="stethoscope" size={16} color={theme.colors.accentSecondary} />
-                    <Text style={[styles.detailText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                      {item.doctorName}
-                    </Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.cardBody,
+                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+                    pressed && { transform: [{ scale: 0.98 }] },
+                  ]}
+                  onLongPress={() => {
+                    setEditingAppointment(item);
+                    setShowAddModal(true);
+                  }}
+                >
+                  <View style={styles.cardTop}>
+                    <View style={styles.titleGroup}>
+                      <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <View style={[styles.timeTag, { backgroundColor: `${theme.colors.accentSecondary}10` }]}>
+                        <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.accentSecondary} />
+                        <Text style={[styles.timeLabel, { color: theme.colors.accentSecondary }]}>{timeStr}</Text>
+                      </View>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={24} color={theme.colors.textMuted} />
                   </View>
-                  {item.location ? (
+
+                  <View style={styles.detailsGroup}>
                     <View style={styles.detailItem}>
-                      <MaterialCommunityIcons name="map-marker-outline" size={16} color={theme.colors.textSecondary} />
-                      <Text style={[styles.detailText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                        {item.location}
+                      <View style={[styles.detailIconBox, { backgroundColor: `${theme.colors.accentSecondary}10` }]}>
+                        <MaterialCommunityIcons name="stethoscope" size={16} color={theme.colors.accentSecondary} />
+                      </View>
+                      <Text style={[styles.detailValue, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                        {item.doctorName}
                       </Text>
                     </View>
-                  ) : null}
-                </View>
-
-                <View style={[styles.cardFooter, { borderTopColor: theme.colors.surfaceBorder }]}>
-                  <View style={styles.notesContainer}>
-                    {item.notes ? (
-                      <Text style={[styles.notesText, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                        <MaterialCommunityIcons name="information-outline" size={12} /> {item.notes}
-                      </Text>
-                    ) : (
-                      <View />
-                    )}
+                    
+                    {item.location ? (
+                      <View style={styles.detailItem}>
+                        <View style={[styles.detailIconBox, { backgroundColor: `${theme.colors.textMuted}10` }]}>
+                          <MaterialCommunityIcons name="map-marker-outline" size={16} color={theme.colors.textSecondary} />
+                        </View>
+                        <Text style={[styles.detailValue, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                          {item.location}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
 
-                  <View style={styles.actionsContainer}>
-                    <Pressable
-                      style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.5 }]}
-                      onPress={() => {
-                        setEditingAppointment(item);
-                        setShowAddModal(true);
-                      }}
-                    >
-                      <MaterialCommunityIcons name="pencil" size={20} color={theme.colors.textSecondary} />
-                    </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.5 }]}
-                      onPress={() => handleDeleteAppointment(item.id, item.title)}
-                    >
-                      <MaterialCommunityIcons name="trash-can" size={20} color={theme.colors.accentTertiary} />
+                  <View style={[styles.cardFooter, { borderTopColor: theme.colors.background }]}>
+                    <View style={styles.actionRow}>
+                      <Pressable
+                        style={styles.actionBtn}
+                        onPress={() => {
+                          setEditingAppointment(item);
+                          setShowAddModal(true);
+                        }}
+                      >
+                        <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textSecondary} />
+                      </Pressable>
+                      <Pressable style={styles.actionBtn} onPress={() => handleDeleteAppointment(item.id, item.title)}>
+                        <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.accentTertiary} />
+                      </Pressable>
+                    </View>
+                    <Pressable style={[styles.primaryAction, { backgroundColor: theme.colors.accentSecondary }]}>
+                      <Text style={[styles.primaryActionText, { color: theme.colors.buttonText }]}>Ver Mapa</Text>
                     </Pressable>
                   </View>
-                </View>
+                </Pressable>
               </View>
-            </View>
+            </Animated.View>
           );
         }}
       />
 
-      {!error && (
-        <Pressable
-          style={[
-            styles.fab,
-            {
-              backgroundColor: theme.colors.accentSecondary,
-              right: 20,
-              bottom: contentBottomInset + 20,
-              shadowColor: theme.colors.accentSecondary,
-            },
-          ]}
-          onPress={() => {
-            setEditingAppointment(null);
-            setShowAddModal(true);
-          }}
-        >
-          <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
-          <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agendar</Text>
-        </Pressable>
-      )}
+      <Pressable
+        style={[
+          styles.fab,
+          {
+            backgroundColor: theme.colors.accentSecondary,
+            bottom: contentBottomInset + 24,
+          },
+        ]}
+        onPress={() => {
+          setEditingAppointment(null);
+          setShowAddModal(true);
+        }}
+      >
+        <MaterialCommunityIcons name="calendar-plus" size={26} color={theme.colors.buttonText} />
+      </Pressable>
 
       <AddAppointmentModal
         visible={showAddModal}
@@ -294,200 +330,58 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, position: 'relative' },
-  centerContent: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 16,
-  },
-  listContentEmpty: {
-    justifyContent: 'center',
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  headerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-  headerBadgeText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 24,
-    gap: 16,
-  },
-  emptyIconBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 22,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  emptySubtext: {
-    fontSize: 15,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  retryButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 12,
-  },
-  retryButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  appointmentRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  dateColumn: {
-    width: 64,
-    alignItems: 'center',
-    paddingTop: 8,
-  },
-  dateDay: {
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    lineHeight: 30,
-  },
-  dateMonth: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginTop: 2,
-  },
-  timelineLine: {
-    position: 'absolute',
-    top: 56,
-    bottom: -24,
-    width: 2,
-    borderRadius: 1,
-    opacity: 0.5,
-  },
-  cardContent: {
-    flex: 1,
-    borderRadius: 24,
-    padding: 18,
-    borderWidth: 1,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  titleWrapper: {
-    flex: 1,
-    paddingRight: 16,
-  },
-  appointmentTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  timeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
-  },
-  timeText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  detailsContainer: {
-    marginTop: 12,
-    marginBottom: 16,
-    gap: 8,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detailText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  notesContainer: {
-    flex: 1,
-    paddingRight: 16,
-  },
-  notesText: {
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 18,
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionButton: {
-    padding: 6,
-  },
+  screen: { flex: 1 },
+  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  listContent: { paddingHorizontal: 20, paddingTop: 20, gap: 20 },
+  listContentEmpty: { justifyContent: 'center' },
+  headerWrapper: { gap: 20, marginBottom: 8 },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1 },
+  dateBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+  dateBadgeText: { fontSize: 14, fontWeight: '800' },
+  calendarStrip: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  calendarDay: { flex: 1, height: 74, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  dayName: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  dayNum: { fontSize: 18, fontWeight: '900' },
+  emptyState: { alignItems: 'center', paddingVertical: 80, gap: 20 },
+  emptyIconBox: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
+  emptySubtext: { fontSize: 16, fontWeight: '500', textAlign: 'center', lineHeight: 24, opacity: 0.7 },
+  retryButton: { paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16, marginTop: 12 },
+  retryButtonText: { fontSize: 16, fontWeight: '800' },
+  appointmentCardWrapper: { flexDirection: 'row', gap: 16 },
+  dateColumn: { width: 50, alignItems: 'center', paddingTop: 10 },
+  dateDay: { fontSize: 28, fontWeight: '900', letterSpacing: -1, lineHeight: 30 },
+  dateMonth: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  dateLine: { position: 'absolute', top: 60, bottom: -20, width: 2, left: 24, opacity: 0.5 },
+  cardBody: { flex: 1, borderRadius: 28, borderWidth: 1, padding: 20, gap: 16 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  titleGroup: { flex: 1, gap: 6 },
+  cardTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
+  timeTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  timeLabel: { fontSize: 13, fontWeight: '800' },
+  detailsGroup: { gap: 12 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  detailIconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  detailValue: { fontSize: 15, fontWeight: '600' },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTopWidth: 1 },
+  actionRow: { flexDirection: 'row', gap: 8 },
+  actionBtn: { padding: 8 },
+  primaryAction: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 },
+  primaryActionText: { fontSize: 14, fontWeight: '800' },
   fab: {
     position: 'absolute',
-    flexDirection: 'row',
-    height: 56,
-    paddingHorizontal: 20,
-    borderRadius: 28,
+    right: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 998,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-    gap: 8,
-  },
-  fabText: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
   },
 });
+

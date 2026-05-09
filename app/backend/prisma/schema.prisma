@@ -67,16 +67,29 @@ model Medication {
   name         String
   dosage       String
   frequency    String
-  firstDoseTime String?
+  times        String[] // Array of "HH:mm" strings
   notes        String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs MedicationLog[]
 
   @@index([userId])
   @@index([createdAt])
+}
+
+model MedicationLog {
+  id           String   @id @default(cuid())
+  medicationId String
+  action       String   // "TAKEN", "SKIPPED", "SNOOZED"
+  takenAt      DateTime @default(now())
+  
+  medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  @@index([medicationId])
+  @@index([takenAt])
 }
 
 model Appointment {

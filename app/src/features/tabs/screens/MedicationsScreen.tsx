@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,16 +11,19 @@ import {
   View,
   Switch,
   LayoutAnimation,
-  UIManager,
   Platform,
+  Alert,
 } from 'react-native';
-import { Alert } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
 import * as medicationsAPI from '../services/medications.service';
 import type { MedicationData } from '../services/medications.service';
 import { getStoredSession } from '../../auth';
 import { AddMedicationModal } from '../components/AddMedicationModal';
+import {
+  scheduleMedicationNotifications,
+  cancelNotificationsByDataId,
+} from '../../../shared/services/notifications.service';
 
 export type MedicationsScreenProps = {
   theme: AppTheme;
@@ -34,8 +38,15 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMedication, setEditingMedication] = useState<MedicationData | null>(null);
 
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
   const isEmpty = medications.length === 0;
   const activeCount = medications.filter((m) => m.active).length;
+  const takenToday = 3; // Mock value for progress
+  const totalToday = medications.length > 0 ? medications.length : 4;
+  const progress = totalToday > 0 ? takenToday / totalToday : 0;
 
   const loadMedications = useCallback(async () => {
     try {
@@ -48,6 +59,12 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 
       const data = await medicationsAPI.fetchMedications(session.accessToken);
       setMedications(data || []);
+      
+      // Trigger entry animation
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al cargar medicamentos';
       setError(message);
@@ -55,7 +72,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -80,6 +97,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             }
 
             await medicationsAPI.deleteMedication(medicationId, session.accessToken);
+            
+            // Cancel pending notifications
+            await cancelNotificationsByDataId(medicationId);
+            
             setMedications((current) => current.filter((med) => med.id !== medicationId));
           } catch (err) {
             const message = err instanceof Error ? err.message : 'Error al eliminar';
@@ -91,7 +112,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   };
 
   const toggleMedicationStatus = async (med: MedicationData) => {
-    // Disable LayoutAnimation on iOS to prevent weird animations
     if (Platform.OS === 'android') {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
@@ -102,9 +122,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     try {
       const session = await getStoredSession();
       if (!session?.accessToken) {
-        if (Platform.OS === 'android') {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        }
         setMedications((current) =>
           current.map((m) => (m.id === med.id ? { ...m, active: med.active } : m))
         );
@@ -114,6 +131,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       const updated = await medicationsAPI.updateMedication(med.id, session.accessToken, {
         active: !med.active,
       });
+      
+      // Update notifications schedule
+      await scheduleMedicationNotifications(updated);
+      
       setMedications((current) => current.map((m) => (m.id === med.id ? updated : m)));
     } catch (err) {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -128,15 +149,31 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const renderHeader = () => {
     if (isLoading || isEmpty) return null;
     return (
-      <View style={styles.headerContainer}>
-        <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Mi Tratamiento</Text>
-        <View style={[styles.headerBadge, { backgroundColor: `${theme.colors.accentPrimary}15` }]}>
-          <MaterialCommunityIcons name="shield-check" size={16} color={theme.colors.accentPrimary} />
-          <Text style={[styles.headerBadgeText, { color: theme.colors.accentPrimary }]}>
-            {activeCount} activo{activeCount !== 1 ? 's' : ''} de {medications.length}
-          </Text>
+      <Animated.View style={[styles.headerWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <View style={styles.headerTitleRow}>
+          <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Mi Tratamiento</Text>
+          <Pressable style={[styles.historyButton, { backgroundColor: `${theme.colors.accentPrimary}10` }]}>
+            <MaterialCommunityIcons name="history" size={20} color={theme.colors.accentPrimary} />
+          </Pressable>
         </View>
-      </View>
+
+        <View style={[styles.progressCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+          <View style={styles.progressTextRow}>
+            <View>
+              <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>Progreso de hoy</Text>
+              <Text style={[styles.progressValue, { color: theme.colors.textPrimary }]}>
+                {takenToday} de {totalToday} <Text style={styles.progressSubtext}>dosis completadas</Text>
+              </Text>
+            </View>
+            <View style={[styles.progressIcon, { backgroundColor: `${theme.colors.success}15` }]}>
+              <MaterialCommunityIcons name="check-decagram" size={24} color={theme.colors.success} />
+            </View>
+          </View>
+          <View style={[styles.progressTrack, { backgroundColor: `${theme.colors.textMuted}20` }]}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: theme.colors.accentPrimary }]} />
+          </View>
+        </View>
+      </Animated.View>
     );
   };
 
@@ -160,7 +197,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         contentContainerStyle={[
           styles.listContent,
           isEmpty && styles.listContentEmpty,
-          { paddingBottom: contentBottomInset + 80 }, // extra padding for FAB
+          { paddingBottom: contentBottomInset + 100 },
         ]}
         refreshControl={
           <RefreshControl
@@ -191,7 +228,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           ) : (
             <View style={styles.emptyState}>
               <View style={[styles.emptyIconBox, { backgroundColor: `${theme.colors.accentPrimary}15` }]}>
-                <MaterialCommunityIcons name="medical-bag" size={56} color={theme.colors.accentPrimary} />
+                <MaterialCommunityIcons name="medical-bag" size={64} color={theme.colors.accentPrimary} />
               </View>
               <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>Tu botiquín está vacío</Text>
               <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
@@ -200,37 +237,51 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             </View>
           )
         }
-        renderItem={({ item, index }) => {
-          const isLast = index === medications.length - 1;
-          return (
-            <View style={styles.medicationRow}>
-              <View style={[styles.timeColumn, !item.active && styles.medicationRowInactive]}>
-                {item.firstDoseTime ? (
-                  <>
-                    <Text style={[styles.timeText, { color: theme.colors.textPrimary }]}>{item.firstDoseTime}</Text>
-                    <Text style={[styles.timeLabel, { color: theme.colors.textMuted }]}>INICIO</Text>
-                  </>
-                ) : (
-                  <View style={[styles.noTimeIcon, { backgroundColor: theme.colors.background }]}>
-                    <MaterialCommunityIcons name="all-inclusive" size={20} color={theme.colors.textMuted} />
-                  </View>
-                )}
-                {!isLast && <View style={[styles.timelineLine, { backgroundColor: theme.colors.surfaceBorder }]} />}
+        renderItem={({ item, index }) => (
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            <View style={styles.medicationCardWrapper}>
+              <View style={styles.timeSection}>
+                <Text style={[styles.timeText, { color: theme.colors.textPrimary }]}>
+                  {item.times?.[0] || '--:--'}
+                </Text>
+                <View style={[styles.timeDot, { backgroundColor: item.active ? theme.colors.accentPrimary : theme.colors.textMuted }]} />
+                <View style={[styles.timeLine, { backgroundColor: theme.colors.surfaceBorder }]} />
               </View>
 
-              <View
-                style={[
-                  styles.cardContent,
+              <Pressable
+                style={({ pressed }) => [
+                  styles.cardBody,
                   { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-                  !item.active && { opacity: 0.5 },
+                  !item.active && { opacity: 0.6 },
+                  pressed && { transform: [{ scale: 0.98 }] },
                 ]}
+                onLongPress={() => {
+                  setEditingMedication(item);
+                  setShowAddModal(true);
+                }}
               >
-                <View style={styles.cardHeader}>
-                  <View style={styles.titleWrapper}>
+                <View style={styles.cardTop}>
+                  <View style={styles.infoGroup}>
                     <Text style={[styles.medName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text style={[styles.medDosage, { color: theme.colors.accentPrimary }]}>{item.dosage}</Text>
+                    <View style={styles.dosageRow}>
+                      <Text style={[styles.dosageText, { color: theme.colors.accentPrimary }]}>{item.dosage}</Text>
+                      <View style={[styles.separator, { backgroundColor: theme.colors.textMuted }]} />
+                      <Text style={[styles.frequencyText, { color: theme.colors.textSecondary }]}>{item.frequency}</Text>
+                    </View>
+                    
+                    {/* Display multiple times */}
+                    {item.times && item.times.length > 0 && (
+                      <View style={styles.timesBadgeList}>
+                        {item.times.map((t, i) => (
+                          <View key={i} style={[styles.timeBadge, { backgroundColor: `${theme.colors.accentPrimary}10` }]}>
+                            <MaterialCommunityIcons name="alarm" size={12} color={theme.colors.accentPrimary} />
+                            <Text style={[styles.timeBadgeText, { color: theme.colors.accentPrimary }]}>{t}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
                   <Switch
                     value={item.active}
@@ -239,68 +290,73 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                   />
                 </View>
 
-                <View style={styles.detailsRow}>
-                  <View style={[styles.detailChip, { backgroundColor: theme.colors.background }]}>
-                    <MaterialCommunityIcons name="update" size={14} color={theme.colors.textSecondary} />
-                    <Text style={[styles.detailText, { color: theme.colors.textSecondary }]}>{item.frequency}</Text>
+                {item.notes && (
+                  <View style={[styles.notesBox, { backgroundColor: theme.colors.background }]}>
+                    <Text style={[styles.notesText, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+                      {item.notes}
+                    </Text>
                   </View>
-                </View>
+                )}
 
-                <View style={[styles.cardFooter, { borderTopColor: theme.colors.surfaceBorder }]}>
-                  <View style={styles.notesContainer}>
-                    {item.notes ? (
-                      <Text style={[styles.notesText, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                        <MaterialCommunityIcons name="information-outline" size={12} /> {item.notes}
-                      </Text>
-                    ) : (
-                      <View />
-                    )}
-                  </View>
-
-                  <View style={styles.actionsContainer}>
+                <View style={styles.cardActions}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.takeButton,
+                      { backgroundColor: theme.colors.accentPrimary },
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    onPress={async () => {
+                      try {
+                        const session = await getStoredSession();
+                        if (!session?.accessToken) return;
+                        await medicationsAPI.logMedicationAction(item.id, session.accessToken, 'TAKEN');
+                        Alert.alert('Completado', `${item.name} marcado como tomado.`);
+                      } catch (err) {
+                        console.error(err);
+                        Alert.alert('Error', 'No se pudo registrar la toma.');
+                      }
+                    }}
+                  >
+                    <MaterialCommunityIcons name="check" size={18} color={theme.colors.buttonText} />
+                    <Text style={[styles.takeButtonText, { color: theme.colors.buttonText }]}>Tomar dosis</Text>
+                  </Pressable>
+                  
+                  <View style={styles.iconActions}>
                     <Pressable
-                      style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.5 }]}
+                      style={styles.iconBtn}
                       onPress={() => {
                         setEditingMedication(item);
                         setShowAddModal(true);
                       }}
                     >
-                      <MaterialCommunityIcons name="pencil" size={20} color={theme.colors.textSecondary} />
+                      <MaterialCommunityIcons name="pencil-outline" size={22} color={theme.colors.textSecondary} />
                     </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.5 }]}
-                      onPress={() => handleDeleteMedication(item.id, item.name)}
-                    >
-                      <MaterialCommunityIcons name="trash-can" size={20} color={theme.colors.accentTertiary} />
+                    <Pressable style={styles.iconBtn} onPress={() => handleDeleteMedication(item.id, item.name)}>
+                      <MaterialCommunityIcons name="trash-can-outline" size={22} color={theme.colors.accentTertiary} />
                     </Pressable>
                   </View>
                 </View>
-              </View>
+              </Pressable>
             </View>
-          );
-        }}
+          </Animated.View>
+        )}
       />
 
-      {!error && (
-        <Pressable
-          style={[
-            styles.fab,
-            {
-              backgroundColor: theme.colors.accentPrimary,
-              right: 20,
-              bottom: contentBottomInset + 20,
-              shadowColor: theme.colors.accentPrimary,
-            },
-          ]}
-          onPress={() => {
-            setEditingMedication(null);
-            setShowAddModal(true);
-          }}
-        >
-          <MaterialCommunityIcons name="plus" size={24} color={theme.colors.buttonText} />
-          <Text style={[styles.fabText, { color: theme.colors.buttonText }]}>Agregar</Text>
-        </Pressable>
-      )}
+      <Pressable
+        style={[
+          styles.fab,
+          {
+            backgroundColor: theme.colors.accentPrimary,
+            bottom: contentBottomInset + 24,
+          },
+        ]}
+        onPress={() => {
+          setEditingMedication(null);
+          setShowAddModal(true);
+        }}
+      >
+        <MaterialCommunityIcons name="plus" size={26} color={theme.colors.buttonText} />
+      </Pressable>
 
       <AddMedicationModal
         visible={showAddModal}
@@ -324,203 +380,64 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, position: 'relative' },
-  centerContent: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 16,
-  },
-  listContentEmpty: {
-    justifyContent: 'center',
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  headerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-  headerBadgeText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 24,
-    gap: 16,
-  },
-  emptyIconBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 22,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  emptySubtext: {
-    fontSize: 15,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  retryButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 12,
-  },
-  retryButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  medicationRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  medicationRowInactive: {
-    opacity: 0.5,
-  },
-  timeColumn: {
-    width: 64,
-    alignItems: 'center',
-    paddingTop: 16,
-  },
-  timeText: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  timeLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginTop: 2,
-  },
-  noTimeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timelineLine: {
-    position: 'absolute',
-    top: 60,
-    bottom: -24,
-    width: 2,
-    borderRadius: 1,
-    opacity: 0.5,
-  },
-  cardContent: {
-    flex: 1,
-    borderRadius: 24,
-    padding: 18,
-    borderWidth: 1,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  titleWrapper: {
-    flex: 1,
-    paddingRight: 16,
-  },
-  medName: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-    marginBottom: 4,
-  },
-  medDosage: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  detailsRow: {
-    flexDirection: 'row',
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  detailChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
-  },
-  detailText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  notesContainer: {
-    flex: 1,
-    paddingRight: 16,
-  },
-  notesText: {
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 18,
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionButton: {
-    padding: 6,
-  },
+  screen: { flex: 1 },
+  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  listContent: { paddingHorizontal: 20, paddingTop: 20, gap: 20 },
+  listContentEmpty: { justifyContent: 'center' },
+  headerWrapper: { gap: 16, marginBottom: 8 },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1 },
+  historyButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  progressCard: { borderRadius: 28, borderWidth: 1, padding: 20, gap: 16 },
+  progressTextRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  progressLabel: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  progressValue: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
+  progressSubtext: { fontSize: 14, fontWeight: '600', opacity: 0.6 },
+  progressIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  progressTrack: { height: 10, borderRadius: 5, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 5 },
+  emptyState: { alignItems: 'center', paddingVertical: 80, gap: 20 },
+  emptyIconBox: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
+  emptySubtext: { fontSize: 16, fontWeight: '500', textAlign: 'center', lineHeight: 24, opacity: 0.7 },
+  retryButton: { paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16, marginTop: 12 },
+  retryButtonText: { fontSize: 16, fontWeight: '800' },
+  medicationCardWrapper: { flexDirection: 'row', gap: 16 },
+  timeSection: { width: 50, alignItems: 'center', paddingTop: 10 },
+  timeText: { fontSize: 15, fontWeight: '900', marginBottom: 8 },
+  timeDot: { width: 10, height: 10, borderRadius: 5, zIndex: 2 },
+  timeLine: { position: 'absolute', top: 40, bottom: -20, width: 2, left: 24 },
+  cardBody: { flex: 1, borderRadius: 28, borderWidth: 1, padding: 20, gap: 14 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  infoGroup: { flex: 1, paddingRight: 10 },
+  medName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginBottom: 4 },
+  dosageRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dosageText: { fontSize: 15, fontWeight: '700' },
+  frequencyText: { fontSize: 14, fontWeight: '600' },
+  separator: { width: 4, height: 4, borderRadius: 2, opacity: 0.3 },
+  notesBox: { padding: 12, borderRadius: 16 },
+  notesText: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  cardActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  takeButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18 },
+  takeButtonText: { fontSize: 14, fontWeight: '800' },
+  iconActions: { flexDirection: 'row', gap: 8 },
+  iconBtn: { padding: 8 },
+  timesBadgeList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  timeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  timeBadgeText: { fontSize: 11, fontWeight: '800' },
   fab: {
     position: 'absolute',
-    flexDirection: 'row',
-    height: 56,
-    paddingHorizontal: 20,
-    borderRadius: 28,
+    right: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 998,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-    gap: 8,
-  },
-  fabText: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
   },
 });
+

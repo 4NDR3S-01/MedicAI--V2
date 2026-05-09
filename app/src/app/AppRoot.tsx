@@ -30,6 +30,14 @@ import {
 import { MainAppShell } from './MainAppShell';
 import { appStorage } from '../shared/storage';
 import { useAppTheme } from '../shared/theme';
+import * as Notifications from 'expo-notifications';
+import {
+  setupNotifications,
+  registerForPushNotificationsAsync,
+  NOTIFICATION_ACTIONS,
+  snoozeNotification,
+} from '../shared/services/notifications.service';
+import { logMedicationAction } from '../features/tabs/services/medications.service';
 
 const SPLASH_DURATION_MS = 1200;
 const AUTH_STATE_STORAGE_KEY = 'medicai_auth_state_v1';
@@ -504,6 +512,41 @@ export function AppRoot() {
 
     return () => {
       subscription.remove();
+    };
+  }, []);
+
+  // Setup Notifications
+  useEffect(() => {
+    void setupNotifications();
+    void registerForPushNotificationsAsync();
+
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      const { actionIdentifier, notification } = response;
+      const data = notification.request.content.data;
+
+      try {
+        const session = await getStoredSession();
+        if (!session?.accessToken) return;
+
+        if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
+          await logMedicationAction(data.id, session.accessToken, 'TAKEN');
+          Alert.alert('Éxito', 'Toma de medicamento registrada.');
+        } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
+          await logMedicationAction(data.id, session.accessToken, 'SKIPPED');
+          Alert.alert('Información', 'Dosis marcada como omitida.');
+        } else if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE) {
+          await snoozeNotification(notification.request.content);
+        } else if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
+          // logic for confirming appointment if needed
+          Alert.alert('Cita Confirmada', 'Se ha confirmado tu asistencia.');
+        }
+      } catch (error) {
+        console.error('Error handling notification action:', error);
+      }
+    });
+
+    return () => {
+      responseSubscription.remove();
     };
   }, []);
 

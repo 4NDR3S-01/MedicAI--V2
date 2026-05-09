@@ -43,4 +43,14 @@ export class MedicationsController {
     const userId = req.user?.sub;
     return this.medicationsService.delete(medicationId, userId);
   }
+
+  @Post(':id/logs')
+  logAction(
+    @Param('id') medicationId: string,
+    @Body('action') action: string,
+    @Request() req: any,
+  ) {
+    const userId = req.user?.sub;
+    return this.medicationsService.logAction(medicationId, userId, action);
+  }
 }

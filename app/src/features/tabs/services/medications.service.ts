@@ -6,7 +6,7 @@ type MedicationData = {
   name: string;
   dosage: string;
   frequency: string;
-  firstDoseTime: string | null;
+  times: string[];
   notes: string | null;
   active: boolean;
   createdAt: string;
@@ -17,7 +17,7 @@ type CreateMedicationPayload = {
   name: string;
   dosage: string;
   frequency: string;
-  firstDoseTime?: string;
+  times: string[];
   notes?: string;
 };
 
@@ -160,6 +160,27 @@ export async function deleteMedication(medicationId: string, accessToken: string
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo eliminar el medicamento'));
+  }
+}
+
+export async function logMedicationAction(
+  medicationId: string,
+  accessToken: string,
+  action: 'TAKEN' | 'SKIPPED' | 'SNOOZED',
+): Promise<void> {
+  if (!API_BASE_URL) {
+    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
+  }
+
+  const response = await requestWithAutoRefresh(
+    `/medications/${medicationId}/logs`,
+    'POST',
+    accessToken,
+    { action },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseApiErrorMessage(response, 'No se pudo registrar la accion'));
   }
 }
 
