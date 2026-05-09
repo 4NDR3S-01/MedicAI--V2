@@ -25,9 +25,10 @@ import { scheduleMedicationNotifications } from '../../../shared/services/notifi
 
 const DOSAGE_UNITS = ['mg', 'g', 'ml', 'gotas', 'comprimido'] as const;
 const FREQUENCY_OPTIONS = [
+  'Cada 4 horas',
+  'Cada 6 horas',
   'Cada 8 horas',
   'Cada 12 horas',
-  'Cada 24 horas',
   'Una vez al dia',
   'Dos veces al dia',
 ] as const;
@@ -52,13 +53,16 @@ export function AddMedicationModal({
   const [name, setName] = useState('');
   const [dosageValue, setDosageValue] = useState('');
   const [dosageUnit, setDosageUnit] = useState<(typeof DOSAGE_UNITS)[number]>('mg');
-  const [frequency, setFrequency] = useState<(typeof FREQUENCY_OPTIONS)[number] | ''>('');
-  const [times, setTimes] = useState<string[]>([]);
+  const [frequency, setFrequency] = useState('');
+  const [firstDoseTime, setFirstDoseTime] = useState('');
   const [notes, setNotes] = useState('');
   const [unitModalVisible, setUnitModalVisible] = useState(false);
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [isCustomFrequency, setIsCustomFrequency] = useState(false);
   const [customFrequency, setCustomFrequency] = useState('');
+  const [customIntervalHours, setCustomIntervalHours] = useState('');
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+  const [endDatePickerVisible, setEndDatePickerVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -72,34 +76,93 @@ export function AddMedicationModal({
         setFrequency(initialData.frequency as any);
         setIsCustomFrequency(false);
         setCustomFrequency('');
+        setCustomIntervalHours('');
+        setCustomEndDate(null);
       } else {
         setFrequency('');
         setIsCustomFrequency(true);
         setCustomFrequency(initialData.frequency);
+        setCustomIntervalHours((initialData as any).customIntervalHours?.toString() || '6');
+        setCustomEndDate((initialData as any).customEndDate ? new Date((initialData as any).customEndDate) : null);
       }
       
-      setTimes(initialData.times || []);
+      setFirstDoseTime(initialData.times?.[0] || '');
       setNotes(initialData.notes || '');
     } else if (visible && !initialData) {
       setName('');
       setDosageValue('');
       setDosageUnit('mg');
       setFrequency('');
-      setTimes([]);
+      setFirstDoseTime('');
       setNotes('');
       setIsCustomFrequency(false);
       setCustomFrequency('');
+      setCustomIntervalHours('6');
+      setCustomEndDate(null);
     }
   }, [visible, initialData]);
 
-  const handleAddMedication = useCallback(async () => {
-    if (!name.trim() || !dosageValue.trim() || !frequency.trim() && !customFrequency.trim()) {
+  const calculateTimes = (startTime: string, freqStr: string, intervalHours?: number, endDate?: Date): string[] => {
+    if (!startTime) return [];
+    const [h, m] = startTime.split(':').map(Number);
+    const times: string[] = [startTime];
+    
+    let interval = intervalHours || 0;
+    
+    // Si no hay intervalo personalizado, usar los predefinidos
+    if (!intervalHours) {
+      const freq = freqStr.toLowerCase();
+      
+      if (freq.includes('4 horas')) interval = 4;
+      else if (freq.includes('6 horas')) interval = 6;
+      else if (freq.includes('8 horas')) interval = 8;
+      else if (freq.includes('12 horas') || freq.includes('dos veces')) interval = 12;
+      else if (freq.includes('24 horas') || freq.includes('una vez')) interval = 24;
+    }
+    
+    if (interval > 0 && interval < 24) {
+      let nextH = h;
+      const count = Math.floor(24 / interval);
+      for (let i = 1; i < count; i++) {
+        nextH = (nextH + interval) % 24;
+        const timeStr = `${String(nextH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        if (!times.includes(timeStr)) {
+          times.push(timeStr);
+        }
+      }
+    }
+    
+    return times.sort((a, b) => a.localeCompare(b));
+  };
+
+  const validateFormData = (): boolean => {
+    if (!name.trim() || !dosageValue.trim() || (!frequency.trim() && !customFrequency.trim())) {
       Alert.alert('Campos requeridos', 'Por favor completa nombre, dosis y frecuencia.');
-      return;
+      return false;
     }
 
-    if (times.length === 0) {
-      Alert.alert('Horarios requeridos', 'Debes configurar al menos un horario para la alarma.');
+    if (!firstDoseTime) {
+      Alert.alert('Primera toma requerida', 'Selecciona la hora de la primera toma.');
+      return false;
+    }
+
+    if (isCustomFrequency) {
+      const interval = customIntervalHours ? Number.parseInt(customIntervalHours, 10) : 0;
+      if (Number.isNaN(interval) || interval < 1 || interval > 23) {
+        Alert.alert('Intervalo inválido', 'El intervalo debe estar entre 1 y 23 horas.');
+        return false;
+      }
+      if (!customEndDate) {
+        Alert.alert('Fecha límite requerida', 'Por favor selecciona la fecha límite para las alarmas.');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleAddMedication = useCallback(async () => {
+    if (!validateFormData()) {
       return;
     }
 
@@ -111,24 +174,34 @@ export function AddMedicationModal({
         return;
       }
 
-      const payload = {
+      const finalFreq = isCustomFrequency ? customFrequency.trim() : frequency;
+      const intervalHours = isCustomFrequency && customIntervalHours ? Number.parseInt(customIntervalHours, 10) : undefined;
+      const calculatedTimes = calculateTimes(firstDoseTime, finalFreq, intervalHours, customEndDate || undefined);
+
+      const payload: any = {
         name: name.trim(),
         dosage: `${dosageValue.trim()} ${dosageUnit}`,
-        frequency: isCustomFrequency ? customFrequency.trim() : frequency,
-        times,
+        frequency: finalFreq,
+        times: calculatedTimes,
         notes: notes.trim() || undefined,
       };
+
+      // Agregar campos personalizados si aplica
+      if (isCustomFrequency && customIntervalHours && customEndDate) {
+        payload.customIntervalHours = Number.parseInt(customIntervalHours, 10);
+        payload.customEndDate = customEndDate.toISOString();
+      }
 
       if (initialData) {
         const medication = await medicationsAPI.updateMedication(initialData.id, session.accessToken, payload);
         void scheduleMedicationNotifications(medication);
         onMedicationUpdated?.(medication);
-        Alert.alert('Éxito', 'Medicamento actualizado correctamente.');
+        Alert.alert('Éxito', 'Alarma actualizada correctamente.');
       } else {
         const medication = await medicationsAPI.createMedication(session.accessToken, payload);
         void scheduleMedicationNotifications(medication);
         onMedicationAdded(medication);
-        Alert.alert('Éxito', 'Medicamento agregado correctamente.');
+        Alert.alert('Éxito', 'Alarmas programadas correctamente.');
       }
 
       onClose();
@@ -138,16 +211,26 @@ export function AddMedicationModal({
     } finally {
       setIsLoading(false);
     }
-  }, [name, dosageValue, dosageUnit, frequency, customFrequency, isCustomFrequency, times, initialData, onMedicationAdded, onMedicationUpdated, onClose]);
-
-  const removeTime = (index: number) => {
-    setTimes((current) => current.filter((_, i) => i !== index));
-  };
+  }, [name, dosageValue, dosageUnit, frequency, customFrequency, isCustomFrequency, firstDoseTime, customIntervalHours, customEndDate, initialData, onMedicationAdded, onMedicationUpdated, onClose]);
 
   const handleClose = () => {
     if (!isLoading) {
       Keyboard.dismiss();
       onClose();
+    }
+  };
+
+  const incrementInterval = () => {
+    const current = customIntervalHours ? Number.parseInt(customIntervalHours, 10) : 1;
+    if (current < 23) {
+      setCustomIntervalHours(String(current + 1));
+    }
+  };
+
+  const decrementInterval = () => {
+    const current = customIntervalHours ? Number.parseInt(customIntervalHours, 10) : 1;
+    if (current > 1) {
+      setCustomIntervalHours(String(current - 1));
     }
   };
 
@@ -158,7 +241,7 @@ export function AddMedicationModal({
           <View style={[styles.content, { backgroundColor: theme.colors.background }]}>
             <View style={styles.header}>
               <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
-                {initialData ? 'Editar Alarma' : 'Nueva Alarma de Medicación'}
+                {initialData ? 'Editar Alarma' : 'Programar Alarmas'}
               </Text>
               <Pressable onPress={handleClose} disabled={isLoading}>
                 <MaterialCommunityIcons name="close" size={24} color={theme.colors.textPrimary} />
@@ -170,7 +253,7 @@ export function AddMedicationModal({
                 <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Nombre del medicamento*</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: theme.colors.surface, color: theme.colors.textPrimary, borderColor: theme.colors.surfaceBorder }]}
-                  placeholder="Ej: Ibuprofeno"
+                  placeholder="Ej: Paracetamol"
                   placeholderTextColor={theme.colors.textMuted}
                   value={name}
                   onChangeText={setName}
@@ -183,7 +266,7 @@ export function AddMedicationModal({
                 <View style={styles.dosageRow}>
                   <TextInput
                     style={[styles.input, styles.dosageValueInput, { backgroundColor: theme.colors.surface, color: theme.colors.textPrimary, borderColor: theme.colors.surfaceBorder }]}
-                    placeholder="Ej: 400"
+                    placeholder="Ej: 500"
                     placeholderTextColor={theme.colors.textMuted}
                     value={dosageValue}
                     onChangeText={setDosageValue}
@@ -200,12 +283,12 @@ export function AddMedicationModal({
               </View>
 
               <View style={styles.fieldGroup}>
-                <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Frecuencia y Repeticiones*</Text>
+                <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Frecuencia*</Text>
                 <View style={styles.optionList}>
                   {FREQUENCY_OPTIONS.map((option) => (
                     <Pressable
                       key={option}
-                      onPress={() => { setIsCustomFrequency(false); setFrequency(option); }}
+                      onPress={() => { setIsCustomFrequency(false); setFrequency(option); setCustomIntervalHours(''); setCustomEndDate(null); }}
                       style={[styles.optionChip, { borderColor: frequency === option && !isCustomFrequency ? theme.colors.accentPrimary : theme.colors.surfaceBorder, backgroundColor: frequency === option && !isCustomFrequency ? `${theme.colors.accentPrimary}15` : 'transparent' }]}
                     >
                       <Text style={[styles.optionChipText, { color: theme.colors.textPrimary }]}>{option}</Text>
@@ -219,41 +302,82 @@ export function AddMedicationModal({
                   </Pressable>
                 </View>
                 {isCustomFrequency && (
-                  <TextInput
-                    style={[styles.input, { marginTop: 8, backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder, color: theme.colors.textPrimary }]}
-                    placeholder="Ej: Cada 4 horas por 3 días"
-                    value={customFrequency}
-                    onChangeText={setCustomFrequency}
-                  />
+                  <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, alignItems: 'flex-start' }}>
+                    {/* Selector de intervalo a la izquierda */}
+                    <View style={{ flex: 1, gap: 8 }}>
+                      <Text style={[styles.label, { color: theme.colors.textPrimary, fontSize: 12 }]}>Cada: (horas)</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.surfaceBorder, paddingVertical: 4, paddingHorizontal: 8 }}>
+                        <Pressable
+                          onPress={decrementInterval}
+                          disabled={isLoading || Number.parseInt(customIntervalHours || '1', 10) <= 1}
+                          style={{ padding: 8 }}
+                        >
+                          <MaterialCommunityIcons
+                            name="minus"
+                            size={20}
+                            color={Number.parseInt(customIntervalHours || '1', 10) <= 1 ? theme.colors.textMuted : theme.colors.accentPrimary}
+                          />
+                        </Pressable>
+                        <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '900', color: theme.colors.textPrimary, minWidth: 40 }}>
+                          {customIntervalHours || '1'}
+                        </Text>
+                        <Pressable
+                          onPress={incrementInterval}
+                          disabled={isLoading || Number.parseInt(customIntervalHours || '1', 10) >= 23}
+                          style={{ padding: 8 }}
+                        >
+                          <MaterialCommunityIcons
+                            name="plus"
+                            size={20}
+                            color={Number.parseInt(customIntervalHours || '1', 10) >= 23 ? theme.colors.textMuted : theme.colors.accentPrimary}
+                          />
+                        </Pressable>
+                      </View>
+                    </View>
+                    {/* Date picker a la derecha */}
+                    <View style={{ flex: 1, gap: 8 }}>
+                      <Text style={[styles.label, { color: theme.colors.textPrimary, fontSize: 12 }]}>Hasta: (fecha)</Text>
+                      <Pressable
+                        onPress={() => setEndDatePickerVisible(true)}
+                        style={[styles.timeTriggerButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder, paddingHorizontal: 12, paddingVertical: 12 }]}
+                      >
+                        <View style={styles.timeTriggerContent}>
+                          <MaterialCommunityIcons name="calendar-outline" size={18} color={theme.colors.accentPrimary} />
+                          <Text style={[styles.timeTriggerText, { color: customEndDate ? theme.colors.textPrimary : theme.colors.textMuted, fontSize: 13 }]}>
+                            {customEndDate ? customEndDate.toLocaleDateString('es-ES') : 'Fecha'}
+                          </Text>
+                        </View>
+                        <MaterialCommunityIcons name="chevron-right" size={16} color={theme.colors.textMuted} />
+                      </Pressable>
+                    </View>
+                  </View>
                 )}
               </View>
 
               <View style={styles.fieldGroup}>
-                <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Horarios de Alarma*</Text>
-                <View style={styles.timesContainer}>
-                  {times.map((time, index) => (
-                    <View key={index} style={[styles.timeItem, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-                      <Text style={[styles.timeText, { color: theme.colors.textPrimary }]}>{time}</Text>
-                      <Pressable onPress={() => removeTime(index)}>
-                        <MaterialCommunityIcons name="delete-outline" size={20} color={theme.colors.accentTertiary} />
-                      </Pressable>
-                    </View>
-                  ))}
-                  <Pressable
-                    onPress={() => setTimePickerVisible(true)}
-                    style={[styles.addTimeButton, { backgroundColor: `${theme.colors.accentPrimary}10`, borderColor: theme.colors.accentPrimary }]}
-                  >
-                    <MaterialCommunityIcons name="plus" size={20} color={theme.colors.accentPrimary} />
-                    <Text style={{ color: theme.colors.accentPrimary, fontWeight: '800' }}>Añadir horario</Text>
-                  </Pressable>
-                </View>
+                <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Primera toma*</Text>
+                <Pressable
+                  onPress={() => setTimePickerVisible(true)}
+                  style={[styles.timeTriggerButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+                >
+                  <View style={styles.timeTriggerContent}>
+                    <MaterialCommunityIcons name="clock-outline" size={20} color={theme.colors.accentPrimary} />
+                    <Text style={[styles.timeTriggerText, { color: firstDoseTime ? theme.colors.textPrimary : theme.colors.textMuted }]}>
+                      {firstDoseTime || 'Seleccionar hora'}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+                </Pressable>
+                <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
+                  Las alarmas posteriores se calcularán automáticamente según la frecuencia.
+                </Text>
               </View>
 
               <View style={styles.fieldGroup}>
                 <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Notas (opcional)</Text>
                 <TextInput
                   style={[styles.input, styles.noteInput, { backgroundColor: theme.colors.surface, color: theme.colors.textPrimary, borderColor: theme.colors.surfaceBorder }]}
-                  placeholder="Instrucciones adicionales..."
+                  placeholder="Ej: Evitar lácteos..."
                   value={notes}
                   onChangeText={setNotes}
                   multiline
@@ -266,7 +390,7 @@ export function AddMedicationModal({
                   <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Cancelar</Text>
                 </Pressable>
                 <Pressable style={[styles.button, styles.submitButton, { backgroundColor: theme.colors.accentPrimary }]} onPress={handleAddMedication} disabled={isLoading}>
-                  {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '800' }}>{initialData ? 'Guardar' : 'Activar Alarma'}</Text>}
+                  {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '800' }}>{initialData ? 'Guardar' : 'Activar Alarmas'}</Text>}
                 </Pressable>
               </View>
             </ScrollView>
@@ -288,7 +412,13 @@ export function AddMedicationModal({
 
       {timePickerVisible && (
         <DateTimePicker
-          value={new Date()}
+          value={(() => {
+            if (firstDoseTime) {
+              const [h, m] = firstDoseTime.split(':').map(Number);
+              const d = new Date(); d.setHours(h, m, 0, 0); return d;
+            }
+            return new Date();
+          })()}
           mode="time"
           is24Hour={true}
           onChange={(event: DateTimePickerEvent, selected?: Date) => {
@@ -296,10 +426,21 @@ export function AddMedicationModal({
             if (selected) {
               const hh = String(selected.getHours()).padStart(2, '0');
               const mm = String(selected.getMinutes()).padStart(2, '0');
-              const newTime = `${hh}:${mm}`;
-              if (!times.includes(newTime)) {
-                setTimes((curr) => [...curr, newTime].sort());
-              }
+              setFirstDoseTime(`${hh}:${mm}`);
+            }
+          }}
+        />
+      )}
+
+      {endDatePickerVisible && (
+        <DateTimePicker
+          value={customEndDate || new Date()}
+          mode="date"
+          is24Hour={true}
+          onChange={(event: DateTimePickerEvent, selected?: Date) => {
+            setEndDatePickerVisible(false);
+            if (selected) {
+              setCustomEndDate(selected);
             }
           }}
         />
@@ -324,10 +465,10 @@ const styles = StyleSheet.create({
   optionList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   optionChip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   optionChipText: { fontSize: 13, fontWeight: '700' },
-  timesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  timeItem: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 14, paddingVertical: 8, paddingHorizontal: 12 },
-  timeText: { fontSize: 15, fontWeight: '800' },
-  addTimeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 14, paddingVertical: 8, paddingHorizontal: 12 },
+  timeTriggerButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderWidth: 1, borderRadius: 16 },
+  timeTriggerContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  timeTriggerText: { fontSize: 16, fontWeight: '800' },
+  helperText: { fontSize: 12, fontStyle: 'italic', paddingLeft: 4 },
   noteInput: { textAlignVertical: 'top' },
   actions: { flexDirection: 'row', gap: 12, marginTop: 12 },
   button: { flex: 1, paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },

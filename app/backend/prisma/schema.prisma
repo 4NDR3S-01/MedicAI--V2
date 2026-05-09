@@ -62,16 +62,18 @@ model PasswordResetToken {
 }
 
 model Medication {
-  id           String   @id @default(cuid())
-  userId       String
-  name         String
-  dosage       String
-  frequency    String
-  times        String[] // Array of "HH:mm" strings
-  notes        String?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  userId                String
+  name                  String
+  dosage                String
+  frequency             String
+  times                 String[] // Array of "HH:mm" strings
+  notes                 String?
+  customIntervalHours   Int?     // For custom frequency (e.g., 6 for every 6 hours)
+  customEndDate         DateTime? // Date when custom alarms should stop
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   logs MedicationLog[]

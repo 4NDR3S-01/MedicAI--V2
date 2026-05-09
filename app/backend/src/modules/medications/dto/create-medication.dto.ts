@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength, IsInt, Min, IsISO8601 } from 'class-validator';
 
 export class CreateMedicationDto {
   @IsString()
@@ -25,4 +25,13 @@ export class CreateMedicationDto {
   @IsOptional()
   @MaxLength(500)
   notes?: string;
+
+  @IsInt()
+  @IsOptional()
+  @Min(1)
+  customIntervalHours?: number;
+
+  @IsISO8601()
+  @IsOptional()
+  customEndDate?: string;
 }

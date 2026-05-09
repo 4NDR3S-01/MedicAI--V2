@@ -44,6 +44,8 @@ export class MedicationsService {
         frequency: dto.frequency.trim(),
         times: dto.times || [],
         notes: dto.notes?.trim() || null,
+        customIntervalHours: dto.customIntervalHours || null,
+        customEndDate: dto.customEndDate ? new Date(dto.customEndDate) : null,
       },
     });
 
@@ -58,12 +60,14 @@ export class MedicationsService {
     const updated = await this.prisma.medication.update({
       where: { id: medication.id },
       data: {
-        name: dto.name !== undefined ? dto.name.trim() : medication.name,
-        dosage: dto.dosage !== undefined ? dto.dosage.trim() : medication.dosage,
-        frequency: dto.frequency !== undefined ? dto.frequency.trim() : medication.frequency,
-        times: dto.times !== undefined ? dto.times : medication.times,
-        notes: dto.notes !== undefined ? dto.notes?.trim() || null : medication.notes,
-        active: dto.active !== undefined ? dto.active : medication.active,
+        name: dto.name?.trim() ?? medication.name,
+        dosage: dto.dosage?.trim() ?? medication.dosage,
+        frequency: dto.frequency?.trim() ?? medication.frequency,
+        times: dto.times ?? medication.times,
+        notes: dto.notes ? (dto.notes.trim() || null) : medication.notes,
+        active: dto.active ?? medication.active,
+        customIntervalHours: dto.customIntervalHours ?? medication.customIntervalHours,
+        customEndDate: dto.customEndDate ? new Date(dto.customEndDate) : medication.customEndDate,
       },
     });
 

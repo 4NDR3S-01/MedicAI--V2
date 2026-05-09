@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Matches, MaxLength, IsInt, Min, IsISO8601 } from 'class-validator';
 
 export class UpdateMedicationDto {
   @IsString()
@@ -29,4 +29,13 @@ export class UpdateMedicationDto {
   @IsBoolean()
   @IsOptional()
   active?: boolean;
+
+  @IsInt()
+  @IsOptional()
+  @Min(1)
+  customIntervalHours?: number;
+
+  @IsISO8601()
+  @IsOptional()
+  customEndDate?: string;
 }
