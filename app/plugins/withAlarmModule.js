@@ -86,8 +86,11 @@ const withAlarmModule = config => {
     // Permissions required for exact medical alarms
     ensurePermission(manifest, 'android.permission.SCHEDULE_EXACT_ALARM');
     ensurePermission(manifest, 'android.permission.USE_EXACT_ALARM');
+    ensurePermission(manifest, 'android.permission.USE_FULL_SCREEN_INTENT');
     ensurePermission(manifest, 'android.permission.RECEIVE_BOOT_COMPLETED');
     ensurePermission(manifest, 'android.permission.WAKE_LOCK');
+    ensurePermission(manifest, 'android.permission.VIBRATE');
+    ensurePermission(manifest, 'android.permission.FOREGROUND_SERVICE');
     ensurePermission(manifest, 'android.permission.POST_NOTIFICATIONS');
 
     // AlarmReceiver — handles fired alarms and shows full-screen notification

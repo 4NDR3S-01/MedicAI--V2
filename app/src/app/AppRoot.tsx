@@ -525,12 +525,19 @@ export function AppRoot() {
 
   // Setup Notifications
   useEffect(() => {
-    void setupNotifications().catch((error) => {
-      console.warn('[MedicAI] Failed to setup notifications:', error);
-    });
-    void registerForPushNotificationsAsync().catch((error) => {
-      console.warn('[MedicAI] Failed to request notification permissions:', error);
-    });
+    const initNotifications = async () => {
+      try {
+        await setupNotifications();
+      } catch (error) {
+        console.warn('[MedicAI] Failed to setup notifications:', error);
+      }
+      try {
+        await registerForPushNotificationsAsync();
+      } catch (error) {
+        console.warn('[MedicAI] Failed to request notification permissions:', error);
+      }
+    };
+    void initNotifications();
 
     const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as { id?: string; type?: string };

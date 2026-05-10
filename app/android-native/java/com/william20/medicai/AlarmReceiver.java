@@ -7,7 +7,9 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.NotificationManager;
 import android.app.NotificationChannel;
+import android.media.AudioAttributes;
 import android.os.Build;
+import android.os.PowerManager;
 import android.media.RingtoneManager;
 import android.net.Uri;
 
@@ -16,6 +18,22 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        // Acquire a partial WakeLock to ensure notification is shown even in Doze mode
+        PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        PowerManager.WakeLock wl = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "MedicAI:AlarmWakeLock"
+        );
+        wl.acquire(10_000); // 10 seconds max
+
+        try {
+            handleAlarm(context, intent);
+        } finally {
+            if (wl.isHeld()) wl.release();
+        }
+    }
+
+    private void handleAlarm(Context context, Intent intent) {
         String id = intent.getStringExtra("id");
         String title = intent.getStringExtra("title");
         String body = intent.getStringExtra("body");
@@ -43,6 +61,8 @@ public class AlarmReceiver extends BroadcastReceiver {
             alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
         }
 
+        long[] vibrationPattern = new long[]{0, 1000, 500, 1000, 500, 1000};
+
         Notification.Builder builder = new Notification.Builder(context)
             .setContentTitle(notificationTitle)
             .setContentText(notificationBody)
@@ -51,8 +71,9 @@ public class AlarmReceiver extends BroadcastReceiver {
             .setContentIntent(fullScreenPendingIntent)
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .setSound(alarmSound)
+            .setVibrate(vibrationPattern)
             .setAutoCancel(true)
-            .setOngoing(false);
+            .setOngoing(true);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             builder.setChannelId(CHANNEL_ID);
@@ -68,9 +89,19 @@ public class AlarmReceiver extends BroadcastReceiver {
     private void createNotificationChannel(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Alarmas MedicAI", NotificationManager.IMPORTANCE_HIGH);
-            channel.setDescription("Canal para alarmas con pantalla completa");
-            channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), null);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Alarmas MedicAI", NotificationManager.IMPORTANCE_MAX);
+            channel.setDescription("Canal para alarmas médicas críticas con pantalla completa");
+            channel.enableVibration(true);
+            channel.setVibrationPattern(new long[]{0, 1000, 500, 1000, 500, 1000});
+            channel.setBypassDnd(true);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+
+            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+            channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), audioAttributes);
+
             nm.createNotificationChannel(channel);
         }
     }

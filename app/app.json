@@ -14,9 +14,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.william20.medicai",
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": ["remote-notification", "fetch", "processing"]
       },
       "entitlements": {
         "com.apple.developer.usernotifications.critical-alerts": true,
@@ -34,8 +35,11 @@
       "permissions": [
         "SCHEDULE_EXACT_ALARM",
         "USE_EXACT_ALARM",
+        "USE_FULL_SCREEN_INTENT",
         "POST_NOTIFICATIONS",
+        "VIBRATE",
         "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
         "RECEIVE_BOOT_COMPLETED",
         "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ]

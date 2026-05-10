@@ -26,10 +26,11 @@ public class AlarmScheduler {
         return intent;
     }
 
-    private static PendingIntent buildPendingIntent(Context context, Intent intent) {
+    private static PendingIntent buildPendingIntent(Context context, Intent intent, String id) {
+        int requestCode = id != null ? id.hashCode() : 0;
         return PendingIntent.getBroadcast(
             context,
-            0,
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
@@ -38,7 +39,7 @@ public class AlarmScheduler {
     public static void scheduleExactAlarm(Context context, String id, Date when, String title, String body) {
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = buildAlarmIntent(context, id, title, body);
-        PendingIntent pi = buildPendingIntent(context, intent);
+        PendingIntent pi = buildPendingIntent(context, intent, id);
 
         long time = when.getTime();
 
@@ -61,7 +62,7 @@ public class AlarmScheduler {
     public static void cancelAlarm(Context context, String id) {
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = buildAlarmIntent(context, id, null, null);
-        PendingIntent pi = buildPendingIntent(context, intent);
+        PendingIntent pi = buildPendingIntent(context, intent, id);
         am.cancel(pi);
     }
 }

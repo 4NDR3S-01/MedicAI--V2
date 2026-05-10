@@ -112,7 +112,7 @@ const scheduleSingleMedicationNotification = async (
           isLeadReminder,
         },
         categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
-        sound: true,
+        sound: 'default',
         priority: Notifications.AndroidNotificationPriority.MAX,
         sticky: true,
       },
@@ -230,6 +230,33 @@ export async function setupNotifications(): Promise<void> {
       shouldSetBadge: true,
     }),
   });
+
+  // Create Android notification channels early — notifications scheduled without
+  // a valid channel are silently dropped on Android 8+.
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_ALARMS, {
+      name: 'Alarmas de Medicación',
+      description: 'Recordatorios críticos para la toma de medicamentos',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 250, 500],
+      lightColor: '#4F46E5',
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
+      showBadge: true,
+    });
+
+    await Notifications.setNotificationChannelAsync(CHANNELS.APPOINTMENTS, {
+      name: 'Recordatorios de Citas',
+      description: 'Recordatorios para citas médicas programadas',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4F46E5',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
+      showBadge: true,
+    });
+  }
 
   await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.MEDICATION, [
     {
@@ -394,7 +421,8 @@ export async function scheduleAppointmentReminder(appointment: {
       body,
       data: { id: appointment.id, type: 'APPOINTMENT' },
       categoryIdentifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
-      sound: true,
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.HIGH,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -439,7 +467,7 @@ export async function snoozeNotification(
       data: notificationData.data,
       categoryIdentifier:
         notificationData.categoryIdentifier ?? NOTIFICATION_CATEGORIES.MEDICATION,
-      sound: true,
+      sound: 'default',
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
