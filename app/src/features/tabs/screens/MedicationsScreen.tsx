@@ -242,7 +242,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             <View style={styles.medicationCardWrapper}>
               <View style={styles.timeSection}>
                 <Text style={[styles.timeText, { color: theme.colors.textPrimary }]}>
-                  {item.times?.[0] || '--:--'}
+                  {item.firstDoseTime || item.times?.[0] || '--:--'}
                 </Text>
                 <View style={[styles.timeDot, { backgroundColor: item.active ? theme.colors.accentPrimary : theme.colors.textMuted }]} />
                 <View style={[styles.timeLine, { backgroundColor: theme.colors.surfaceBorder }]} />

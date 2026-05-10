@@ -6,6 +6,7 @@ type MedicationData = {
   name: string;
   dosage: string;
   frequency: string;
+  firstDoseTime?: string | null;
   times: string[];
   notes: string | null;
   customIntervalHours?: number | null;
@@ -19,10 +20,11 @@ type CreateMedicationPayload = {
   name: string;
   dosage: string;
   frequency: string;
+  firstDoseTime?: string;
   times: string[];
   notes?: string;
-  customIntervalHours?: number;
-  customEndDate?: string;
+  customIntervalHours?: number | null;
+  customEndDate?: string | null;
 };
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');

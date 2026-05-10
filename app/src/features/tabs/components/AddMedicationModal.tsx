@@ -86,7 +86,7 @@ export function AddMedicationModal({
         setCustomEndDate((initialData as any).customEndDate ? new Date((initialData as any).customEndDate) : null);
       }
       
-      setFirstDoseTime(initialData.times?.[0] || '');
+      setFirstDoseTime(initialData.firstDoseTime || initialData.times?.[0] || '');
       setNotes(initialData.notes || '');
     } else if (visible && !initialData) {
       setName('');
@@ -136,7 +136,13 @@ export function AddMedicationModal({
   };
 
   const validateFormData = (): boolean => {
-    if (!name.trim() || !dosageValue.trim() || (!frequency.trim() && !customFrequency.trim())) {
+    let hasValidFrequency = frequency.trim().length > 0;
+    if (isCustomFrequency) {
+      const parsedInterval = customIntervalHours ? Number.parseInt(customIntervalHours, 10) : 0;
+      hasValidFrequency = parsedInterval > 0;
+    }
+
+    if (!name.trim() || !dosageValue.trim() || !hasValidFrequency) {
       Alert.alert('Campos requeridos', 'Por favor completa nombre, dosis y frecuencia.');
       return false;
     }
@@ -174,14 +180,17 @@ export function AddMedicationModal({
         return;
       }
 
-      const finalFreq = isCustomFrequency ? customFrequency.trim() : frequency;
       const intervalHours = isCustomFrequency && customIntervalHours ? Number.parseInt(customIntervalHours, 10) : undefined;
+      const finalFreq = isCustomFrequency
+        ? (customFrequency.trim() || `Cada ${intervalHours ?? 0} horas`)
+        : frequency;
       const calculatedTimes = calculateTimes(firstDoseTime, finalFreq, intervalHours, customEndDate || undefined);
 
       const payload: any = {
         name: name.trim(),
         dosage: `${dosageValue.trim()} ${dosageUnit}`,
         frequency: finalFreq,
+        firstDoseTime,
         times: calculatedTimes,
         notes: notes.trim() || undefined,
       };
@@ -190,6 +199,9 @@ export function AddMedicationModal({
       if (isCustomFrequency && customIntervalHours && customEndDate) {
         payload.customIntervalHours = Number.parseInt(customIntervalHours, 10);
         payload.customEndDate = customEndDate.toISOString();
+      } else {
+        payload.customIntervalHours = null;
+        payload.customEndDate = null;
       }
 
       if (initialData) {

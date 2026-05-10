@@ -23,6 +23,11 @@ export class UpdateMedicationDto {
 
   @IsString()
   @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
+  firstDoseTime?: string;
+
+  @IsString()
+  @IsOptional()
   @MaxLength(500)
   notes?: string;
 
@@ -33,9 +38,9 @@ export class UpdateMedicationDto {
   @IsInt()
   @IsOptional()
   @Min(1)
-  customIntervalHours?: number;
+  customIntervalHours?: number | null;
 
   @IsISO8601()
   @IsOptional()
-  customEndDate?: string;
+  customEndDate?: string | null;
 }

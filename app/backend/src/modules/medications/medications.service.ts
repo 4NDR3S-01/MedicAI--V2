@@ -42,6 +42,7 @@ export class MedicationsService {
         name: dto.name.trim(),
         dosage: dto.dosage.trim(),
         frequency: dto.frequency.trim(),
+        firstDoseTime: dto.firstDoseTime || dto.times?.[0] || null,
         times: dto.times || [],
         notes: dto.notes?.trim() || null,
         customIntervalHours: dto.customIntervalHours || null,
@@ -57,17 +58,39 @@ export class MedicationsService {
   async update(medicationId: string, userId: string, dto: UpdateMedicationDto) {
     const medication = await this.findById(medicationId, userId);
 
+    let nextCustomEndDate = medication.customEndDate;
+    if (dto.customEndDate === null) {
+      nextCustomEndDate = null;
+    } else if (typeof dto.customEndDate === 'string') {
+      nextCustomEndDate = new Date(dto.customEndDate);
+    }
+
+    const shouldUpdateCustomInterval =
+      dto.customIntervalHours === null || typeof dto.customIntervalHours === 'number';
+
+    const nextCustomIntervalHours = shouldUpdateCustomInterval
+      ? dto.customIntervalHours
+      : medication.customIntervalHours;
+
+    let nextNotes = medication.notes;
+    if (typeof dto.notes === 'string') {
+      nextNotes = dto.notes.trim() || null;
+    } else if (dto.notes === null) {
+      nextNotes = null;
+    }
+
     const updated = await this.prisma.medication.update({
       where: { id: medication.id },
       data: {
         name: dto.name?.trim() ?? medication.name,
         dosage: dto.dosage?.trim() ?? medication.dosage,
         frequency: dto.frequency?.trim() ?? medication.frequency,
+        firstDoseTime: dto.firstDoseTime ?? medication.firstDoseTime,
         times: dto.times ?? medication.times,
-        notes: dto.notes ? (dto.notes.trim() || null) : medication.notes,
+        notes: nextNotes,
         active: dto.active ?? medication.active,
-        customIntervalHours: dto.customIntervalHours ?? medication.customIntervalHours,
-        customEndDate: dto.customEndDate ? new Date(dto.customEndDate) : medication.customEndDate,
+        customIntervalHours: nextCustomIntervalHours,
+        customEndDate: nextCustomEndDate,
       },
     });
 

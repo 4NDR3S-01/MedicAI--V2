@@ -100,13 +100,65 @@ export async function scheduleMedicationNotifications(medication: {
   name: string;
   dosage: string;
   frequency: string;
+  firstDoseTime?: string | null;
   times: string[];
+  customIntervalHours?: number | null;
+  customEndDate?: string | null;
   active: boolean;
 }) {
   // First, cancel any existing notifications for this medication
   await cancelNotificationsByDataId(medication.id);
 
-  if (!medication.active || !medication.times || medication.times.length === 0) return;
+  if (!medication.active) return;
+
+  const permission = await registerForPushNotificationsAsync();
+  if (permission !== 'granted') return;
+
+  const hasCustomRange =
+    typeof medication.customIntervalHours === 'number'
+    && medication.customIntervalHours > 0
+    && typeof medication.customEndDate === 'string'
+    && medication.customEndDate.length > 0
+    && typeof medication.firstDoseTime === 'string'
+    && medication.firstDoseTime.length > 0;
+
+  if (hasCustomRange) {
+    const [hour, minute] = (medication.firstDoseTime || '00:00').split(':').map(Number);
+    const intervalMs = medication.customIntervalHours! * 60 * 60 * 1000;
+    const endDate = new Date(medication.customEndDate!);
+    const now = new Date();
+
+    const first = new Date(now);
+    first.setHours(hour, minute, 0, 0);
+
+    let next = first;
+    while (next < now) {
+      next = new Date(next.getTime() + intervalMs);
+    }
+
+    let scheduledCount = 0;
+    const maxSchedules = 1200;
+
+    while (next <= endDate && scheduledCount < maxSchedules) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Alarma de Medicación: ${medication.name}`,
+          body: `Es hora de tu dosis: ${medication.dosage}`,
+          data: { id: medication.id, type: 'MEDICATION', action: 'REMINDER' },
+          categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
+          sound: true,
+        },
+        trigger: next,
+      });
+
+      scheduledCount += 1;
+      next = new Date(next.getTime() + intervalMs);
+    }
+
+    return;
+  }
+
+  if (!medication.times || medication.times.length === 0) return;
 
   for (const timeStr of medication.times) {
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -119,9 +171,10 @@ export async function scheduleMedicationNotifications(medication: {
         body: `Es hora de tu dosis: ${medication.dosage}`,
         data: { id: medication.id, type: 'MEDICATION', action: 'REMINDER' },
         categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
-        sound: true, // This will use the channel's sound
+        sound: true,
       },
       trigger: {
+        channelId: 'default',
         hour: hours,
         minute: minutes,
         repeats: true,

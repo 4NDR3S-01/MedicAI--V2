@@ -67,6 +67,7 @@ model Medication {
   name                  String
   dosage                String
   frequency             String
+  firstDoseTime         String?  // Preserves the user-selected initial dose time (HH:mm)
   times                 String[] // Array of "HH:mm" strings
   notes                 String?
   customIntervalHours   Int?     // For custom frequency (e.g., 6 for every 6 hours)
