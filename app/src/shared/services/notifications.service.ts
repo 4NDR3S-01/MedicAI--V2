@@ -101,26 +101,31 @@ const scheduleSingleMedicationNotification = async (
   }
 
   // ── Path 2: expo-notifications (cross-platform, works in background & killed app) ──
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      data: {
-        id: medication.id,
-        type: 'MEDICATION',
-        isLeadReminder,
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: {
+          id: medication.id,
+          type: 'MEDICATION',
+          isLeadReminder,
+        },
+        categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        sticky: true,
       },
-      categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
-      sound: true,
-      priority: Notifications.AndroidNotificationPriority.MAX,
-      sticky: true,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: triggerDate,
-      channelId: CHANNELS.MEDICATION_ALARMS,
-    },
-  });
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+        channelId: CHANNELS.MEDICATION_ALARMS,
+      },
+    });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`No se pudo programar la alarma para "${medication.name}": ${reason}`);
+  }
 };
 
 // ─── Scheduling strategies ────────────────────────────────────────────────────
@@ -332,6 +337,13 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
  * Cancels all existing alarms for a medication and schedules new ones.
  * Safe to call on create, update, and toggle-active operations.
  */
+export class NotificationPermissionError extends Error {
+  constructor() {
+    super('notification_permission_denied');
+    this.name = 'NotificationPermissionError';
+  }
+}
+
 export async function scheduleMedicationNotifications(
   medication: MedicationScheduleInput,
 ): Promise<void> {
@@ -339,7 +351,7 @@ export async function scheduleMedicationNotifications(
   if (!medication.active) return;
 
   const permission = await registerForPushNotificationsAsync();
-  if (permission !== 'granted') return;
+  if (permission !== 'granted') throw new NotificationPermissionError();
 
   const leadMinutes = await getMedicationReminderLeadMinutes();
 
@@ -460,8 +472,12 @@ export async function rescheduleMedicationsAfterLaunch(
 
   for (const med of active) {
     if (!scheduledIds.has(med.id)) {
-      // No notifications found for this medication — likely lost after reboot
-      await scheduleMedicationNotifications(med);
+      try {
+        await scheduleMedicationNotifications(med);
+      } catch (err) {
+        if (err instanceof NotificationPermissionError) break; // all meds will fail — stop early
+        console.warn('[MedicAI] Could not reschedule medication after launch:', med.id, err);
+      }
     }
   }
 }
