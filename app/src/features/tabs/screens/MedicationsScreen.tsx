@@ -33,6 +33,7 @@ import {
   requestNotificationPermission,
   openNotificationSettings,
   openBatteryOptimizationSettings,
+  openExactAlarmSettings,
 } from '../../../shared/services/alarm-permissions.service';
 
 export type MedicationsScreenProps = {
@@ -237,7 +238,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
       {/* Notification permission banner */}
-      {alarmPermissions && !alarmPermissions.isAlarmReady && (
+      {alarmPermissions && alarmPermissions.notifications !== 'granted' && (
         <View style={[styles.permissionBanner, { backgroundColor: `${theme.colors.accentTertiary}12`, borderColor: `${theme.colors.accentTertiary}40` }]}>
           <MaterialCommunityIcons name="bell-alert-outline" size={22} color={theme.colors.accentTertiary} />
           <View style={styles.permissionBannerText}>
@@ -264,8 +265,25 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         </View>
       )}
 
+      {/* Exact alarm permission banner — Android 12+ */}
+      {alarmPermissions?.shouldPromptExactAlarmPermission && alarmPermissions.notifications === 'granted' && (
+        <View style={[styles.permissionBanner, { backgroundColor: `${theme.colors.accentPrimary}12`, borderColor: `${theme.colors.accentPrimary}40` }]}> 
+          <MaterialCommunityIcons name="alarm-check" size={22} color={theme.colors.accentPrimary} />
+          <View style={styles.permissionBannerText}>
+            <Text style={[styles.permissionBannerTitle, { color: theme.colors.textPrimary }]}>Alarmas exactas</Text>
+            <Text style={[styles.permissionBannerSubtext, { color: theme.colors.textSecondary }]}>Activa el permiso para que la app pueda programar horas exactas en segundo plano.</Text>
+          </View>
+          <Pressable
+            style={[styles.permissionBannerBtn, { backgroundColor: theme.colors.accentPrimary }]}
+            onPress={() => void openExactAlarmSettings()}
+          >
+            <Text style={[styles.permissionBannerBtnText, { color: '#fff' }]}>Ver</Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* Battery optimization banner — Android only */}
-      {alarmPermissions?.shouldPromptBatteryOptimization && alarmPermissions.isAlarmReady && (
+      {alarmPermissions?.shouldPromptBatteryOptimization && alarmPermissions.notifications === 'granted' && (
         <View style={[styles.permissionBanner, { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}40` }]}>
           <MaterialCommunityIcons name="battery-alert-variant-outline" size={22} color={theme.colors.accentSecondary} />
           <View style={styles.permissionBannerText}>

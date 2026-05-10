@@ -13,6 +13,11 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Linking, Platform } from 'react-native';
 
+import AlarmEnvironmentNative from '../native/AlarmEnvironmentNative';
+
+type NotificationPermissionsResponse = Awaited<ReturnType<typeof Notifications.getPermissionsAsync>>;
+type IosNotificationPermissions = NotificationPermissionsResponse['ios'];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type PermissionLevel = 'granted' | 'denied' | 'undetermined' | 'unavailable';
@@ -35,16 +40,64 @@ export type AlarmPermissionsStatus = {
   exactAlarms: PermissionLevel;
   /**
    * Android only — is the app exempted from Doze / battery optimisation?
-   * Always null on iOS (not applicable) and when it cannot be determined.
-   * NOTE: This cannot be read programmatically from managed Expo JS.
-   *       Always recommend the user to exempt the app on Android.
+   * True means the app is already exempted or the platform does not apply it.
+   * False means the user should be guided to the battery optimisation screen.
+   * Null means the state could not be read safely.
    */
-  batteryOptimizationExempted: null;
+  batteryOptimizationExempted: boolean | null;
   /** True when the minimum permissions for reliable alarm delivery are met. */
   isAlarmReady: boolean;
   /** True on Android when the user should be guided to exempt from battery optimisation. */
   shouldPromptBatteryOptimization: boolean;
+  /** True on Android 12+ when the user should be guided to grant exact alarms. */
+  shouldPromptExactAlarmPermission: boolean;
 };
+
+const toPermissionLevel = (status: string): PermissionLevel => {
+  if (status === 'granted') return 'granted';
+  if (status === 'undetermined') return 'undetermined';
+  return 'denied';
+};
+
+const getCriticalAlertsStatus = (
+  notifications: PermissionLevel,
+  ios: IosNotificationPermissions,
+): PermissionLevel => {
+  if (Platform.OS !== 'ios') return 'unavailable';
+  if (ios?.allowsCriticalAlerts === true) return 'granted';
+  if (notifications === 'undetermined') return 'undetermined';
+  return 'denied';
+};
+
+const getExactAlarmsStatus = async (): Promise<PermissionLevel> => {
+  if (Platform.OS !== 'android') return 'unavailable';
+  if (Platform.Version < 31) return 'unavailable';
+
+  const canScheduleExact = await AlarmEnvironmentNative.canScheduleExactAlarms();
+  if (canScheduleExact === true) return 'granted';
+  if (canScheduleExact === false) return 'denied';
+  return 'undetermined';
+};
+
+const getBatteryOptimizationStatus = async (): Promise<boolean | null> => {
+  if (Platform.OS !== 'android') return true;
+  return AlarmEnvironmentNative.isIgnoringBatteryOptimizations();
+};
+
+const shouldPromptBatteryOptimization = (batteryOptimizationExempted: boolean | null): boolean =>
+  Platform.OS === 'android' && batteryOptimizationExempted === false;
+
+const shouldPromptExactAlarmPermission = (exactAlarms: PermissionLevel): boolean =>
+  Platform.OS === 'android' && exactAlarms === 'denied';
+
+const isAlarmReady = (
+  notifications: PermissionLevel,
+  exactAlarms: PermissionLevel,
+  batteryOptimizationExempted: boolean | null,
+): boolean =>
+  notifications === 'granted' &&
+  (Platform.OS !== 'android' || exactAlarms !== 'denied') &&
+  !shouldPromptBatteryOptimization(batteryOptimizationExempted);
 
 // ─── Status query ─────────────────────────────────────────────────────────────
 
@@ -59,51 +112,31 @@ export async function getAlarmPermissionsStatus(): Promise<AlarmPermissionsStatu
       notifications: 'granted',
       criticalAlerts: 'unavailable',
       exactAlarms: 'unavailable',
-      batteryOptimizationExempted: null,
+      batteryOptimizationExempted: true,
       isAlarmReady: true,
       shouldPromptBatteryOptimization: false,
+      shouldPromptExactAlarmPermission: false,
     };
   }
 
   const { status, ios } = await Notifications.getPermissionsAsync();
+  const notifications = toPermissionLevel(status);
+  const criticalAlerts = getCriticalAlertsStatus(notifications, ios);
+  const exactAlarms = await getExactAlarmsStatus();
+  const batteryOptimizationExempted = await getBatteryOptimizationStatus();
 
-  const notifications: PermissionLevel =
-    status === 'granted'
-      ? 'granted'
-      : status === 'undetermined'
-        ? 'undetermined'
-        : 'denied';
-
-  // iOS Critical Alerts
-  const criticalAlerts: PermissionLevel =
-    Platform.OS !== 'ios'
-      ? 'unavailable'
-      : ios?.allowsCriticalAlerts === true
-        ? 'granted'
-        : notifications === 'undetermined'
-          ? 'undetermined'
-          : 'denied';
-
-  // Android 12+ exact alarms (API 31+)
-  // Cannot be read from JS in managed Expo — AlarmScheduler handles the native fallback.
-  // We mark as 'undetermined' on affected versions so the UI can surface guidance.
-  const exactAlarms: PermissionLevel =
-    Platform.OS !== 'android'
-      ? 'unavailable'
-      : Platform.Version < 31
-        ? 'unavailable'
-        : 'undetermined'; // Native layer resolves; we guide user to settings
-
-  const isAlarmReady = notifications === 'granted';
-  const shouldPromptBatteryOptimization = Platform.OS === 'android';
+  const shouldPromptBatteryOptimizationFlag = shouldPromptBatteryOptimization(batteryOptimizationExempted);
+  const shouldPromptExactAlarmPermissionFlag = shouldPromptExactAlarmPermission(exactAlarms);
+  const isAlarmReadyFlag = isAlarmReady(notifications, exactAlarms, batteryOptimizationExempted);
 
   return {
     notifications,
     criticalAlerts,
     exactAlarms,
-    batteryOptimizationExempted: null,
-    isAlarmReady,
-    shouldPromptBatteryOptimization,
+    batteryOptimizationExempted,
+    isAlarmReady: isAlarmReadyFlag,
+    shouldPromptBatteryOptimization: shouldPromptBatteryOptimizationFlag,
+    shouldPromptExactAlarmPermission: shouldPromptExactAlarmPermissionFlag,
   };
 }
 
@@ -126,7 +159,7 @@ export async function requestNotificationPermission(): Promise<PermissionLevel> 
     },
   });
 
-  return status === 'granted' ? 'granted' : status === 'undetermined' ? 'undetermined' : 'denied';
+  return toPermissionLevel(status);
 }
 
 // ─── Settings navigation ──────────────────────────────────────────────────────
@@ -176,18 +209,13 @@ export async function openBatteryOptimizationSettings(): Promise<void> {
 }
 
 /**
- * Android: attempts to directly request battery-optimisation exemption.
- * Uses ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS which opens a system dialog.
- * Requires android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS in the manifest
- * (declared in app.json).
- * Falls back to openBatteryOptimizationSettings() if unavailable.
+ * Android: opens the battery-optimisation settings so the user can exempt the app.
+ * Falls back safely if the system intent is unavailable.
  */
-export async function requestBatteryOptimizationExemption(
-  appPackage: string,
-): Promise<void> {
+export async function requestBatteryOptimizationExemption(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
-    await Linking.openURL(`package:${appPackage}`);
+    await openBatteryOptimizationSettings();
   } catch {
     await openBatteryOptimizationSettings();
   }
