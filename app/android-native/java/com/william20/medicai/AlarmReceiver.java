@@ -12,12 +12,14 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.util.Log;
 
 public class AlarmReceiver extends BroadcastReceiver {
     public static final String CHANNEL_ID = "medicai_alarm_channel";
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        Log.d("MedicAI-Alarm", "AlarmReceiver.onReceive FIRED! action=" + (intent != null ? intent.getAction() : "null"));
         // Acquire a partial WakeLock to ensure notification is shown even in Doze mode
         PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         PowerManager.WakeLock wl = pm.newWakeLock(
@@ -37,6 +39,7 @@ public class AlarmReceiver extends BroadcastReceiver {
         String id = intent.getStringExtra("id");
         String title = intent.getStringExtra("title");
         String body = intent.getStringExtra("body");
+        Log.d("MedicAI-Alarm", "handleAlarm: id=" + id + ", title=" + title);
         String notificationTitle = title != null && !title.isEmpty() ? title : "MedicAI";
         String notificationBody = body != null ? body : "";
 

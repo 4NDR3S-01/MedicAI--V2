@@ -19,7 +19,7 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 
 import { appStorage } from '../storage';
 import AlarmNative from '../native/AlarmNative';
@@ -90,42 +90,46 @@ const scheduleSingleMedicationNotification = async (
     ? `Tu dosis (${medication.dosage}) es en unos minutos.`
     : `Es hora de tu dosis: ${medication.dosage}`;
 
+  // Generate a unique alarm ID per medication+time to avoid PendingIntent overwrites
+  // when the same medication has multiple daily doses.
+  const alarmId = `${medication.id}_${triggerDate.getTime()}`;
+
   // ── Path 1: native AlarmManager (Android only, requires EAS/prebuild build) ──
   if (AlarmNative.isAvailable()) {
     try {
-      await AlarmNative.scheduleAlarm(medication.id, triggerDate.getTime(), title, body);
+      console.log('[MedicAI] Scheduling native alarm:', alarmId, 'at', triggerDate.toISOString());
+      await AlarmNative.scheduleAlarm(alarmId, triggerDate.getTime(), title, body);
+      console.log('[MedicAI] Native alarm scheduled successfully:', alarmId);
       return;
     } catch (err) {
       console.warn('[MedicAI] Native alarm failed, falling back to expo-notifications:', err);
     }
+  } else {
+    console.log('[MedicAI] Native AlarmModule not available, using expo-notifications fallback');
   }
 
   // ── Path 2: expo-notifications (cross-platform, works in background & killed app) ──
-  try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data: {
-          id: medication.id,
-          type: 'MEDICATION',
-          isLeadReminder,
-        },
-        categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
-        sound: 'default',
-        priority: Notifications.AndroidNotificationPriority.MAX,
-        sticky: true,
+  console.log('[MedicAI] Scheduling expo-notification:', medication.id, 'at', triggerDate.toISOString());
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      data: {
+        id: medication.id,
+        type: 'MEDICATION',
+        isLeadReminder,
       },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: triggerDate,
-        channelId: CHANNELS.MEDICATION_ALARMS,
-      },
-    });
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(`No se pudo programar la alarma para "${medication.name}": ${reason}`);
-  }
+      categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.MAX,
+      sticky: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+      channelId: CHANNELS.MEDICATION_ALARMS,
+    },
+  });
 };
 
 // ─── Scheduling strategies ────────────────────────────────────────────────────
@@ -233,6 +237,7 @@ export async function setupNotifications(): Promise<void> {
 
   // Create Android notification channels early — notifications scheduled without
   // a valid channel are silently dropped on Android 8+.
+  // These MUST exist before any scheduleNotificationAsync call.
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_ALARMS, {
       name: 'Alarmas de Medicación',
@@ -314,14 +319,52 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
     finalStatus = status;
   }
 
-  // On Android 13+ (API 33), expo-notifications' requestPermissionsAsync already
-  // handles POST_NOTIFICATIONS internally. Re-check the actual status to be safe.
-  if (finalStatus !== 'granted') {
-    const { status: recheck } = await Notifications.getPermissionsAsync();
-    finalStatus = recheck;
+  // Android 13+ (API 33): POST_NOTIFICATIONS requires an explicit runtime prompt.
+  // Only request via PermissionsAndroid if expo's requestPermissionsAsync didn't already
+  // resolve it — on MIUI/OEM devices, a duplicate request can return inconsistent results.
+  if (Platform.OS === 'android' && Platform.Version >= 33 && finalStatus !== 'granted') {
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      );
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        // Re-read through expo to get proper PermissionStatus enum value
+        const { status: recheckStatus } = await Notifications.getPermissionsAsync();
+        finalStatus = recheckStatus;
+      }
+    } catch (err) {
+      console.warn('[MedicAI] POST_NOTIFICATIONS permission request failed:', err);
+    }
   }
 
   if (finalStatus !== 'granted') return null;
+
+  if (Platform.OS === 'android') {
+    // HIGH-PRIORITY channel for medication alarms (attempts DND bypass)
+    await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_ALARMS, {
+      name: 'Alarmas de Medicación',
+      description: 'Recordatorios críticos para la toma de medicamentos',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 250, 500],
+      lightColor: '#4F46E5',
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
+      showBadge: true,
+    });
+
+    // Standard channel for appointment reminders
+    await Notifications.setNotificationChannelAsync(CHANNELS.APPOINTMENTS, {
+      name: 'Recordatorios de Citas',
+      description: 'Recordatorios para citas médicas programadas',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4F46E5',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
+      showBadge: true,
+    });
+  }
 
   return 'granted';
 }
@@ -332,13 +375,6 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
  * Cancels all existing alarms for a medication and schedules new ones.
  * Safe to call on create, update, and toggle-active operations.
  */
-export class NotificationPermissionError extends Error {
-  constructor() {
-    super('notification_permission_denied');
-    this.name = 'NotificationPermissionError';
-  }
-}
-
 export async function scheduleMedicationNotifications(
   medication: MedicationScheduleInput,
 ): Promise<void> {
@@ -346,7 +382,10 @@ export async function scheduleMedicationNotifications(
   if (!medication.active) return;
 
   const permission = await registerForPushNotificationsAsync();
-  if (permission !== 'granted') throw new NotificationPermissionError();
+  if (permission !== 'granted') {
+    console.warn('[MedicAI] scheduleMedicationNotifications: permission not granted, aborting schedule for', medication.id);
+    return;
+  }
 
   const leadMinutes = await getMedicationReminderLeadMinutes();
 
@@ -389,8 +428,7 @@ export async function scheduleAppointmentReminder(appointment: {
       body,
       data: { id: appointment.id, type: 'APPOINTMENT' },
       categoryIdentifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
-      sound: 'default',
-      priority: Notifications.AndroidNotificationPriority.HIGH,
+      sound: true,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -402,6 +440,8 @@ export async function scheduleAppointmentReminder(appointment: {
 
 /**
  * Cancels all scheduled expo-notifications and native alarms matching the given ID.
+ * Uses cancelAlarmsForMedication to bulk-cancel all compound-ID native alarms
+ * (format: id_timestamp) that belong to this medication/appointment.
  */
 export async function cancelNotificationsByDataId(id: string): Promise<void> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -413,7 +453,7 @@ export async function cancelNotificationsByDataId(id: string): Promise<void> {
 
   if (AlarmNative.isAvailable()) {
     try {
-      await AlarmNative.cancelAlarm(id);
+      await AlarmNative.cancelAlarmsForMedication(id);
     } catch {
       // Non-critical — expo-notification entries already removed above
     }
@@ -435,7 +475,7 @@ export async function snoozeNotification(
       data: notificationData.data,
       categoryIdentifier:
         notificationData.categoryIdentifier ?? NOTIFICATION_CATEGORIES.MEDICATION,
-      sound: 'default',
+      sound: true,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -468,12 +508,8 @@ export async function rescheduleMedicationsAfterLaunch(
 
   for (const med of active) {
     if (!scheduledIds.has(med.id)) {
-      try {
-        await scheduleMedicationNotifications(med);
-      } catch (err) {
-        if (err instanceof NotificationPermissionError) break; // all meds will fail — stop early
-        console.warn('[MedicAI] Could not reschedule medication after launch:', med.id, err);
-      }
+      // No notifications found for this medication — likely lost after reboot
+      await scheduleMedicationNotifications(med);
     }
   }
 }

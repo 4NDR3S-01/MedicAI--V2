@@ -1,9 +1,13 @@
 package com.william20.medicai;
 
 import android.app.AlarmManager;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.PowerManager;
+import android.util.Log;
 
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -11,6 +15,8 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 
 public class AlarmEnvironmentModule extends ReactContextBaseJavaModule {
+    private static final String TAG = "MedicAI-Alarm";
+
     public AlarmEnvironmentModule(ReactApplicationContext reactContext) {
         super(reactContext);
     }
@@ -50,6 +56,87 @@ public class AlarmEnvironmentModule extends ReactContextBaseJavaModule {
             promise.resolve(canSchedule);
         } catch (Exception ex) {
             promise.reject("exact_alarm_check_failed", ex);
+        }
+    }
+
+    /**
+     * Returns the device manufacturer in lowercase (e.g. "xiaomi", "samsung", "oppo", "huawei").
+     * Used by JS to detect OEM-specific restrictions that require user guidance.
+     */
+    @ReactMethod
+    public void getManufacturer(Promise promise) {
+        promise.resolve(Build.MANUFACTURER.toLowerCase());
+    }
+
+    /**
+     * Attempts to open the OEM-specific autostart/background manager settings.
+     * On MIUI (Xiaomi), this opens the Autostart manager where the user must enable
+     * the app for alarms to fire when the app is killed.
+     * Returns true if an intent was launched, false if no known OEM intent is available.
+     */
+    @ReactMethod
+    public void openAutostartSettings(Promise promise) {
+        try {
+            String manufacturer = Build.MANUFACTURER.toLowerCase();
+            Intent intent = null;
+
+            switch (manufacturer) {
+                case "xiaomi":
+                    intent = new Intent();
+                    intent.setComponent(new ComponentName(
+                        "com.miui.securitycenter",
+                        "com.miui.permcenter.autostart.AutoStartManagementActivity"
+                    ));
+                    break;
+                case "oppo":
+                    intent = new Intent();
+                    intent.setComponent(new ComponentName(
+                        "com.coloros.safecenter",
+                        "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+                    ));
+                    break;
+                case "vivo":
+                    intent = new Intent();
+                    intent.setComponent(new ComponentName(
+                        "com.vivo.permissionmanager",
+                        "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"
+                    ));
+                    break;
+                case "huawei":
+                case "honor":
+                    intent = new Intent();
+                    intent.setComponent(new ComponentName(
+                        "com.huawei.systemmanager",
+                        "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+                    ));
+                    break;
+                case "samsung":
+                    // Samsung doesn't have autostart but has "sleeping apps"
+                    intent = new Intent();
+                    intent.setComponent(new ComponentName(
+                        "com.samsung.android.lool",
+                        "com.samsung.android.sm.battery.ui.BatteryActivity"
+                    ));
+                    break;
+            }
+
+            if (intent != null) {
+                PackageManager pm = getReactApplicationContext().getPackageManager();
+                if (intent.resolveActivity(pm) != null) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getReactApplicationContext().startActivity(intent);
+                    Log.d(TAG, "Opened autostart settings for " + manufacturer);
+                    promise.resolve(true);
+                } else {
+                    Log.w(TAG, "Autostart intent not resolvable for " + manufacturer);
+                    promise.resolve(false);
+                }
+            } else {
+                promise.resolve(false);
+            }
+        } catch (Exception ex) {
+            Log.w(TAG, "Failed to open autostart settings: " + ex.getMessage());
+            promise.resolve(false);
         }
     }
 }

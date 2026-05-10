@@ -220,3 +220,33 @@ export async function requestBatteryOptimizationExemption(): Promise<void> {
     await openBatteryOptimizationSettings();
   }
 }
+
+// ─── OEM autostart (MIUI, OPPO, Vivo, Huawei, etc.) ─────────────────────────
+
+const OEM_AUTOSTART_MANUFACTURERS = ['xiaomi', 'oppo', 'vivo', 'huawei', 'honor'];
+
+/**
+ * Returns the device manufacturer in lowercase, or null if unavailable.
+ */
+export async function getDeviceManufacturer(): Promise<string | null> {
+  return AlarmEnvironmentNative.getManufacturer();
+}
+
+/**
+ * Returns true if the device is from an OEM that requires autostart permission
+ * for background alarm delivery (Xiaomi/MIUI, OPPO/ColorOS, Vivo, Huawei/Honor).
+ */
+export async function isOemAutostartRequired(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  const manufacturer = await AlarmEnvironmentNative.getManufacturer();
+  if (!manufacturer) return false;
+  return OEM_AUTOSTART_MANUFACTURERS.includes(manufacturer);
+}
+
+/**
+ * Attempts to open the OEM-specific autostart settings.
+ * Returns true if the settings screen was opened, false otherwise.
+ */
+export async function openAutostartSettings(): Promise<boolean> {
+  return AlarmEnvironmentNative.openAutostartSettings();
+}

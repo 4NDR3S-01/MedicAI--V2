@@ -16,6 +16,7 @@ type PromiseAlarmModule = {
     body: string,
   ) => Promise<string>;
   cancelAlarm: (id: string) => Promise<string>;
+  cancelAlarmsForMedication: (medicationId: string) => Promise<number>;
 };
 
 const getModule = (): PromiseAlarmModule | null => {
@@ -45,5 +46,11 @@ export default {
     const mod = getModule();
     if (!mod) throw new Error('Native AlarmModule not available');
     return mod.cancelAlarm(id);
+  },
+
+  cancelAlarmsForMedication: async (medicationId: string): Promise<number> => {
+    const mod = getModule();
+    if (!mod) throw new Error('Native AlarmModule not available');
+    return mod.cancelAlarmsForMedication(medicationId);
   },
 };

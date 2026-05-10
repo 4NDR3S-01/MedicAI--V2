@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  AppState,
   FlatList,
   Pressable,
   RefreshControl,
@@ -25,16 +24,7 @@ import {
   scheduleMedicationNotifications,
   cancelNotificationsByDataId,
   rescheduleMedicationsAfterLaunch,
-  NotificationPermissionError,
 } from '../../../shared/services/notifications.service';
-import {
-  type AlarmPermissionsStatus,
-  getAlarmPermissionsStatus,
-  requestNotificationPermission,
-  openNotificationSettings,
-  openBatteryOptimizationSettings,
-  openExactAlarmSettings,
-} from '../../../shared/services/alarm-permissions.service';
 
 export type MedicationsScreenProps = {
   theme: AppTheme;
@@ -48,7 +38,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMedication, setEditingMedication] = useState<MedicationData | null>(null);
-  const [alarmPermissions, setAlarmPermissions] = useState<AlarmPermissionsStatus | null>(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -111,26 +100,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     void loadMedications();
   }, [loadMedications]);
 
-  const checkAlarmPermissions = useCallback(async () => {
-    try {
-      const status = await getAlarmPermissionsStatus();
-      setAlarmPermissions(status);
-    } catch {
-      // Non-critical — permission status unavailable
-    }
-  }, []);
-
-  useEffect(() => {
-    void checkAlarmPermissions();
-  }, [checkAlarmPermissions]);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void checkAlarmPermissions();
-    });
-    return () => sub.remove();
-  }, [checkAlarmPermissions]);
-
   const handleDeleteMedication = useCallback((medicationId: string, name: string) => {
     Alert.alert('Eliminar medicamento', `¿Estás seguro de que quieres eliminar "${name}"?`, [
       { text: 'Cancelar', style: 'cancel' },
@@ -177,20 +146,8 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       setMedications((current) =>
         current.map((m) => (m.id === med.id ? { ...m, active: med.active } : m))
       );
-
-      if (err instanceof NotificationPermissionError) {
-        Alert.alert(
-          'Notificaciones desactivadas',
-          'El medicamento fue actualizado pero las alarmas no se programaron. Activa las notificaciones en Configuración.',
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Configuración', onPress: () => void openNotificationSettings() },
-          ],
-        );
-      } else {
-        const message = err instanceof Error ? err.message : 'Error al actualizar el estado';
-        Alert.alert('Error', message);
-      }
+      const message = err instanceof Error ? err.message : 'Error al actualizar el estado';
+      Alert.alert('Error', message);
     }
   };
 
@@ -237,70 +194,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
-      {/* Notification permission banner */}
-      {alarmPermissions && alarmPermissions.notifications !== 'granted' && (
-        <View style={[styles.permissionBanner, { backgroundColor: `${theme.colors.accentTertiary}12`, borderColor: `${theme.colors.accentTertiary}40` }]}>
-          <MaterialCommunityIcons name="bell-alert-outline" size={22} color={theme.colors.accentTertiary} />
-          <View style={styles.permissionBannerText}>
-            <Text style={[styles.permissionBannerTitle, { color: theme.colors.textPrimary }]}>Alarmas desactivadas</Text>
-            <Text style={[styles.permissionBannerSubtext, { color: theme.colors.textSecondary }]}>
-              Las notificaciones de medicación no funcionarán sin este permiso.
-            </Text>
-          </View>
-          <Pressable
-            style={[styles.permissionBannerBtn, { backgroundColor: theme.colors.accentTertiary }]}
-            onPress={async () => {
-              if (alarmPermissions.notifications === 'undetermined') {
-                const result = await requestNotificationPermission();
-                if (result === 'granted') void checkAlarmPermissions();
-              } else {
-                await openNotificationSettings();
-              }
-            }}
-          >
-            <Text style={[styles.permissionBannerBtnText, { color: '#fff' }]}>
-              {alarmPermissions.notifications === 'undetermined' ? 'Activar' : 'Configuración'}
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Exact alarm permission banner — Android 12+ */}
-      {alarmPermissions?.shouldPromptExactAlarmPermission && alarmPermissions.notifications === 'granted' && (
-        <View style={[styles.permissionBanner, { backgroundColor: `${theme.colors.accentPrimary}12`, borderColor: `${theme.colors.accentPrimary}40` }]}> 
-          <MaterialCommunityIcons name="alarm-check" size={22} color={theme.colors.accentPrimary} />
-          <View style={styles.permissionBannerText}>
-            <Text style={[styles.permissionBannerTitle, { color: theme.colors.textPrimary }]}>Alarmas exactas</Text>
-            <Text style={[styles.permissionBannerSubtext, { color: theme.colors.textSecondary }]}>Activa el permiso para que la app pueda programar horas exactas en segundo plano.</Text>
-          </View>
-          <Pressable
-            style={[styles.permissionBannerBtn, { backgroundColor: theme.colors.accentPrimary }]}
-            onPress={() => void openExactAlarmSettings()}
-          >
-            <Text style={[styles.permissionBannerBtnText, { color: '#fff' }]}>Ver</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Battery optimization banner — Android only */}
-      {alarmPermissions?.shouldPromptBatteryOptimization && alarmPermissions.notifications === 'granted' && (
-        <View style={[styles.permissionBanner, { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}40` }]}>
-          <MaterialCommunityIcons name="battery-alert-variant-outline" size={22} color={theme.colors.accentSecondary} />
-          <View style={styles.permissionBannerText}>
-            <Text style={[styles.permissionBannerTitle, { color: theme.colors.textPrimary }]}>Optimización de batería</Text>
-            <Text style={[styles.permissionBannerSubtext, { color: theme.colors.textSecondary }]}>
-              Exime la app para garantizar la entrega de alarmas en segundo plano.
-            </Text>
-          </View>
-          <Pressable
-            style={[styles.permissionBannerBtn, { backgroundColor: theme.colors.accentSecondary }]}
-            onPress={() => void openBatteryOptimizationSettings()}
-          >
-            <Text style={[styles.permissionBannerBtnText, { color: '#fff' }]}>Ver</Text>
-          </Pressable>
-        </View>
-      )}
-
       <FlatList
         data={medications}
         keyExtractor={(item) => item.id}
@@ -551,20 +444,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     elevation: 8,
   },
-  permissionBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 20,
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  permissionBannerText: { flex: 1 },
-  permissionBannerTitle: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
-  permissionBannerSubtext: { fontSize: 12, fontWeight: '500', lineHeight: 16 },
-  permissionBannerBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  permissionBannerBtnText: { fontSize: 13, fontWeight: '800' },
 });
 

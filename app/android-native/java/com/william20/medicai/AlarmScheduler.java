@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.os.Build;
 import android.net.Uri;
 
+import android.util.Log;
 import java.util.Date;
 
 public class AlarmScheduler {
@@ -42,11 +43,14 @@ public class AlarmScheduler {
         PendingIntent pi = buildPendingIntent(context, intent, id);
 
         long time = when.getTime();
+        long delayMs = time - System.currentTimeMillis();
+        Log.d("MedicAI-Alarm", "scheduleExactAlarm: id=" + id + ", triggerIn=" + (delayMs / 1000) + "s, SDK=" + Build.VERSION.SDK_INT);
 
         // Android 12+ requires explicit permission to schedule exact alarms.
         // Fall back to inexact if the permission was not granted by the user.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!am.canScheduleExactAlarms()) {
+                Log.w("MedicAI-Alarm", "canScheduleExactAlarms=false, using inexact alarm for id=" + id);
                 am.set(AlarmManager.RTC_WAKEUP, time, pi);
                 return;
             }
@@ -54,8 +58,10 @@ public class AlarmScheduler {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pi);
+            Log.d("MedicAI-Alarm", "setExactAndAllowWhileIdle set for id=" + id);
         } else {
             am.setExact(AlarmManager.RTC_WAKEUP, time, pi);
+            Log.d("MedicAI-Alarm", "setExact set for id=" + id);
         }
     }
 
