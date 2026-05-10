@@ -23,6 +23,7 @@ import { AddMedicationModal } from '../components/AddMedicationModal';
 import {
   scheduleMedicationNotifications,
   cancelNotificationsByDataId,
+  rescheduleMedicationsAfterLaunch,
 } from '../../../shared/services/notifications.service';
 
 export type MedicationsScreenProps = {
@@ -43,10 +44,26 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   const isEmpty = medications.length === 0;
-  const activeCount = medications.filter((m) => m.active).length;
   const takenToday = 3; // Mock value for progress
   const totalToday = medications.length > 0 ? medications.length : 4;
   const progress = totalToday > 0 ? takenToday / totalToday : 0;
+
+  const deleteMedication = useCallback(async (medicationId: string) => {
+    if (Platform.OS === 'android') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+
+    const session = await getStoredSession();
+    if (!session?.accessToken) {
+      Alert.alert('Error', 'No autorizado.');
+      return;
+    }
+
+    await medicationsAPI.deleteMedication(medicationId, session.accessToken);
+    await cancelNotificationsByDataId(medicationId);
+
+    setMedications((current) => current.filter((med) => med.id !== medicationId));
+  }, []);
 
   const loadMedications = useCallback(async () => {
     try {
@@ -59,7 +76,11 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 
       const data = await medicationsAPI.fetchMedications(session.accessToken);
       setMedications(data || []);
-      
+
+      // Re-schedule any alarms lost after a device reboot (Android clears AlarmManager on restart).
+      // Safe to call on every launch — skips medications that already have pending notifications.
+      void rescheduleMedicationsAfterLaunch(data || []);
+
       // Trigger entry animation
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -79,37 +100,21 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     void loadMedications();
   }, [loadMedications]);
 
-  const handleDeleteMedication = (medicationId: string, name: string) => {
+  const handleDeleteMedication = useCallback((medicationId: string, name: string) => {
     Alert.alert('Eliminar medicamento', `¿Estás seguro de que quieres eliminar "${name}"?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Eliminar',
         style: 'destructive',
-        onPress: async () => {
-          if (Platform.OS === 'android') {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          }
-          try {
-            const session = await getStoredSession();
-            if (!session?.accessToken) {
-              Alert.alert('Error', 'No autorizado.');
-              return;
-            }
-
-            await medicationsAPI.deleteMedication(medicationId, session.accessToken);
-            
-            // Cancel pending notifications
-            await cancelNotificationsByDataId(medicationId);
-            
-            setMedications((current) => current.filter((med) => med.id !== medicationId));
-          } catch (err) {
+        onPress: () => {
+          void deleteMedication(medicationId).catch((err) => {
             const message = err instanceof Error ? err.message : 'Error al eliminar';
             Alert.alert('Error', message);
-          }
+          });
         },
       },
     ]);
-  };
+  }, [deleteMedication]);
 
   const toggleMedicationStatus = async (med: MedicationData) => {
     if (Platform.OS === 'android') {
@@ -237,7 +242,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             </View>
           )
         }
-        renderItem={({ item, index }) => (
+        renderItem={({ item }) => (
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
             <View style={styles.medicationCardWrapper}>
               <View style={styles.timeSection}>
@@ -274,8 +279,8 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                     {/* Display multiple times */}
                     {item.times && item.times.length > 0 && (
                       <View style={styles.timesBadgeList}>
-                        {item.times.map((t, i) => (
-                          <View key={i} style={[styles.timeBadge, { backgroundColor: `${theme.colors.accentPrimary}10` }]}>
+                        {item.times.map((t) => (
+                          <View key={`${item.id}-${t}`} style={[styles.timeBadge, { backgroundColor: `${theme.colors.accentPrimary}10` }]}> 
                             <MaterialCommunityIcons name="alarm" size={12} color={theme.colors.accentPrimary} />
                             <Text style={[styles.timeBadgeText, { color: theme.colors.accentPrimary }]}>{t}</Text>
                           </View>

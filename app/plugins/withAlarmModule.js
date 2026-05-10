@@ -1,0 +1,201 @@
+/**
+ * Expo Config Plugin — Native AlarmModule for MedicAI
+ *
+ * Automatically integrates the Android native alarm module during `expo prebuild` or EAS Build.
+ * This plugin:
+ *   1. Copies all Java source files to the generated Android project.
+ *   2. Merges required AndroidManifest entries (permissions, receivers, activity).
+ *   3. Registers AlarmPackage in MainApplication (Java and Kotlin).
+ *
+ * Run `npx expo prebuild --clean` after modifying this file or the Java sources.
+ */
+
+const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
+
+// Source Java files (inside app/android-native/)
+const JAVA_SRC_DIR = path.join(
+  __dirname,
+  '..',
+  'android-native',
+  'java',
+  'com',
+  'william20',
+  'medicai',
+);
+const DEST_PACKAGE_PARTS = ['com', 'william20', 'medicai'];
+
+// ─── Manifest helpers ─────────────────────────────────────────────────────────
+
+function ensurePermission(manifest, name) {
+  if (!manifest['uses-permission']) manifest['uses-permission'] = [];
+  const already = manifest['uses-permission'].some(p => p.$['android:name'] === name);
+  if (!already) manifest['uses-permission'].push({ $: { 'android:name': name } });
+}
+
+function ensureReceiver(application, name, attrs, intentFilters) {
+  if (!application.receiver) application.receiver = [];
+  const already = application.receiver.some(r => r.$['android:name'] === name);
+  if (already) return;
+  const entry = { $: { 'android:name': name, ...attrs } };
+  if (intentFilters && intentFilters.length) entry['intent-filter'] = intentFilters;
+  application.receiver.push(entry);
+}
+
+function ensureActivity(application, name, attrs) {
+  if (!application.activity) application.activity = [];
+  const already = application.activity.some(a => a.$['android:name'] === name);
+  if (!already) application.activity.push({ $: { 'android:name': name, ...attrs } });
+}
+
+// ─── Plugin ───────────────────────────────────────────────────────────────────
+
+const withAlarmModule = config => {
+  // ── Step 1: Copy Java files ──────────────────────────────────────────────
+  config = withDangerousMod(config, [
+    'android',
+    async config => {
+      const androidRoot = config.modRequest.platformProjectRoot;
+      const destDir = path.join(androidRoot, 'app', 'src', 'main', 'java', ...DEST_PACKAGE_PARTS);
+
+      fs.mkdirSync(destDir, { recursive: true });
+
+      if (!fs.existsSync(JAVA_SRC_DIR)) {
+        console.warn('[withAlarmModule] Source directory not found:', JAVA_SRC_DIR);
+        return config;
+      }
+
+      for (const file of fs.readdirSync(JAVA_SRC_DIR)) {
+        if (!file.endsWith('.java')) continue;
+        const src = path.join(JAVA_SRC_DIR, file);
+        const dest = path.join(destDir, file);
+        fs.copyFileSync(src, dest);
+        console.log('[withAlarmModule] Copied', file);
+      }
+
+      return config;
+    },
+  ]);
+
+  // ── Step 2: AndroidManifest entries ─────────────────────────────────────
+  config = withAndroidManifest(config, config => {
+    const { manifest } = config.modResults;
+    const application = manifest.application[0];
+
+    // Permissions required for exact medical alarms
+    ensurePermission(manifest, 'android.permission.SCHEDULE_EXACT_ALARM');
+    ensurePermission(manifest, 'android.permission.USE_EXACT_ALARM');
+    ensurePermission(manifest, 'android.permission.RECEIVE_BOOT_COMPLETED');
+    ensurePermission(manifest, 'android.permission.WAKE_LOCK');
+    ensurePermission(manifest, 'android.permission.POST_NOTIFICATIONS');
+
+    // AlarmReceiver — handles fired alarms and shows full-screen notification
+    ensureReceiver(application, 'com.william20.medicai.AlarmReceiver', {
+      'android:exported': 'false',
+    });
+
+    // BootReceiver — re-schedules alarms after device restart
+    ensureReceiver(
+      application,
+      'com.william20.medicai.BootReceiver',
+      { 'android:enabled': 'true', 'android:exported': 'true' },
+      [
+        {
+          action: [
+            { $: { 'android:name': 'android.intent.action.BOOT_COMPLETED' } },
+            { $: { 'android:name': 'android.intent.action.MY_PACKAGE_REPLACED' } },
+          ],
+        },
+      ],
+    );
+
+    // AlarmActivity — full-screen activity shown over the lock screen
+    ensureActivity(application, 'com.william20.medicai.AlarmActivity', {
+      'android:exported': 'true',
+      'android:showWhenLocked': 'true',
+      'android:turnScreenOn': 'true',
+      'android:launchMode': 'singleTop',
+      'android:theme': '@style/Theme.AppCompat.DayNight.NoActionBar',
+    });
+
+    return config;
+  });
+
+  // ── Step 3: Register AlarmPackage in MainApplication ────────────────────
+  config = withDangerousMod(config, [
+    'android',
+    async config => {
+      const androidRoot = config.modRequest.platformProjectRoot;
+      const appPackage = config.android?.package ?? 'com.william20.medicai';
+      const packageParts = appPackage.split('.');
+
+      const javaPath = path.join(
+        androidRoot, 'app', 'src', 'main', 'java',
+        ...packageParts, 'MainApplication.java',
+      );
+      const ktPath = path.join(
+        androidRoot, 'app', 'src', 'main', 'java',
+        ...packageParts, 'MainApplication.kt',
+      );
+
+      if (fs.existsSync(ktPath)) {
+        let kt = fs.readFileSync(ktPath, 'utf8');
+
+        if (!kt.includes('import com.william20.medicai.AlarmPackage')) {
+          // Insert import after the package declaration
+          kt = kt.replace(
+            /^(package .+)(\r?\n)/m,
+            `$1$2\nimport com.william20.medicai.AlarmPackage\n`,
+          );
+        }
+
+        if (!kt.includes('AlarmPackage()')) {
+          // .apply {} style (React Native 0.73+)
+          if (kt.includes('PackageList(this).packages.apply {')) {
+            kt = kt.replace(
+              'PackageList(this).packages.apply {',
+              'PackageList(this).packages.apply {\n      add(AlarmPackage())',
+            );
+          } else {
+            // Fallback: val packages style
+            kt = kt.replace(
+              'val packages = PackageList(this).packages',
+              'val packages = PackageList(this).packages\n      packages.add(AlarmPackage())',
+            );
+          }
+        }
+
+        fs.writeFileSync(ktPath, kt);
+        console.log('[withAlarmModule] Registered AlarmPackage in MainApplication.kt');
+      } else if (fs.existsSync(javaPath)) {
+        let java = fs.readFileSync(javaPath, 'utf8');
+
+        if (!java.includes('import com.william20.medicai.AlarmPackage')) {
+          java = java.replace(
+            /^(import java\.util\.List;)/m,
+            `import com.william20.medicai.AlarmPackage;\n$1`,
+          );
+        }
+
+        if (!java.includes('new AlarmPackage()')) {
+          java = java.replace(
+            'List<ReactPackage> packages = new PackageList(this).getPackages();',
+            'List<ReactPackage> packages = new PackageList(this).getPackages();\n      packages.add(new AlarmPackage());',
+          );
+        }
+
+        fs.writeFileSync(javaPath, java);
+        console.log('[withAlarmModule] Registered AlarmPackage in MainApplication.java');
+      } else {
+        console.warn('[withAlarmModule] MainApplication not found at:', javaPath);
+      }
+
+      return config;
+    },
+  ]);
+
+  return config;
+};
+
+module.exports = withAlarmModule;
