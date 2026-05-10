@@ -2,6 +2,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Modal, Image } from 'react-native';
 import { useState, useMemo } from 'react';
 import { updateAvatarOnBackend } from '../../auth/services/auth.service';
+import { getStoredSession } from '../../auth';
+import { fetchMedications } from '../services/medications.service';
+import {
+  getMedicationReminderLeadMinutes,
+  scheduleMedicationNotifications,
+  setMedicationReminderLeadMinutes,
+} from '../../../shared/services/notifications.service';
 
 const PREDEFINED_SEEDS = [
   { seed: 'Alexander', bg: 'e0f2fe' },
@@ -27,9 +34,9 @@ function getSafeAvatar(data: string | null | undefined) {
   if (!data) return null;
   try {
     const parsed = JSON.parse(data);
-    if (parsed && parsed.url) return parsed;
-  } catch (e) {
-    // ignore
+    if (parsed?.url) return parsed;
+  } catch {
+    return null;
   }
   return null;
 }
@@ -44,8 +51,8 @@ function displayNameFromEmail(email: string | null): string {
   if (!local) {
     return 'Usuario';
   }
-  const spaced = local.replace(/[._-]+/g, ' ').trim();
-  return spaced.replace(/\b\w/g, (char) => char.toUpperCase());
+  const spaced = local.replaceAll(/[._-]+/g, ' ').trim();
+  return spaced.replaceAll(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function initialFromName(name: string): string {
@@ -53,7 +60,7 @@ function initialFromName(name: string): string {
   if (!trimmed) {
     return '?';
   }
-  return trimmed[0]!.toUpperCase();
+  return trimmed[0].toUpperCase();
 }
 
 function handleStub(title: string) {
@@ -119,9 +126,45 @@ export function ProfileScreen({
 }: Readonly<ProfileScreenProps>) {
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
-  const name = userFullName ? userFullName : displayNameFromEmail(userEmail);
+  const [notificationSettingsVisible, setNotificationSettingsVisible] = useState(false);
+  const [isSavingNotificationSettings, setIsSavingNotificationSettings] = useState(false);
+  const [reminderLeadMinutes, setReminderLeadMinutes] = useState(0);
+  const name = userFullName ?? displayNameFromEmail(userEmail);
   const initial = initialFromName(name);
   const parsedAvatar = useMemo(() => getSafeAvatar(avatarData), [avatarData]);
+
+  const openNotificationSettings = async () => {
+    const leadMinutes = await getMedicationReminderLeadMinutes();
+    setReminderLeadMinutes(leadMinutes);
+    setNotificationSettingsVisible(true);
+  };
+
+  const saveNotificationSettings = async () => {
+    try {
+      setIsSavingNotificationSettings(true);
+      await setMedicationReminderLeadMinutes(reminderLeadMinutes);
+
+      const session = await getStoredSession();
+      if (session?.accessToken) {
+        const medications = await fetchMedications(session.accessToken);
+        for (const medication of medications) {
+          await scheduleMedicationNotifications(medication);
+        }
+      }
+
+      setNotificationSettingsVisible(false);
+      Alert.alert('Guardado', 'Preferencias de notificación actualizadas.');
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        error instanceof Error
+          ? error.message
+          : 'No se pudieron actualizar las preferencias de notificación.',
+      );
+    } finally {
+      setIsSavingNotificationSettings(false);
+    }
+  };
 
   const handleAvatarSelect = async (avatar: typeof PREDEFINED_AVATARS[0]) => {
     setIsSavingAvatar(true);
@@ -210,7 +253,9 @@ export function ProfileScreen({
               icon="bell-outline"
               title="Notificaciones"
               subtitle="Preferencias de alertas"
-              onPress={() => handleStub('Notificaciones')}
+              onPress={() => {
+                void openNotificationSettings();
+              }}
               theme={theme}
               isLast
             />
@@ -306,6 +351,64 @@ export function ProfileScreen({
               );
             })}
           </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={notificationSettingsVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNotificationSettingsVisible(false)}
+      >
+        <View style={[styles.settingsOverlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+          <View style={[styles.settingsCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}> 
+            <Text style={[styles.settingsTitle, { color: theme.colors.textPrimary }]}>Notificaciones de Medicación</Text>
+            <Text style={[styles.settingsSubtitle, { color: theme.colors.textSecondary }]}>¿Cuántos minutos antes quieres el aviso?</Text>
+
+            <View style={styles.minutesSelector}>
+              {[0, 5, 10, 15, 30, 60].map((minutes) => {
+                const selected = reminderLeadMinutes === minutes;
+                return (
+                  <Pressable
+                    key={minutes}
+                    onPress={() => setReminderLeadMinutes(minutes)}
+                    style={[
+                      styles.minuteOption,
+                      {
+                        borderColor: selected ? theme.colors.accentPrimary : theme.colors.surfaceBorder,
+                        backgroundColor: selected ? `${theme.colors.accentPrimary}15` : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.minuteOptionText, { color: theme.colors.textPrimary }]}>
+                      {minutes === 0 ? 'A la hora exacta' : `${minutes} min antes`}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.settingsActions}>
+              <Pressable
+                onPress={() => setNotificationSettingsVisible(false)}
+                style={[styles.settingsButton, { borderColor: theme.colors.surfaceBorder, borderWidth: 1 }]}
+                disabled={isSavingNotificationSettings}
+              >
+                <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  void saveNotificationSettings();
+                }}
+                style={[styles.settingsButton, { backgroundColor: theme.colors.accentPrimary }]}
+                disabled={isSavingNotificationSettings}
+              >
+                <Text style={{ color: '#fff', fontWeight: '800' }}>
+                  {isSavingNotificationSettings ? 'Guardando...' : 'Guardar'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -481,5 +584,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 8,
+  },
+  settingsOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  settingsCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    gap: 12,
+  },
+  settingsTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  settingsSubtitle: {
+    fontSize: 14,
+  },
+  minutesSelector: {
+    gap: 8,
+  },
+  minuteOption: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  minuteOptionText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  settingsActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  settingsButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 14,
   },
 });

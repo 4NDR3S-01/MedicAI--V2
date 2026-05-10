@@ -2,6 +2,8 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
+import { appStorage } from '../storage';
+
 export const NOTIFICATION_CATEGORIES = {
   MEDICATION: 'MEDICATION_ACTION',
   APPOINTMENT: 'APPOINTMENT_REMINDER',
@@ -13,6 +15,181 @@ export const NOTIFICATION_ACTIONS = {
   SKIP: 'SKIP_ACTION',
   CONFIRM_APPOINTMENT: 'CONFIRM_APPOINTMENT_ACTION',
 };
+
+const MEDICATION_REMINDER_LEAD_MINUTES_KEY = 'medicai_medication_reminder_lead_minutes_v1';
+const DEFAULT_REMINDER_LEAD_MINUTES = 0;
+
+const MAX_SCHEDULED_NOTIFICATIONS = 500;
+const REGULAR_LOOKAHEAD_DAYS = 30;
+
+const parseTime = (time: string): { hour: number; minute: number } | null => {
+  const [hourRaw, minuteRaw] = time.split(':');
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    return null;
+  }
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+  return { hour, minute };
+};
+
+const applyLeadMinutes = (date: Date, leadMinutes: number) => {
+  if (leadMinutes <= 0) {
+    return date;
+  }
+  return new Date(date.getTime() - leadMinutes * 60 * 1000);
+};
+
+const scheduleMedicationNotificationAt = async (
+  medication: {
+    id: string;
+    name: string;
+    dosage: string;
+  },
+  triggerDate: Date,
+  isReminderBeforeDose: boolean,
+) => {
+  if (triggerDate.getTime() <= Date.now()) {
+    return;
+  }
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `Alarma de Medicación: ${medication.name}`,
+      body: isReminderBeforeDose
+        ? `Tu dosis (${medication.dosage}) es en unos minutos.`
+        : `Es hora de tu dosis: ${medication.dosage}`,
+      data: {
+        id: medication.id,
+        type: 'MEDICATION',
+        action: 'REMINDER',
+        isReminderBeforeDose,
+      },
+      categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.MAX,
+      sticky: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+      channelId: 'default',
+    },
+  });
+};
+
+const hasCustomRangeConfig = (medication: {
+  customIntervalHours?: number | null;
+  customEndDate?: string | null;
+}) => {
+  return typeof medication.customIntervalHours === 'number'
+    && medication.customIntervalHours > 0
+    && typeof medication.customEndDate === 'string'
+    && medication.customEndDate.length > 0;
+};
+
+const scheduleCustomRangeNotifications = async (
+  medication: {
+    id: string;
+    name: string;
+    dosage: string;
+    firstDoseTime?: string | null;
+    times: string[];
+    customIntervalHours?: number | null;
+    customEndDate?: string | null;
+  },
+  leadMinutes: number,
+) => {
+  const baseTime = medication.firstDoseTime || medication.times?.[0] || '00:00';
+  const parsed = parseTime(baseTime);
+  if (!parsed) return;
+
+  const { hour, minute } = parsed;
+  const intervalMs = medication.customIntervalHours! * 60 * 60 * 1000;
+  const endDate = new Date(medication.customEndDate!);
+  const now = new Date();
+
+  const first = new Date(now);
+  first.setHours(hour, minute, 0, 0);
+
+  let next = first;
+  while (next < now) {
+    next = new Date(next.getTime() + intervalMs);
+  }
+
+  let scheduledCount = 0;
+  while (next <= endDate && scheduledCount < MAX_SCHEDULED_NOTIFICATIONS) {
+    const triggerDate = applyLeadMinutes(next, leadMinutes);
+    await scheduleMedicationNotificationAt(medication, triggerDate, leadMinutes > 0);
+    scheduledCount += 1;
+    next = new Date(next.getTime() + intervalMs);
+  }
+};
+
+const scheduleRegularMedicationNotifications = async (
+  medication: {
+    id: string;
+    name: string;
+    dosage: string;
+    times: string[];
+  },
+  leadMinutes: number,
+) => {
+  if (!medication.times || medication.times.length === 0) {
+    return;
+  }
+
+  const now = new Date();
+  let scheduledCount = 0;
+
+  for (const timeStr of medication.times) {
+    const parsed = parseTime(timeStr);
+    if (!parsed) {
+      continue;
+    }
+
+    for (let dayOffset = 0; dayOffset < REGULAR_LOOKAHEAD_DAYS; dayOffset += 1) {
+      if (scheduledCount >= MAX_SCHEDULED_NOTIFICATIONS) {
+        break;
+      }
+
+      const doseDate = new Date(now);
+      doseDate.setDate(now.getDate() + dayOffset);
+      doseDate.setHours(parsed.hour, parsed.minute, 0, 0);
+
+      const triggerDate = applyLeadMinutes(doseDate, leadMinutes);
+      if (triggerDate.getTime() <= now.getTime()) {
+        continue;
+      }
+
+      await scheduleMedicationNotificationAt(medication, triggerDate, leadMinutes > 0);
+      scheduledCount += 1;
+    }
+
+    if (scheduledCount >= MAX_SCHEDULED_NOTIFICATIONS) {
+      break;
+    }
+  }
+};
+
+export async function getMedicationReminderLeadMinutes() {
+  const raw = await appStorage.getItem(MEDICATION_REMINDER_LEAD_MINUTES_KEY);
+  if (!raw) {
+    return DEFAULT_REMINDER_LEAD_MINUTES;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 120) {
+    return DEFAULT_REMINDER_LEAD_MINUTES;
+  }
+  return parsed;
+}
+
+export async function setMedicationReminderLeadMinutes(minutes: number) {
+  const safeMinutes = Math.max(0, Math.min(120, Math.trunc(minutes)));
+  await appStorage.setItem(MEDICATION_REMINDER_LEAD_MINUTES_KEY, String(safeMinutes));
+}
 
 // Initialize notification settings
 export async function setupNotifications() {
@@ -114,76 +291,14 @@ export async function scheduleMedicationNotifications(medication: {
   const permission = await registerForPushNotificationsAsync();
   if (permission !== 'granted') return;
 
-  const hasCustomRange =
-    typeof medication.customIntervalHours === 'number'
-    && medication.customIntervalHours > 0
-    && typeof medication.customEndDate === 'string'
-    && medication.customEndDate.length > 0
-    && typeof medication.firstDoseTime === 'string'
-    && medication.firstDoseTime.length > 0;
+  const leadMinutes = await getMedicationReminderLeadMinutes();
 
-  if (hasCustomRange) {
-    const [hour, minute] = (medication.firstDoseTime || '00:00').split(':').map(Number);
-    const intervalMs = medication.customIntervalHours! * 60 * 60 * 1000;
-    const endDate = new Date(medication.customEndDate!);
-    const now = new Date();
-
-    const first = new Date(now);
-    first.setHours(hour, minute, 0, 0);
-
-    let next = first;
-    while (next < now) {
-      next = new Date(next.getTime() + intervalMs);
-    }
-
-    let scheduledCount = 0;
-    const maxSchedules = 1200;
-
-    while (next <= endDate && scheduledCount < maxSchedules) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `Alarma de Medicación: ${medication.name}`,
-          body: `Es hora de tu dosis: ${medication.dosage}`,
-          data: { id: medication.id, type: 'MEDICATION', action: 'REMINDER' },
-          categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
-          sound: true,
-        },
-        trigger: next,
-      });
-
-      scheduledCount += 1;
-      next = new Date(next.getTime() + intervalMs);
-    }
-
+  if (hasCustomRangeConfig(medication)) {
+    await scheduleCustomRangeNotifications(medication, leadMinutes);
     return;
   }
 
-  if (!medication.times || medication.times.length === 0) return;
-
-  for (const timeStr of medication.times) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    
-    // We use a recurring Daily trigger for each time
-    // This is more reliable for "alarms" than intervals
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Alarma de Medicación: ${medication.name}`,
-        body: `Es hora de tu dosis: ${medication.dosage}`,
-        data: { id: medication.id, type: 'MEDICATION', action: 'REMINDER' },
-        categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
-        sound: true,
-      },
-      trigger: {
-        channelId: 'default',
-        hour: hours,
-        minute: minutes,
-        repeats: true,
-      },
-    });
-    
-    // If it's a "Cada 8 horas" or similar, we might need to calculate the offsets
-    // But since the user wants to "configurar horarios", it's better if they provide all times.
-  }
+  await scheduleRegularMedicationNotifications(medication, leadMinutes);
 }
 
 /**
@@ -237,6 +352,10 @@ export async function snoozeNotification(notificationData: any) {
       ...notificationData,
       title: `[POSPUESTO] ${notificationData.title}`,
     },
-    trigger: snoozeDate,
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: snoozeDate,
+      channelId: 'default',
+    },
   });
 }

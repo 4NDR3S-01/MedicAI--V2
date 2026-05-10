@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { Asset } from 'expo-asset';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { LOGO_SOURCE } from '../shared/ui';
@@ -267,6 +267,12 @@ export function AppRoot() {
   const [passwordResetToken, setPasswordResetToken] = useState<string | null>(null);
   const [pendingEmailVerification, setPendingEmailVerification] = useState<string | null>(null);
   const [authActionStatus, setAuthActionStatus] = useState<AuthActionStatusState | null>(null);
+  const [activeAlarm, setActiveAlarm] = useState<{
+    id: string;
+    title: string;
+    body: string;
+    notificationContent: Notifications.NotificationContent;
+  } | null>(null);
 
   const theme = useAppTheme();
 
@@ -520,6 +526,20 @@ export function AppRoot() {
     void setupNotifications();
     void registerForPushNotificationsAsync();
 
+    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as { id?: string; type?: string };
+      if (data?.type !== 'MEDICATION' || !data?.id) {
+        return;
+      }
+
+      setActiveAlarm({
+        id: data.id,
+        title: notification.request.content.title || 'Alarma de Medicación',
+        body: notification.request.content.body || 'Es hora de tu dosis.',
+        notificationContent: notification.request.content,
+      });
+    });
+
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { actionIdentifier, notification } = response;
       const data = notification.request.content.data;
@@ -530,11 +550,14 @@ export function AppRoot() {
 
         if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
           await logMedicationAction(data.id, session.accessToken, 'TAKEN');
+          setActiveAlarm(null);
           Alert.alert('Éxito', 'Toma de medicamento registrada.');
         } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
           await logMedicationAction(data.id, session.accessToken, 'SKIPPED');
+          setActiveAlarm(null);
           Alert.alert('Información', 'Dosis marcada como omitida.');
         } else if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE) {
+          setActiveAlarm(null);
           await snoozeNotification(notification.request.content);
         } else if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
           // logic for confirming appointment if needed
@@ -546,6 +569,7 @@ export function AppRoot() {
     });
 
     return () => {
+      receivedSubscription.remove();
       responseSubscription.remove();
     };
   }, []);
@@ -586,6 +610,58 @@ export function AppRoot() {
     }
 
     return Math.ceil(remainingMs / 1000);
+  };
+
+  const handleAlarmTake = async () => {
+    if (!activeAlarm) {
+      return;
+    }
+
+    try {
+      const session = await getStoredSession();
+      if (!session?.accessToken) {
+        Alert.alert('Error', 'No autorizado.');
+        return;
+      }
+      await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN');
+      setActiveAlarm(null);
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo registrar la toma.');
+      console.error(error);
+    }
+  };
+
+  const handleAlarmSkip = async () => {
+    if (!activeAlarm) {
+      return;
+    }
+
+    try {
+      const session = await getStoredSession();
+      if (!session?.accessToken) {
+        Alert.alert('Error', 'No autorizado.');
+        return;
+      }
+      await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED');
+      setActiveAlarm(null);
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo registrar la omisión.');
+      console.error(error);
+    }
+  };
+
+  const handleAlarmSnooze = async () => {
+    if (!activeAlarm) {
+      return;
+    }
+
+    try {
+      await snoozeNotification(activeAlarm.notificationContent);
+      setActiveAlarm(null);
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo posponer la alarma.');
+      console.error(error);
+    }
   };
 
   const showEmailRateLimitAlert = (remainingSeconds: number) => {
@@ -1039,7 +1115,80 @@ export function AppRoot() {
         <View style={{ flex: 1 }}>
           {renderContent()}
         </View>
+        <Modal visible={Boolean(activeAlarm)} transparent animationType="slide" onRequestClose={() => {}}>
+          <View style={styles.alarmOverlay}>
+            <View style={styles.alarmCard}>
+              <Text style={styles.alarmTitle}>{activeAlarm?.title || 'Alarma de Medicación'}</Text>
+              <Text style={styles.alarmBody}>{activeAlarm?.body || 'Es hora de tomar tu medicamento.'}</Text>
+
+              <View style={styles.alarmActions}>
+                <Pressable style={[styles.alarmButton, styles.alarmSkip]} onPress={() => { void handleAlarmSkip(); }}>
+                  <Text style={styles.alarmButtonText}>Omitir</Text>
+                </Pressable>
+                <Pressable style={[styles.alarmButton, styles.alarmSnooze]} onPress={() => { void handleAlarmSnooze(); }}>
+                  <Text style={styles.alarmButtonText}>Posponer</Text>
+                </Pressable>
+                <Pressable style={[styles.alarmButton, styles.alarmTake]} onPress={() => { void handleAlarmTake(); }}>
+                  <Text style={styles.alarmButtonText}>Tomado</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  alarmOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  alarmCard: {
+    backgroundColor: '#111827',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 28,
+    gap: 10,
+  },
+  alarmTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  alarmBody: {
+    color: '#e5e7eb',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  alarmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  alarmButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alarmSkip: {
+    backgroundColor: '#7f1d1d',
+  },
+  alarmSnooze: {
+    backgroundColor: '#92400e',
+  },
+  alarmTake: {
+    backgroundColor: '#166534',
+  },
+  alarmButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+});
