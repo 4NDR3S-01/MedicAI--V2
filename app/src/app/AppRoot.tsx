@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import { Asset } from 'expo-asset';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { LOGO_SOURCE } from '../shared/ui';
@@ -273,6 +274,7 @@ export function AppRoot() {
     body: string;
     notificationContent: Notifications.NotificationContent;
   } | null>(null);
+  const alarmPulseAnim = useRef(new Animated.Value(0)).current;
 
   const theme = useAppTheme();
 
@@ -542,11 +544,15 @@ export function AppRoot() {
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { actionIdentifier, notification } = response;
-      const data = notification.request.content.data;
+      const data = notification.request.content.data as { id?: string; type?: string };
 
       try {
         const session = await getStoredSession();
         if (!session?.accessToken) return;
+
+        if (!data?.id || typeof data.id !== 'string') {
+          return;
+        }
 
         if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
           await logMedicationAction(data.id, session.accessToken, 'TAKEN');
@@ -598,6 +604,16 @@ export function AppRoot() {
     return theme.mode === 'dark' ? 'light' : 'dark';
   }, [theme.mode]);
 
+  const alarmPulseScale = alarmPulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1.04],
+  });
+
+  const alarmPulseOpacity = alarmPulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.45, 0.08],
+  });
+
   const getRemainingCooldownSeconds = () => {
     if (!emailActionBlockedUntil) {
       return 0;
@@ -611,6 +627,34 @@ export function AppRoot() {
 
     return Math.ceil(remainingMs / 1000);
   };
+
+  useEffect(() => {
+    alarmPulseAnim.stopAnimation();
+    alarmPulseAnim.setValue(0);
+
+    if (!activeAlarm) {
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(alarmPulseAnim, {
+          toValue: 1,
+          duration: 1100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(alarmPulseAnim, {
+          toValue: 0,
+          duration: 1100,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    loop.start();
+
+    return () => loop.stop();
+  }, [activeAlarm, alarmPulseAnim]);
 
   const handleAlarmTake = async () => {
     if (!activeAlarm) {
@@ -673,6 +717,53 @@ export function AppRoot() {
 
   const setDefaultEmailCooldown = () => {
     setEmailActionBlockedUntil(Date.now() + EMAIL_ACTION_COOLDOWN_MS);
+  };
+
+  const parseCooldownFromMessage = (message: string) => {
+    const normalizedMessage = message.toLowerCase();
+    const secondsMatch = /after\s+(\d+)\s+seconds?/i.exec(normalizedMessage)
+      ?? /(\d+)\s+segundos?/i.exec(normalizedMessage);
+    const seconds = secondsMatch ? Number(secondsMatch[1]) : 60;
+    if (Number.isFinite(seconds) && seconds > 0 && seconds <= MAX_EMAIL_COOLDOWN_SECONDS) {
+      setEmailActionBlockedUntil(Date.now() + seconds * 1000);
+      return true;
+    }
+    setDefaultEmailCooldown();
+    return false;
+  };
+
+  const resendVerificationEmailRequest = async (email: string) => {
+    try {
+      return await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
+    }
+  };
+
+  const resolveResendVerificationErrorMessage = async (response: Response) => {
+    const rawError = await response.text();
+    let errorMessage = 'Error al reenviar correo';
+
+    if (response.status >= 500) {
+      return 'El backend no esta disponible en este momento.';
+    }
+
+    if (rawError.trim()) {
+      try {
+        const parsedError = JSON.parse(rawError) as { message?: string };
+        if (typeof parsedError.message === 'string' && parsedError.message.trim()) {
+          errorMessage = parsedError.message;
+        }
+      } catch {
+        // ignore invalid error body
+      }
+    }
+
+    return errorMessage;
   };
 
   const syncEmailCooldownFromErrorMessage = (message: string) => {
@@ -821,48 +912,12 @@ export function AppRoot() {
 
     try {
       setIsSubmittingAuth(true);
-      // Utilizar endpoint de resend-verification
-      let response: Response;
-
-      try {
-        response = await fetch(
-          `${process.env.EXPO_PUBLIC_API_BASE_URL}/auth/resend-verification`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
-          }
-        );
-      } catch {
-        throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
-      }
+      const response = await resendVerificationEmailRequest(email);
 
       if (!response.ok) {
-        const rawError = await response.text();
-        let errorMessage = 'Error al reenviar correo';
+        const errorMessage = await resolveResendVerificationErrorMessage(response);
 
-        if (response.status >= 500) {
-          errorMessage = 'El backend no esta disponible en este momento.';
-        } else if (rawError.trim()) {
-          try {
-            const parsedError = JSON.parse(rawError) as { message?: string };
-            if (typeof parsedError.message === 'string' && parsedError.message.trim()) {
-              errorMessage = parsedError.message;
-            }
-          } catch {
-            // no-op
-          }
-        }
-
-        // Parsear cooldown si existe en el error (para rate limiting)
-        const cooldownMatch = /after\s+(\d+)\s+seconds?/i.exec(errorMessage)
-          ?? /(\d+)\s+segundos?/i.exec(errorMessage);
-        if (cooldownMatch) {
-          const seconds = Number(cooldownMatch[1]);
-          if (Number.isFinite(seconds) && seconds > 0 && seconds <= MAX_EMAIL_COOLDOWN_SECONDS) {
-            setEmailActionBlockedUntil(Date.now() + seconds * 1000);
-          }
-        }
+        parseCooldownFromMessage(errorMessage);
         throw new Error(errorMessage);
       }
 
@@ -1115,24 +1170,63 @@ export function AppRoot() {
         <View style={{ flex: 1 }}>
           {renderContent()}
         </View>
-        <Modal visible={Boolean(activeAlarm)} transparent animationType="slide" onRequestClose={() => {}}>
+        <Modal visible={Boolean(activeAlarm)} transparent animationType="fade" onRequestClose={() => {}}>
           <View style={styles.alarmOverlay}>
-            <View style={styles.alarmCard}>
-              <Text style={styles.alarmTitle}>{activeAlarm?.title || 'Alarma de Medicación'}</Text>
+            <Animated.View
+              style={[
+                styles.alarmHalo,
+                {
+                  opacity: alarmPulseOpacity,
+                  transform: [{ scale: alarmPulseScale }],
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.alarmCard,
+                {
+                  transform: [{ scale: alarmPulseScale }],
+                },
+              ]}
+            >
+              <View style={styles.alarmHeaderRow}>
+                <View style={styles.alarmIconWrap}>
+                  <MaterialCommunityIcons name="alarm-light" size={42} color="#fff" />
+                </View>
+                <View style={styles.alarmHeaderText}>
+                  <Text style={styles.alarmKicker}>Recordatorio de medicación</Text>
+                  <Text style={styles.alarmTitle}>{activeAlarm?.title || 'Alarma de Medicación'}</Text>
+                </View>
+              </View>
+
               <Text style={styles.alarmBody}>{activeAlarm?.body || 'Es hora de tomar tu medicamento.'}</Text>
+
+              <View style={styles.alarmMetaRow}>
+                <View style={styles.alarmMetaPill}>
+                  <MaterialCommunityIcons name="volume-high" size={14} color={theme.colors.accentPrimary} />
+                  <Text style={[styles.alarmMetaText, { color: theme.colors.textPrimary }]}>Sonido activo</Text>
+                </View>
+                <View style={styles.alarmMetaPill}>
+                  <MaterialCommunityIcons name="cellphone" size={14} color={theme.colors.accentPrimary} />
+                  <Text style={[styles.alarmMetaText, { color: theme.colors.textPrimary }]}>Interacción inmediata</Text>
+                </View>
+              </View>
 
               <View style={styles.alarmActions}>
                 <Pressable style={[styles.alarmButton, styles.alarmSkip]} onPress={() => { void handleAlarmSkip(); }}>
+                  <MaterialCommunityIcons name="close-circle-outline" size={18} color="#fff" />
                   <Text style={styles.alarmButtonText}>Omitir</Text>
                 </Pressable>
                 <Pressable style={[styles.alarmButton, styles.alarmSnooze]} onPress={() => { void handleAlarmSnooze(); }}>
+                  <MaterialCommunityIcons name="clock-outline" size={18} color="#fff" />
                   <Text style={styles.alarmButtonText}>Posponer</Text>
                 </Pressable>
                 <Pressable style={[styles.alarmButton, styles.alarmTake]} onPress={() => { void handleAlarmTake(); }}>
+                  <MaterialCommunityIcons name="check-circle-outline" size={18} color="#fff" />
                   <Text style={styles.alarmButtonText}>Tomado</Text>
                 </Pressable>
               </View>
-            </View>
+            </Animated.View>
           </View>
         </Modal>
       </SafeAreaView>
@@ -1143,52 +1237,112 @@ export function AppRoot() {
 const styles = StyleSheet.create({
   alarmOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 22,
+    backgroundColor: 'rgba(2, 6, 23, 0.78)',
+  },
+  alarmHalo: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: '#38bdf8',
   },
   alarmCard: {
-    backgroundColor: '#111827',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 28,
-    gap: 10,
+    width: '100%',
+    borderRadius: 30,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    gap: 16,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 12,
+  },
+  alarmHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  alarmIconWrap: {
+    width: 66,
+    height: 66,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+  },
+  alarmHeaderText: {
+    flex: 1,
+    gap: 3,
+  },
+  alarmKicker: {
+    color: '#7dd3fc',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   alarmTitle: {
     color: '#fff',
-    fontSize: 22,
+    fontSize: 24,
+    lineHeight: 28,
     fontWeight: '900',
   },
   alarmBody: {
-    color: '#e5e7eb',
+    color: '#cbd5e1',
     fontSize: 15,
     lineHeight: 22,
+    paddingRight: 4,
+  },
+  alarmMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  alarmMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  alarmMetaText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   alarmActions: {
-    flexDirection: 'row',
     gap: 10,
-    marginTop: 10,
+    marginTop: 6,
   },
   alarmButton: {
-    flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 14,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   alarmSkip: {
     backgroundColor: '#7f1d1d',
   },
   alarmSnooze: {
-    backgroundColor: '#92400e',
+    backgroundColor: '#1d4ed8',
   },
   alarmTake: {
-    backgroundColor: '#166534',
+    backgroundColor: '#15803d',
   },
   alarmButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
   },
 });

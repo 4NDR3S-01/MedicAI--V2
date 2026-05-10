@@ -57,7 +57,7 @@ const scheduleMedicationNotificationAt = async (
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Alarma de Medicación: ${medication.name}`,
+      title: `${medication.name}`,
       body: isReminderBeforeDose
         ? `Tu dosis (${medication.dosage}) es en unos minutos.`
         : `Es hora de tu dosis: ${medication.dosage}`,
@@ -196,43 +196,37 @@ export async function setupNotifications() {
   // Set handler for how to handle notifications when the app is in the foreground
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     }),
   });
 
   // Define categories for interactive notifications
-  await Notifications.setNotificationCategoriesAsync([
+  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.MEDICATION, [
     {
-      identifier: NOTIFICATION_CATEGORIES.MEDICATION,
-      actions: [
-        {
-          identifier: NOTIFICATION_ACTIONS.TAKE,
-          buttonTitle: 'Tomar',
-          options: { opensAppToForeground: false },
-        },
-        {
-          identifier: NOTIFICATION_ACTIONS.SNOOZE,
-          buttonTitle: 'Posponer (15m)',
-          options: { opensAppToForeground: false },
-        },
-        {
-          identifier: NOTIFICATION_ACTIONS.SKIP,
-          buttonTitle: 'Omitir',
-          options: { isDestructive: true, opensAppToForeground: false },
-        },
-      ],
+      identifier: NOTIFICATION_ACTIONS.TAKE,
+      buttonTitle: 'Tomar',
+      options: { opensAppToForeground: false },
     },
     {
-      identifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
-      actions: [
-        {
-          identifier: NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT,
-          buttonTitle: 'Confirmar Asistencia',
-          options: { opensAppToForeground: true },
-        },
-      ],
+      identifier: NOTIFICATION_ACTIONS.SNOOZE,
+      buttonTitle: 'Posponer (15m)',
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: NOTIFICATION_ACTIONS.SKIP,
+      buttonTitle: 'Omitir',
+      options: { isDestructive: true, opensAppToForeground: false },
+    },
+  ]);
+
+  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.APPOINTMENT, [
+    {
+      identifier: NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT,
+      buttonTitle: 'Confirmar Asistencia',
+      options: { opensAppToForeground: true },
     },
   ]);
 }
@@ -324,7 +318,10 @@ export async function scheduleAppointmentReminder(appointment: {
       data: { id: appointment.id, type: 'APPOINTMENT' },
       categoryIdentifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
     },
-    trigger: reminderDate,
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: reminderDate,
+    },
   });
 }
 
