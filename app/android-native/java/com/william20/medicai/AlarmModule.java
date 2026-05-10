@@ -3,7 +3,7 @@ package com.william20.medicai;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.Callback;
+import com.facebook.react.bridge.Promise;
 
 import java.util.Date;
 import android.content.Context;
@@ -21,7 +21,7 @@ public class AlarmModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void scheduleAlarm(String id, double timestampMs, String title, String body, Callback cb) {
+    public void scheduleAlarm(String id, double timestampMs, String title, String body, Promise promise) {
         try {
             Date when = new Date((long) timestampMs);
             AlarmScheduler.scheduleExactAlarm(getReactApplicationContext(), id, when, title, body);
@@ -35,16 +35,16 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                 obj.put("body", body);
                 prefs.edit().putString("alarm_" + id, obj.toString()).apply();
             } catch (Exception ex) {
-                // non-fatal
+                // non-fatal — alarm is already scheduled
             }
-            cb.invoke((Object) null, "scheduled");
+            promise.resolve("scheduled");
         } catch (Exception e) {
-            cb.invoke(e.getMessage(), (Object) null);
+            promise.reject("schedule_alarm_failed", e.getMessage(), e);
         }
     }
 
     @ReactMethod
-    public void cancelAlarm(String id, Callback cb) {
+    public void cancelAlarm(String id, Promise promise) {
         try {
             AlarmScheduler.cancelAlarm(getReactApplicationContext(), id);
             try {
@@ -53,9 +53,9 @@ public class AlarmModule extends ReactContextBaseJavaModule {
             } catch (Exception ex) {
                 // non-fatal
             }
-            cb.invoke((Object) null, "cancelled");
+            promise.resolve("cancelled");
         } catch (Exception e) {
-            cb.invoke(e.getMessage(), (Object) null);
+            promise.reject("cancel_alarm_failed", e.getMessage(), e);
         }
     }
 }

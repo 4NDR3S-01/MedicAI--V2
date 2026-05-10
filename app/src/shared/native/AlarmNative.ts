@@ -1,82 +1,49 @@
 import { NativeModules, Platform } from 'react-native';
 
-type NativeAlarmCallback = (err: any, res: any) => void;
+/**
+ * Promise-based bridge to the native AlarmModule (Android only).
+ *
+ * The Java side uses `@ReactMethod` with `Promise` parameters,
+ * which is fully compatible with both the old bridge and the
+ * New Architecture interop layer (RN 0.81+, bridgeless mode).
+ */
 
-type NativeAlarmModule = {
+type PromiseAlarmModule = {
   scheduleAlarm: (
     id: string,
     timestampMs: number,
     title: string,
     body: string,
-    callback: NativeAlarmCallback,
-  ) => void;
-  cancelAlarm: (id: string, callback: NativeAlarmCallback) => void;
+  ) => Promise<string>;
+  cancelAlarm: (id: string) => Promise<string>;
 };
 
-const alarmModule = NativeModules.AlarmModule as NativeAlarmModule | undefined;
-
-const invokeAlarmModule = <T>(
-  invoke: (
-    module: NativeAlarmModule,
-    resolve: (value: T) => void,
-    reject: (reason: unknown) => void,
-  ) => void,
-  unavailableMessage: string,
-): Promise<T> =>
-  new Promise((resolve, reject) => {
-    if (!alarmModule) {
-      reject(new Error(unavailableMessage));
-      return;
-    }
-
-    try {
-      invoke(alarmModule, resolve, reject);
-    } catch (error) {
-      reject(error);
-    }
-  });
+const getModule = (): PromiseAlarmModule | null => {
+  if (Platform.OS !== 'android') return null;
+  const mod = (NativeModules as Record<string, unknown>).AlarmModule as PromiseAlarmModule | undefined;
+  if (mod && typeof mod.scheduleAlarm === 'function' && typeof mod.cancelAlarm === 'function') {
+    return mod;
+  }
+  return null;
+};
 
 export default {
-  scheduleAlarm: async (id: string, timestampMs: number, title: string, body: string) => {
-    if (Platform.OS !== 'android' || typeof (NativeModules as any).AlarmModule?.scheduleAlarm !== 'function') {
-      throw new Error('Native AlarmModule not available');
-    }
+  isAvailable: (): boolean => getModule() !== null,
 
-    return invokeAlarmModule(
-      (module, resolve, reject) => {
-        module.scheduleAlarm(id, timestampMs, title, body, (err: any, res: any) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          resolve(res);
-        });
-      },
-      'Native AlarmModule not available',
-    );
+  scheduleAlarm: async (
+    id: string,
+    timestampMs: number,
+    title: string,
+    body: string,
+  ): Promise<string> => {
+    const mod = getModule();
+    if (!mod) throw new Error('Native AlarmModule not available');
+    return mod.scheduleAlarm(id, timestampMs, title, body);
   },
 
-  cancelAlarm: async (id: string) => {
-    if (Platform.OS !== 'android' || typeof (NativeModules as any).AlarmModule?.cancelAlarm !== 'function') {
-      throw new Error('Native AlarmModule not available');
-    }
-
-    return invokeAlarmModule(
-      (module, resolve, reject) => {
-        module.cancelAlarm(id, (err: any, res: any) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          resolve(res);
-        });
-      },
-      'Native AlarmModule not available',
-    );
+  cancelAlarm: async (id: string): Promise<string> => {
+    const mod = getModule();
+    if (!mod) throw new Error('Native AlarmModule not available');
+    return mod.cancelAlarm(id);
   },
-
-  isAvailable: () =>
-    Platform.OS === 'android' &&
-    typeof (NativeModules as any).AlarmModule?.scheduleAlarm === 'function' &&
-    typeof (NativeModules as any).AlarmModule?.cancelAlarm === 'function',
 };

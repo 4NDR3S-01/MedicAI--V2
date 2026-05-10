@@ -154,17 +154,17 @@ const withAlarmModule = config => {
         }
 
         if (!kt.includes('AlarmPackage()')) {
-          // .apply {} style (React Native 0.73+)
+          // RN 0.81 / Expo 54: PackageList(this).packages.apply {
           if (kt.includes('PackageList(this).packages.apply {')) {
             kt = kt.replace(
-              'PackageList(this).packages.apply {',
-              'PackageList(this).packages.apply {\n      add(AlarmPackage())',
+              /PackageList\(this\)\.packages\.apply\s*\{/,
+              'PackageList(this).packages.apply {\n              add(AlarmPackage())',
             );
-          } else {
-            // Fallback: val packages style
+          // RN 0.76+: getPackages() override returning list
+          } else if (kt.includes('PackageList(this).packages')) {
             kt = kt.replace(
-              'val packages = PackageList(this).packages',
-              'val packages = PackageList(this).packages\n      packages.add(AlarmPackage())',
+              'PackageList(this).packages',
+              'PackageList(this).packages.apply { add(AlarmPackage()) }',
             );
           }
         }

@@ -19,7 +19,7 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, PermissionsAndroid } from 'react-native';
+import { Platform } from 'react-native';
 
 import { appStorage } from '../storage';
 import AlarmNative from '../native/AlarmNative';
@@ -314,46 +314,14 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
     finalStatus = status;
   }
 
-  // Android 13+ (API 33): POST_NOTIFICATIONS requires an explicit runtime prompt
-  if (Platform.OS === 'android' && Platform.Version >= 33) {
-    try {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-      );
-      if (granted !== PermissionsAndroid.RESULTS.GRANTED) return null;
-    } catch (err) {
-      console.warn('[MedicAI] POST_NOTIFICATIONS permission request failed:', err);
-    }
+  // On Android 13+ (API 33), expo-notifications' requestPermissionsAsync already
+  // handles POST_NOTIFICATIONS internally. Re-check the actual status to be safe.
+  if (finalStatus !== 'granted') {
+    const { status: recheck } = await Notifications.getPermissionsAsync();
+    finalStatus = recheck;
   }
 
   if (finalStatus !== 'granted') return null;
-
-  if (Platform.OS === 'android') {
-    // HIGH-PRIORITY channel for medication alarms (attempts DND bypass)
-    await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_ALARMS, {
-      name: 'Alarmas de Medicación',
-      description: 'Recordatorios críticos para la toma de medicamentos',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 500, 250, 500],
-      lightColor: '#4F46E5',
-      bypassDnd: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      enableVibrate: true,
-      showBadge: true,
-    });
-
-    // Standard channel for appointment reminders
-    await Notifications.setNotificationChannelAsync(CHANNELS.APPOINTMENTS, {
-      name: 'Recordatorios de Citas',
-      description: 'Recordatorios para citas médicas programadas',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#4F46E5',
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      enableVibrate: true,
-      showBadge: true,
-    });
-  }
 
   return 'granted';
 }
