@@ -15,11 +15,6 @@ type NativeAlarmModule = {
 
 const alarmModule = NativeModules.AlarmModule as NativeAlarmModule | undefined;
 
-const isAndroidNativeAvailable =
-  Platform.OS === 'android' &&
-  typeof alarmModule?.scheduleAlarm === 'function' &&
-  typeof alarmModule?.cancelAlarm === 'function';
-
 const invokeAlarmModule = <T>(
   invoke: (
     module: NativeAlarmModule,
@@ -43,7 +38,7 @@ const invokeAlarmModule = <T>(
 
 export default {
   scheduleAlarm: async (id: string, timestampMs: number, title: string, body: string) => {
-    if (!isAndroidNativeAvailable) {
+    if (Platform.OS !== 'android' || typeof (NativeModules as any).AlarmModule?.scheduleAlarm !== 'function') {
       throw new Error('Native AlarmModule not available');
     }
 
@@ -62,7 +57,7 @@ export default {
   },
 
   cancelAlarm: async (id: string) => {
-    if (!isAndroidNativeAvailable) {
+    if (Platform.OS !== 'android' || typeof (NativeModules as any).AlarmModule?.cancelAlarm !== 'function') {
       throw new Error('Native AlarmModule not available');
     }
 
@@ -80,5 +75,8 @@ export default {
     );
   },
 
-  isAvailable: () => isAndroidNativeAvailable,
+  isAvailable: () =>
+    Platform.OS === 'android' &&
+    typeof (NativeModules as any).AlarmModule?.scheduleAlarm === 'function' &&
+    typeof (NativeModules as any).AlarmModule?.cancelAlarm === 'function',
 };

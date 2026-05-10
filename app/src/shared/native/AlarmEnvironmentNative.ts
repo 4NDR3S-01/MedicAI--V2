@@ -7,27 +7,27 @@ type NativeEnvironmentModule = {
 
 const environmentModule = NativeModules.AlarmEnvironmentModule as NativeEnvironmentModule | undefined;
 
-const isAndroidEnvironmentAvailable =
-  Platform.OS === 'android' &&
-  typeof environmentModule?.isIgnoringBatteryOptimizations === 'function' &&
-  typeof environmentModule?.canScheduleExactAlarms === 'function';
-
 export const AlarmEnvironmentNative = {
-  isAvailable: () => isAndroidEnvironmentAvailable,
+  isAvailable: () =>
+    Platform.OS === 'android' &&
+    typeof (NativeModules as any).AlarmEnvironmentModule?.isIgnoringBatteryOptimizations === 'function' &&
+    typeof (NativeModules as any).AlarmEnvironmentModule?.canScheduleExactAlarms === 'function',
 
   isIgnoringBatteryOptimizations: async (): Promise<boolean | null> => {
-    if (!isAndroidEnvironmentAvailable) return null;
+    if (Platform.OS !== 'android') return true;
     try {
-      return await environmentModule.isIgnoringBatteryOptimizations();
+      if (typeof (NativeModules as any).AlarmEnvironmentModule?.isIgnoringBatteryOptimizations !== 'function') return null;
+      return await (NativeModules as any).AlarmEnvironmentModule.isIgnoringBatteryOptimizations();
     } catch {
       return null;
     }
   },
 
   canScheduleExactAlarms: async (): Promise<boolean | null> => {
-    if (!isAndroidEnvironmentAvailable) return null;
+    if (Platform.OS !== 'android') return null;
     try {
-      return await environmentModule.canScheduleExactAlarms();
+      if (typeof (NativeModules as any).AlarmEnvironmentModule?.canScheduleExactAlarms !== 'function') return null;
+      return await (NativeModules as any).AlarmEnvironmentModule.canScheduleExactAlarms();
     } catch {
       return null;
     }
