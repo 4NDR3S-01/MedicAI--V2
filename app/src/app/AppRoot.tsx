@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { Asset } from 'expo-asset';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, AppState, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -36,9 +36,10 @@ import {
   setupNotifications,
   registerForPushNotificationsAsync,
   NOTIFICATION_ACTIONS,
+  SCHEDULE_TYPES,
   snoozeNotification,
-  cancelNotificationsByDataId,
 } from '../shared/services/notifications.service';
+import { emitDoseAction } from '../shared/services/dose-refresh-bus';
 import AlarmNative from '../shared/native/AlarmNative';
 import { logMedicationAction, fetchMedications } from '../features/tabs/services/medications.service';
 
@@ -539,13 +540,22 @@ export function AppRoot() {
       for (const action of actions) {
         try {
           if (action.action === 'TAKEN' || action.action === 'SKIPPED') {
-            await logMedicationAction(action.medicationId, session.accessToken, action.action);
-            await cancelNotificationsByDataId(action.medicationId + '_snooze');
+            const scheduledFor = action.doseTimestamp
+              ? new Date(action.doseTimestamp).toISOString()
+              : undefined;
+            await logMedicationAction(
+              action.medicationId,
+              session.accessToken,
+              action.action,
+              scheduledFor,
+            );
           }
         } catch (err) {
           console.warn('[MedicAI] Failed to process pending alarm action:', err);
         }
       }
+
+      emitDoseAction();
     } catch (err) {
       console.warn('[MedicAI] Failed to get pending alarm actions:', err);
     }
@@ -555,6 +565,17 @@ export function AppRoot() {
   useEffect(() => {
     if (!session?.accessToken) return;
     void processPendingAlarmActions();
+  }, [session?.accessToken, processPendingAlarmActions]);
+
+  // Process pending alarm actions when app returns to foreground (e.g. from AlarmActivity)
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void processPendingAlarmActions();
+      }
+    });
+    return () => sub.remove();
   }, [session?.accessToken, processPendingAlarmActions]);
 
   // Setup Notifications — must complete without blocking on user interaction
@@ -575,44 +596,55 @@ export function AppRoot() {
 
     const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as { id?: string; type?: string };
-      if (data?.type !== 'MEDICATION' || !data?.id) {
-        return;
-      }
+      if (!data?.id) return;
 
-      setActiveAlarm({
-        id: data.id,
-        title: notification.request.content.title || 'Alarma de Medicación',
-        body: notification.request.content.body || 'Es hora de tu dosis.',
-        notificationContent: notification.request.content,
-      });
+      if (data.type === SCHEDULE_TYPES.DOSE_ALARM) {
+        setActiveAlarm({
+          id: data.id,
+          title: notification.request.content.title || 'Alarma de Medicación',
+          body: notification.request.content.body || 'Es hora de tu dosis.',
+          notificationContent: notification.request.content,
+        });
+      }
+      // REMINDER type: just let the system notification banner show — no modal
     });
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { actionIdentifier, notification } = response;
       const data = notification.request.content.data as { id?: string; type?: string };
+      if (!data?.id || typeof data.id !== 'string') return;
 
       try {
         const session = await getStoredSession();
         if (!session?.accessToken) return;
 
-        if (!data?.id || typeof data.id !== 'string') {
+        // DOSE_ALARM actions
+        if (data.type === SCHEDULE_TYPES.DOSE_ALARM) {
+          if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
+            await logMedicationAction(data.id, session.accessToken, 'TAKEN');
+            setActiveAlarm(null);
+            emitDoseAction();
+            Alert.alert('Éxito', 'Toma de medicamento registrada.');
+          } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
+            await logMedicationAction(data.id, session.accessToken, 'SKIPPED');
+            setActiveAlarm(null);
+            emitDoseAction();
+            Alert.alert('Información', 'Dosis marcada como omitida.');
+          } else if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE) {
+            setActiveAlarm(null);
+            await snoozeNotification(notification.request.content);
+            emitDoseAction();
+          }
           return;
         }
 
-        if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
-          await logMedicationAction(data.id, session.accessToken, 'TAKEN');
-          await cancelNotificationsByDataId(data.id);
-          setActiveAlarm(null);
-          Alert.alert('Éxito', 'Toma de medicamento registrada.');
-        } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
-          await logMedicationAction(data.id, session.accessToken, 'SKIPPED');
-          await cancelNotificationsByDataId(data.id);
-          setActiveAlarm(null);
-          Alert.alert('Información', 'Dosis marcada como omitida.');
-        } else if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE) {
-          setActiveAlarm(null);
-          await snoozeNotification(notification.request.content);
-        } else if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
+        // REMINDER type: user tapped the reminder notification — just open app
+        if (data.type === SCHEDULE_TYPES.REMINDER) {
+          // No action needed — reminder opens app on tap
+          return;
+        }
+
+        if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
           Alert.alert('Cita Confirmada', 'Se ha confirmado tu asistencia.');
         }
       } catch (error) {
@@ -712,9 +744,9 @@ export function AppRoot() {
         return;
       }
       await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN');
-      await cancelNotificationsByDataId(activeAlarm.id);
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
+      emitDoseAction();
     } catch (error) {
       Alert.alert('Error', 'No se pudo registrar la toma.');
       console.error(error);
@@ -731,9 +763,9 @@ export function AppRoot() {
         return;
       }
       await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED');
-      await cancelNotificationsByDataId(activeAlarm.id);
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
+      emitDoseAction();
     } catch (error) {
       Alert.alert('Error', 'No se pudo registrar la omisión.');
       console.error(error);
@@ -747,6 +779,7 @@ export function AppRoot() {
       await snoozeNotification(activeAlarm.notificationContent);
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
+      emitDoseAction();
     } catch (error) {
       Alert.alert('Error', 'No se pudo posponer la alarma.');
       console.error(error);

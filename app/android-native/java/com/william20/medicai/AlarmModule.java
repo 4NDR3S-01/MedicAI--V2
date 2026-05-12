@@ -134,6 +134,9 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                             item.putString("medicationId", obj.optString("medicationId", ""));
                             item.putString("action", obj.optString("action", ""));
                             item.putDouble("timestamp", obj.optDouble("timestamp", 0));
+                            if (obj.has("doseTimestamp")) {
+                                item.putDouble("doseTimestamp", obj.optDouble("doseTimestamp", 0));
+                            }
                             actions.pushMap(item);
                         } catch (Exception ex) {
                             Log.w("MedicAI-Alarm", "Failed to parse pending action: " + ex.getMessage());

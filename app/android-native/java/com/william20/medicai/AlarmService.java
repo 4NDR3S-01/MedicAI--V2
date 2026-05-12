@@ -287,14 +287,6 @@ public class AlarmService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        // Stop action
-        Intent stopIntent = new Intent(this, AlarmService.class);
-        stopIntent.setAction(ACTION_STOP_ALARM);
-        PendingIntent stopPendingIntent = PendingIntent.getService(
-            this, notifId + 1, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
         // Icon
         int smallIconRes = getResources().getIdentifier("notification_icon", "drawable", getPackageName());
         if (smallIconRes == 0) {
@@ -319,14 +311,6 @@ public class AlarmService extends Service {
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .setOngoing(true)
             .setAutoCancel(false);
-
-        // Add stop action button directly on the notification
-        Notification.Action stopAction = new Notification.Action.Builder(
-            android.R.drawable.ic_menu_close_clear_cancel,
-            "Detener",
-            stopPendingIntent
-        ).build();
-        builder.addAction(stopAction);
 
         return builder.build();
     }

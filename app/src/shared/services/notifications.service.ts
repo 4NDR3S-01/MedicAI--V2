@@ -1,20 +1,24 @@
 /**
  * MedicAI — Notification & Alarm Service
  *
- * Scheduling strategy (in priority order):
- *  1. Android + native AlarmModule available (EAS/prebuild build):
- *       → AlarmManager.setExactAndAllowWhileIdle() + full-screen intent.
- *       → Works when app is killed AND after device reboot (BootReceiver).
- *  2. Fallback — expo-notifications scheduled local notifications:
- *       → Works in background and when app is killed on both platforms.
- *       → Android: AlarmManager used internally by Expo.
- *       → iOS: UNUserNotificationCenter (OS-guaranteed delivery).
- *       → Reboot gap: handled by rescheduleMedicationsAfterLaunch().
+ * This module handles TWO distinct event types per medication dose:
  *
- * iOS Critical Alerts:
- *   Requires the `com.apple.developer.usernotifications.critical-alerts` entitlement
- *   (configured in app.json) and Apple approval for production App Store distribution.
- *   Works in development / TestFlight once the entitlement is included in the build.
+ *  1. REMINDER (notification)
+ *       - Fires `leadMinutes` BEFORE the scheduled dose time.
+ *       - Uses expo-notifications only → lightweight, banner-style.
+ *       - Does NOT trigger native AlarmActivity or in-app alarm modal.
+ *       - Not persisted to native SharedPreferences (no BootReceiver needed).
+ *       - Configurable lead time via Profile → Notificaciones.
+ *
+ *  2. DOSE ALARM (alarm)
+ *       - Fires AT the exact scheduled dose time.
+ *       - Priority 1: Android native AlarmManager (survives reboot via BootReceiver).
+ *       - Priority 2: expo-notifications fallback (cross-platform).
+ *       - Triggers native AlarmActivity (full-screen over lock screen) + in-app modal.
+ *       - Full interaction: Take / Snooze (10 min) / Skip.
+ *
+ * iOS Critical Alerts require the `com.apple.developer.usernotifications.critical-alerts`
+ * entitlement (configured in app.json) and Apple approval for production.
  */
 
 import * as Notifications from 'expo-notifications';
@@ -28,11 +32,13 @@ import AlarmNative from '../native/AlarmNative';
 
 export const CHANNELS = {
   MEDICATION_ALARMS: 'medicai_medication_alarms',
+  MEDICATION_REMINDERS: 'medicai_medication_reminders',
   APPOINTMENTS: 'medicai_appointments',
 } as const;
 
 export const NOTIFICATION_CATEGORIES = {
-  MEDICATION: 'MEDICATION_ACTION',
+  DOSE_ALARM: 'DOSE_ALARM_ACTION',
+  REMINDER: 'MEDICATION_REMINDER',
   APPOINTMENT: 'APPOINTMENT_REMINDER',
 } as const;
 
@@ -41,6 +47,11 @@ export const NOTIFICATION_ACTIONS = {
   SNOOZE: 'SNOOZE_ACTION',
   SKIP: 'SKIP_ACTION',
   CONFIRM_APPOINTMENT: 'CONFIRM_APPOINTMENT_ACTION',
+} as const;
+
+export const SCHEDULE_TYPES = {
+  DOSE_ALARM: 'DOSE_ALARM',
+  REMINDER: 'REMINDER',
 } as const;
 
 // ─── Internal constants ───────────────────────────────────────────────────────
@@ -74,53 +85,73 @@ const parseTime = (time: string): { hour: number; minute: number } | null => {
   return { hour: h, minute: m };
 };
 
-const applyLeadMinutes = (date: Date, leadMinutes: number): Date =>
-  leadMinutes > 0 ? new Date(date.getTime() - leadMinutes * 60_000) : date;
+// ─── Low-level: schedule one REMINDER (expo-notifications only) ───────────────
 
-// ─── Low-level: schedule one notification ─────────────────────────────────────
-
-const scheduleSingleMedicationNotification = async (
+const scheduleSingleReminder = async (
   medication: Pick<MedicationScheduleInput, 'id' | 'name' | 'dosage'>,
   triggerDate: Date,
-  isLeadReminder: boolean,
 ): Promise<void> => {
   if (triggerDate.getTime() <= Date.now()) return;
 
+  const reminderId = `${medication.id}_reminder_${triggerDate.getTime()}`;
+
+  console.log('[MedicAI] Scheduling reminder:', reminderId, 'at', triggerDate.toISOString());
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `Recordatorio: ${medication.name}`,
+      body: `Tu dosis (${medication.dosage}) es en unos minutos.`,
+      data: {
+        id: medication.id,
+        type: SCHEDULE_TYPES.REMINDER,
+      },
+      categoryIdentifier: NOTIFICATION_CATEGORIES.REMINDER,
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+      sticky: false,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+      channelId: CHANNELS.MEDICATION_REMINDERS,
+    },
+  });
+};
+
+// ─── Low-level: schedule one DOSE ALARM (native → expo fallback) ──────────────
+
+const scheduleSingleDoseAlarm = async (
+  medication: Pick<MedicationScheduleInput, 'id' | 'name' | 'dosage'>,
+  triggerDate: Date,
+): Promise<void> => {
+  if (triggerDate.getTime() <= Date.now()) return;
+
+  const alarmId = `${medication.id}_dose_${triggerDate.getTime()}`;
   const title = medication.name;
-  const body = isLeadReminder
-    ? `Tu dosis (${medication.dosage}) es en unos minutos.`
-    : `Es hora de tu dosis: ${medication.dosage}`;
+  const body = `Es hora de tu dosis: ${medication.dosage}`;
 
-  // Generate a unique alarm ID per medication+time to avoid PendingIntent overwrites
-  // when the same medication has multiple daily doses.
-  const alarmId = `${medication.id}_${triggerDate.getTime()}`;
-
-  // ── Path 1: native AlarmManager (Android only, requires EAS/prebuild build) ──
+  // Path 1: native AlarmManager (Android, survives reboot)
   if (AlarmNative.isAvailable()) {
     try {
-      console.log('[MedicAI] Scheduling native alarm:', alarmId, 'at', triggerDate.toISOString());
+      console.log('[MedicAI] Scheduling dose alarm:', alarmId, 'at', triggerDate.toISOString());
       await AlarmNative.scheduleAlarm(alarmId, triggerDate.getTime(), title, body);
-      console.log('[MedicAI] Native alarm scheduled successfully:', alarmId);
+      console.log('[MedicAI] Dose alarm scheduled successfully:', alarmId);
       return;
     } catch (err) {
-      console.warn('[MedicAI] Native alarm failed, falling back to expo-notifications:', err);
+      console.warn('[MedicAI] Native dose alarm failed, falling back to expo-notifications:', err);
     }
-  } else {
-    console.log('[MedicAI] Native AlarmModule not available, using expo-notifications fallback');
   }
 
-  // ── Path 2: expo-notifications (cross-platform, works in background & killed app) ──
-  console.log('[MedicAI] Scheduling expo-notification:', medication.id, 'at', triggerDate.toISOString());
+  // Path 2: expo-notifications fallback
+  console.log('[MedicAI] Scheduling expo dose alarm:', alarmId, 'at', triggerDate.toISOString());
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
       data: {
         id: medication.id,
-        type: 'MEDICATION',
-        isLeadReminder,
+        type: SCHEDULE_TYPES.DOSE_ALARM,
       },
-      categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
+      categoryIdentifier: NOTIFICATION_CATEGORIES.DOSE_ALARM,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.MAX,
       sticky: true,
@@ -143,7 +174,7 @@ const hasCustomRange = (
   typeof medication.customEndDate === 'string' &&
   medication.customEndDate.length > 0;
 
-const scheduleCustomRangeNotifications = async (
+const scheduleCustomRangeAlarms = async (
   medication: MedicationScheduleInput,
   leadMinutes: number,
 ): Promise<void> => {
@@ -163,17 +194,23 @@ const scheduleCustomRangeNotifications = async (
 
   let count = 0;
   while (next <= endDate && count < MAX_SCHEDULED) {
-    await scheduleSingleMedicationNotification(
-      medication,
-      applyLeadMinutes(next, leadMinutes),
-      leadMinutes > 0,
-    );
+    // Schedule dose alarm at exact dose time
+    await scheduleSingleDoseAlarm(medication, next);
     count += 1;
+
+    // Schedule reminder [leadMinutes] before dose time
+    if (leadMinutes > 0) {
+      const reminderDate = new Date(next.getTime() - leadMinutes * 60_000);
+      if (reminderDate.getTime() > now.getTime()) {
+        await scheduleSingleReminder(medication, reminderDate);
+      }
+    }
+
     next = new Date(next.getTime() + intervalMs);
   }
 };
 
-const scheduleRegularNotifications = async (
+const scheduleRegularAlarms = async (
   medication: Pick<MedicationScheduleInput, 'id' | 'name' | 'dosage' | 'times'>,
   leadMinutes: number,
 ): Promise<void> => {
@@ -193,11 +230,19 @@ const scheduleRegularNotifications = async (
       doseDate.setDate(now.getDate() + day);
       doseDate.setHours(parsed.hour, parsed.minute, 0, 0);
 
-      const trigger = applyLeadMinutes(doseDate, leadMinutes);
-      if (trigger.getTime() <= now.getTime()) continue;
+      if (doseDate.getTime() <= now.getTime()) continue;
 
-      await scheduleSingleMedicationNotification(medication, trigger, leadMinutes > 0);
+      // Schedule dose alarm at exact dose time
+      await scheduleSingleDoseAlarm(medication, doseDate);
       count += 1;
+
+      // Schedule reminder [leadMinutes] before dose time
+      if (leadMinutes > 0) {
+        const reminderDate = new Date(doseDate.getTime() - leadMinutes * 60_000);
+        if (reminderDate.getTime() > now.getTime()) {
+          await scheduleSingleReminder(medication, reminderDate);
+        }
+      }
     }
 
     if (count >= MAX_SCHEDULED) break;
@@ -223,8 +268,8 @@ export async function setMedicationReminderLeadMinutes(minutes: number): Promise
 // ─── Notification setup ───────────────────────────────────────────────────────
 
 /**
- * Call once at app startup (before mounting the root component).
- * Sets the foreground notification handler and registers interactive categories.
+ * Call once at app startup before mounting root component.
+ * Sets foreground handler + Android channels + interactive categories.
  */
 export async function setupNotifications(): Promise<void> {
   Notifications.setNotificationHandler({
@@ -236,17 +281,28 @@ export async function setupNotifications(): Promise<void> {
     }),
   });
 
-  // Create Android notification channels early — notifications scheduled without
-  // a valid channel are silently dropped on Android 8+.
-  // These MUST exist before any scheduleNotificationAsync call.
   if (Platform.OS === 'android') {
+    // High-priority channel for dose alarms
     await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_ALARMS, {
       name: 'Alarmas de Medicación',
-      description: 'Recordatorios críticos para la toma de medicamentos',
+      description: 'Alarmas para el momento exacto de la toma',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 500, 250, 500],
       lightColor: '#4F46E5',
       bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
+      showBadge: true,
+    });
+
+    // Standard channel for pre-dose reminders
+    await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_REMINDERS, {
+      name: 'Recordatorios de Medicación',
+      description: 'Avisos previos a la toma de medicamentos',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4F46E5',
+      bypassDnd: false,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       enableVibrate: true,
       showBadge: true,
@@ -264,7 +320,8 @@ export async function setupNotifications(): Promise<void> {
     });
   }
 
-  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.MEDICATION, [
+  // Category for dose alarms: full interaction
+  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.DOSE_ALARM, [
     {
       identifier: NOTIFICATION_ACTIONS.TAKE,
       buttonTitle: 'Tomar',
@@ -272,7 +329,7 @@ export async function setupNotifications(): Promise<void> {
     },
     {
       identifier: NOTIFICATION_ACTIONS.SNOOZE,
-      buttonTitle: 'Posponer (15m)',
+      buttonTitle: 'Posponer (10m)',
       options: { opensAppToForeground: false },
     },
     {
@@ -281,6 +338,9 @@ export async function setupNotifications(): Promise<void> {
       options: { isDestructive: true, opensAppToForeground: false },
     },
   ]);
+
+  // Category for reminders: simple notification, open app on tap
+  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.REMINDER, []);
 
   await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.APPOINTMENT, [
     {
@@ -292,9 +352,9 @@ export async function setupNotifications(): Promise<void> {
 }
 
 /**
- * Requests notification permissions and creates Android notification channels.
- * On iOS, requests Critical Alerts authorization (requires Apple entitlement).
- * Returns 'granted' on success, null if permission was denied or device is a simulator.
+ * Requests notification permissions and creates Android channels.
+ * On iOS, requests Critical Alerts authorization.
+ * Returns 'granted' on success, null if denied or simulator.
  */
 export async function registerForPushNotificationsAsync(): Promise<'granted' | null> {
   if (!Device.isDevice) {
@@ -311,8 +371,6 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
         allowAlert: true,
         allowBadge: true,
         allowSound: true,
-        // Critical Alerts bypass silent/DND. Requires the entitlement from Apple.
-        // Works in development and TestFlight once the entitlement is in the build.
         allowCriticalAlerts: true,
         allowProvisional: false,
       },
@@ -320,16 +378,12 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
     finalStatus = status;
   }
 
-  // Android 13+ (API 33): POST_NOTIFICATIONS requires an explicit runtime prompt.
-  // Only request via PermissionsAndroid if expo's requestPermissionsAsync didn't already
-  // resolve it — on MIUI/OEM devices, a duplicate request can return inconsistent results.
   if (Platform.OS === 'android' && Platform.Version >= 33 && finalStatus !== 'granted') {
     try {
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
       );
       if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        // Re-read through expo to get proper PermissionStatus enum value
         const { status: recheckStatus } = await Notifications.getPermissionsAsync();
         finalStatus = recheckStatus;
       }
@@ -341,10 +395,9 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
   if (finalStatus !== 'granted') return null;
 
   if (Platform.OS === 'android') {
-    // HIGH-PRIORITY channel for medication alarms (attempts DND bypass)
     await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_ALARMS, {
       name: 'Alarmas de Medicación',
-      description: 'Recordatorios críticos para la toma de medicamentos',
+      description: 'Alarmas para el momento exacto de la toma',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 500, 250, 500],
       lightColor: '#4F46E5',
@@ -354,7 +407,18 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
       showBadge: true,
     });
 
-    // Standard channel for appointment reminders
+    await Notifications.setNotificationChannelAsync(CHANNELS.MEDICATION_REMINDERS, {
+      name: 'Recordatorios de Medicación',
+      description: 'Avisos previos a la toma de medicamentos',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4F46E5',
+      bypassDnd: false,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
+      showBadge: true,
+    });
+
     await Notifications.setNotificationChannelAsync(CHANNELS.APPOINTMENTS, {
       name: 'Recordatorios de Citas',
       description: 'Recordatorios para citas médicas programadas',
@@ -373,7 +437,7 @@ export async function registerForPushNotificationsAsync(): Promise<'granted' | n
 // ─── Public scheduling API ────────────────────────────────────────────────────
 
 /**
- * Cancels all existing alarms for a medication and schedules new ones.
+ * Cancels all existing alarms + reminders for a medication and schedules new ones.
  * Safe to call on create, update, and toggle-active operations.
  */
 export async function scheduleMedicationNotifications(
@@ -391,9 +455,9 @@ export async function scheduleMedicationNotifications(
   const leadMinutes = await getMedicationReminderLeadMinutes();
 
   if (hasCustomRange(medication)) {
-    await scheduleCustomRangeNotifications(medication, leadMinutes);
+    await scheduleCustomRangeAlarms(medication, leadMinutes);
   } else {
-    await scheduleRegularNotifications(medication, leadMinutes);
+    await scheduleRegularAlarms(medication, leadMinutes);
   }
 }
 
@@ -411,12 +475,9 @@ export async function scheduleAppointmentReminder(appointment: {
   const reminderDate = new Date(appointmentDate.getTime() - 3_600_000);
   if (reminderDate <= new Date()) return;
 
-  const title = `Recordatorio: ${appointment.title}`;
-  const body = 'Tu cita médica es en 1 hora.';
-
   if (AlarmNative.isAvailable()) {
     try {
-      await AlarmNative.scheduleAlarm(appointment.id, reminderDate.getTime(), title, body);
+      await AlarmNative.scheduleAlarm(appointment.id, reminderDate.getTime(), `Recordatorio: ${appointment.title}`, 'Tu cita médica es en 1 hora.');
       return;
     } catch (err) {
       console.warn('[MedicAI] Native alarm failed for appointment, falling back:', err);
@@ -425,8 +486,8 @@ export async function scheduleAppointmentReminder(appointment: {
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title,
-      body,
+      title: `Recordatorio: ${appointment.title}`,
+      body: 'Tu cita médica es en 1 hora.',
       data: { id: appointment.id, type: 'APPOINTMENT' },
       categoryIdentifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
       sound: true,
@@ -440,9 +501,7 @@ export async function scheduleAppointmentReminder(appointment: {
 }
 
 /**
- * Cancels all scheduled expo-notifications and native alarms matching the given ID.
- * Uses cancelAlarmsForMedication to bulk-cancel all compound-ID native alarms
- * (format: id_timestamp) that belong to this medication/appointment.
+ * Cancels ALL scheduled events (reminders + dose alarms + snoozed) for the given medication.
  */
 export async function cancelNotificationsByDataId(id: string): Promise<void> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -456,27 +515,29 @@ export async function cancelNotificationsByDataId(id: string): Promise<void> {
     try {
       await AlarmNative.cancelAlarmsForMedication(id);
     } catch {
-      // Non-critical — expo-notification entries already removed above
+      // Non-critical
     }
   }
 }
 
+// ─── Snooze ───────────────────────────────────────────────────────────────────
+
 /**
- * Schedules a snoozed notification after the given number of minutes.
- * Attempts native AlarmManager first, falls back to expo-notifications.
+ * Schedules a snoozed DOSE ALARM after the given number of minutes.
+ * Snoozed alarms use the dose alarm path (native → expo) so they trigger
+ * the full interaction flow when they fire.
  */
-async function scheduleSnoozeNotification(
+async function scheduleSnoozeAlarm(
   medicationId: string,
   medicationName: string,
   body: string | undefined | null,
   minutes: number,
 ): Promise<void> {
   const snoozeDate = new Date(Date.now() + minutes * 60_000);
-  const snoozeId = `${medicationId}_snooze_${snoozeDate.getTime()}`;
+  const snoozeId = `${medicationId}_dose_${snoozeDate.getTime()}`;
   const snoozeTitle = `[Pospuesto] ${medicationName}`;
   const snoozeBody = body ?? 'Recuerda tomar tu medicamento.';
 
-  // Try native alarm first
   if (AlarmNative.isAvailable()) {
     try {
       await AlarmNative.scheduleAlarm(snoozeId, snoozeDate.getTime(), snoozeTitle, snoozeBody);
@@ -490,8 +551,8 @@ async function scheduleSnoozeNotification(
     content: {
       title: snoozeTitle,
       body: snoozeBody,
-      data: { id: medicationId, type: 'MEDICATION', isSnooze: true },
-      categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
+      data: { id: medicationId, type: SCHEDULE_TYPES.DOSE_ALARM },
+      categoryIdentifier: NOTIFICATION_CATEGORIES.DOSE_ALARM,
       sound: true,
     },
     trigger: {
@@ -503,7 +564,7 @@ async function scheduleSnoozeNotification(
 }
 
 /**
- * Reschedules a dismissed notification 10 minutes from now.
+ * Reschedules a dismissed dose alarm 10 minutes from now.
  */
 export async function snoozeNotification(
   notificationData: Notifications.NotificationContent,
@@ -511,11 +572,11 @@ export async function snoozeNotification(
   const data = notificationData.data as { id?: string } | undefined;
   const medicationId = data?.id ?? 'unknown';
   const medicationName = notificationData.title ?? 'Medicamento';
-  await scheduleSnoozeNotification(medicationId, medicationName, notificationData.body, SNOOZE_MINUTES);
+  await scheduleSnoozeAlarm(medicationId, medicationName, notificationData.body, SNOOZE_MINUTES);
 }
 
 /**
- * Reschedules a dismissed notification with a custom duration in minutes.
+ * Reschedules with a custom duration.
  */
 export async function snoozeNotificationWithDuration(
   notificationData: Notifications.NotificationContent,
@@ -524,16 +585,17 @@ export async function snoozeNotificationWithDuration(
   const data = notificationData.data as { id?: string } | undefined;
   const medicationId = data?.id ?? 'unknown';
   const medicationName = notificationData.title ?? 'Medicamento';
-  await scheduleSnoozeNotification(medicationId, medicationName, notificationData.body, minutes);
+  await scheduleSnoozeAlarm(medicationId, medicationName, notificationData.body, minutes);
 }
 
+// ─── Post-launch recovery ─────────────────────────────────────────────────────
+
 /**
- * Re-schedules active medications that have no pending scheduled notifications.
+ * Re-schedules active medications that have NO pending notifications.
  *
- * Call this on every app launch after medications are loaded.
- * This recovers from device reboots, which clear Android AlarmManager entries.
- * On iOS, local notifications survive reboots automatically, but calling this
- * function is still safe (it will find existing entries and skip rescheduling).
+ * Call on every app launch after medications are loaded.
+ * Recovers from device reboots (clears native AlarmManager) and
+ * ensures reminders (expo-only) are re-created.
  */
 export async function rescheduleMedicationsAfterLaunch(
   medications: MedicationScheduleInput[],
@@ -542,15 +604,16 @@ export async function rescheduleMedicationsAfterLaunch(
   if (!active.length) return;
 
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  const scheduledIds = new Set(
+  const scheduledMedIds = new Set(
     scheduled
       .map(n => n.content.data?.id)
       .filter((id): id is string => typeof id === 'string'),
   );
 
   for (const med of active) {
-    if (!scheduledIds.has(med.id)) {
-      // No notifications found for this medication — likely lost after reboot
+    // If we have NO scheduled events for this med, re-schedule everything
+    if (!scheduledMedIds.has(med.id)) {
+      console.log('[MedicAI] rescheduleMedicationsAfterLaunch: re-scheduling all events for', med.id);
       await scheduleMedicationNotifications(med);
     }
   }

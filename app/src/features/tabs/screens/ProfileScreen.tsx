@@ -369,8 +369,8 @@ export function ProfileScreen({
       >
         <View style={[styles.settingsOverlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
           <View style={[styles.settingsCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}> 
-            <Text style={[styles.settingsTitle, { color: theme.colors.textPrimary }]}>Notificaciones de Medicación</Text>
-            <Text style={[styles.settingsSubtitle, { color: theme.colors.textSecondary }]}>¿Cuántos minutos antes quieres el aviso?</Text>
+            <Text style={[styles.settingsTitle, { color: theme.colors.textPrimary }]}>Recordatorios de Medicación</Text>
+            <Text style={[styles.settingsSubtitle, { color: theme.colors.textSecondary }]}>¿Cuántos minutos antes de cada toma quieres recibir un aviso?</Text>
 
             <View style={styles.minutesSelector}>
               {[0, 5, 10, 15, 30, 60].map((minutes) => {
@@ -388,7 +388,7 @@ export function ProfileScreen({
                     ]}
                   >
                     <Text style={[styles.minuteOptionText, { color: theme.colors.textPrimary }]}>
-                      {minutes === 0 ? 'A la hora exacta' : `${minutes} min antes`}
+                      {minutes === 0 ? 'Sin recordatorio' : `${minutes} min antes`}
                     </Text>
                   </Pressable>
                 );

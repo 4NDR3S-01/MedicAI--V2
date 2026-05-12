@@ -4,6 +4,7 @@ type PendingAction = {
   medicationId: string;
   action: 'TAKEN' | 'SKIPPED' | 'SNOOZED';
   timestamp: number;
+  doseTimestamp?: number;
 };
 
 type PromiseAlarmModule = {

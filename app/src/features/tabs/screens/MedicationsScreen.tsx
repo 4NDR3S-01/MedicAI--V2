@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  AppState,
   FlatList,
   Pressable,
   RefreshControl,
@@ -15,6 +16,8 @@ import {
   Alert,
 } from 'react-native';
 
+import { appStorage } from '../../../shared/storage';
+import { onDoseAction } from '../../../shared/services/dose-refresh-bus';
 import type { AppTheme } from '../../../shared/theme';
 import * as medicationsAPI from '../services/medications.service';
 import type { MedicationData } from '../services/medications.service';
@@ -29,15 +32,38 @@ import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissio
 
 type DoseStatus = 'pending' | 'taken' | 'skipped';
 
-const getTodayDoses = (times: string[]): string[] => {
+const DOSE_CACHE_KEY = 'medicai_dose_status_cache_v1';
+
+const getTodayDoses = (
+  times: string[],
+  medication?: { firstDoseTime?: string | null; createdAt?: string },
+): string[] => {
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+
+  const isFirstDay = medication?.createdAt
+    ? isToday(new Date(medication.createdAt))
+    : false;
+
   return times.filter((t) => {
     const [h, m] = t.split(':').map(Number);
     const doseDate = new Date(now);
     doseDate.setHours(h, m, 0, 0);
-    return doseDate.toISOString().slice(0, 10) === todayStr;
+
+    // On the first day, exclude times before firstDoseTime
+    // (they belong to subsequent days due to interval wrapping past midnight)
+    if (isFirstDay && medication?.firstDoseTime && t < medication.firstDoseTime) return false;
+
+    // Use local date comparison (not toISOString) to correctly handle
+    // doses near midnight across timezone offsets
+    return isToday(doseDate);
   });
+};
+
+const isToday = (date: Date): boolean => {
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
 };
 
 export type MedicationsScreenProps = {
@@ -55,6 +81,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [doseStatusMap, setDoseStatusMap] = useState<Record<string, Record<string, DoseStatus>>>({});
   const [takenCount, setTakenCount] = useState(0);
   const [totalDosesToday, setTotalDosesToday] = useState(0);
+  const doseRefreshVersionRef = useRef(0);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -91,20 +118,18 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     let total = 0;
 
     for (const med of medications) {
-      if (!med.active) continue;
       statusMap[med.id] = {};
+      if (!med.active) continue;
 
-      const doses = getTodayDoses(med.times);
+      const doses = getTodayDoses(med.times, med);
       total += doses.length;
 
       try {
         const logs = await medicationsAPI.fetchMedicationLogs(med.id, accessToken);
-        const todayLogs = logs.filter((l) => new Date(l.takenAt) >= todayStart);
+        const todayLogs = logs.filter((l) => isToday(new Date(l.takenAt)));
 
         for (const doseTime of doses) {
-          const doseDate = new Date(now);
           const [h, m] = doseTime.split(':').map(Number);
-          doseDate.setHours(h, m, 0, 0);
 
           const matchingLog = todayLogs.find((l) => {
             if (l.scheduledFor) {
@@ -133,7 +158,109 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     setDoseStatusMap(statusMap);
     setTakenCount(taken);
     setTotalDosesToday(total);
+
+    // Cache to AsyncStorage for offline resilience
+    try {
+      await appStorage.setItem(DOSE_CACHE_KEY, JSON.stringify({
+        date: now.toISOString().slice(0, 10),
+        statusMap,
+        takenCount: taken,
+        totalDosesToday: total,
+      }));
+    } catch {
+      // non-critical
+    }
   }, []);
+
+  // Restore from cache on mount for instant display
+  useEffect(() => {
+    const restoreCache = async () => {
+      try {
+        const cached = await appStorage.getItem(DOSE_CACHE_KEY);
+        if (!cached) return;
+        const parsed = JSON.parse(cached) as {
+          date: string;
+          statusMap: Record<string, Record<string, DoseStatus>>;
+          takenCount: number;
+          totalDosesToday: number;
+        };
+        if (parsed.date === new Date().toISOString().slice(0, 10)) {
+          setDoseStatusMap(parsed.statusMap);
+          setTakenCount(parsed.takenCount);
+          setTotalDosesToday(parsed.totalDosesToday);
+        }
+      } catch {
+        // ignore cache errors
+      }
+    };
+    void restoreCache();
+  }, []);
+
+  // Auto-refresh when alarm action events fire (in-app modal)
+  useEffect(() => {
+    const unsubscribe = onDoseAction(() => {
+      doseRefreshVersionRef.current += 1;
+      const sessionPromise = getStoredSession();
+      void sessionPromise.then((session) => {
+        if (session?.accessToken) {
+          void computeDoseStatus(medications, session.accessToken);
+        }
+      });
+    });
+    return unsubscribe;
+  }, [medications, computeDoseStatus]);
+
+  // Auto-refresh on foreground + date change detection (handles midnight rollover
+  // even when app stays in foreground continuously)
+  useEffect(() => {
+    let lastDate = new Date().toISOString().slice(0, 10);
+
+    const refreshAll = () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const dateChanged = today !== lastDate;
+      if (dateChanged) lastDate = today;
+
+      doseRefreshVersionRef.current += 1;
+      const sessionPromise = getStoredSession();
+      void sessionPromise.then((session) => {
+        if (session?.accessToken) {
+          if (dateChanged) {
+            void loadMedicationsInternal(session.accessToken, medications);
+          } else {
+            void computeDoseStatus(medications, session.accessToken);
+          }
+        }
+      });
+    };
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshAll();
+      }
+    });
+
+    // Poll every 60s to catch midnight transition while app stays in foreground
+    const interval = setInterval(refreshAll, 60_000);
+
+    return () => {
+      sub.remove();
+      clearInterval(interval);
+    };
+  }, [medications]);
+
+  const loadMedicationsInternal = useCallback(async (
+    accessToken: string,
+    currentMedications: MedicationData[],
+  ) => {
+    try {
+      const data = await medicationsAPI.fetchMedications(accessToken);
+      setMedications(data || []);
+      void computeDoseStatus(data || [], accessToken);
+      void rescheduleMedicationsAfterLaunch(data || []);
+    } catch {
+      // refresh silently — user can pull-to-refresh for errors
+    }
+  }, [computeDoseStatus]);
 
   const loadMedications = useCallback(async () => {
     try {
@@ -147,14 +274,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       const data = await medicationsAPI.fetchMedications(session.accessToken);
       setMedications(data || []);
 
-      // Re-schedule any alarms lost after a device reboot (Android clears AlarmManager on restart).
-      // Safe to call on every launch — skips medications that already have pending notifications.
       void rescheduleMedicationsAfterLaunch(data || []);
 
-      // Compute dose status for today
       void computeDoseStatus(data || [], session.accessToken);
 
-      // Trigger entry animation
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
         Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
@@ -330,9 +453,15 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           )
         }
         renderItem={({ item }) => {
-          const todayDoses = getTodayDoses(item.times);
-          const pendingCount = todayDoses.filter((t) => doseStatusMap[item.id]?.[t] === 'pending').length;
-          const allTaken = todayDoses.length > 0 && pendingCount === 0;
+          const todayDoses = getTodayDoses(item.times, item);
+          const doseStatuses = doseStatusMap[item.id];
+          const pendingCount = todayDoses.filter((t) => {
+            const status = doseStatuses?.[t];
+            return status !== 'taken' && status !== 'skipped';
+          }).length;
+          const allCompleted = todayDoses.length > 0 && pendingCount === 0;
+          const completedCount = todayDoses.filter((t) => doseStatusMap[item.id]?.[t] === 'taken').length;
+          const cardOpacity = !item.active ? 0.5 : allCompleted ? 0.7 : 1;
 
           return (
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
@@ -348,8 +477,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
               <Pressable
                 style={({ pressed }) => [
                   styles.cardBody,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-                  !item.active && { opacity: 0.6 },
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder, opacity: cardOpacity },
                   pressed && { transform: [{ scale: 0.98 }] },
                 ]}
                 onLongPress={() => {
@@ -368,7 +496,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                       <Text style={[styles.frequencyText, { color: theme.colors.textSecondary }]}>{item.frequency}</Text>
                     </View>
 
-                    {/* Display multiple times with dose status */}
                     {item.times && item.times.length > 0 && (
                       <View style={styles.timesBadgeList}>
                         {item.times.map((t) => {
@@ -379,15 +506,15 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                           let iconName: keyof typeof MaterialCommunityIcons.glyphMap = 'alarm';
 
                           if (status === 'taken') {
-                            bgColor = `${theme.colors.success}20`;
-                            iconColor = theme.colors.success;
-                            textColor = theme.colors.success;
-                            iconName = 'check-circle';
-                          } else if (status === 'skipped') {
-                            bgColor = `${theme.colors.accentTertiary}20`;
+                            bgColor = `${theme.colors.textMuted}20`;
                             iconColor = theme.colors.textMuted;
                             textColor = theme.colors.textMuted;
-                            iconName = 'close-circle';
+                            iconName = 'check-circle';
+                          } else if (status === 'skipped') {
+                            bgColor = `${theme.colors.textMuted}15`;
+                            iconColor = theme.colors.textMuted;
+                            textColor = theme.colors.textMuted;
+                            iconName = 'close-circle-outline';
                           }
 
                           return (
@@ -416,36 +543,28 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                 )}
 
                 <View style={styles.cardActions}>
-                  {allTaken ? (
-                    <View style={[styles.takeButton, { backgroundColor: `${theme.colors.success}20` }]}>
-                      <MaterialCommunityIcons name="check-decagram" size={18} color={theme.colors.success} />
-                      <Text style={[styles.takeButtonText, { color: theme.colors.success }]}>Completado hoy</Text>
-                    </View>
-                  ) : (
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.takeButton,
-                        { backgroundColor: theme.colors.accentPrimary },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={async () => {
-                        try {
-                          const session = await getStoredSession();
-                          if (!session?.accessToken) return;
-                          await medicationsAPI.logMedicationAction(item.id, session.accessToken, 'TAKEN');
-                          void computeDoseStatus(
-                            medications,
-                            session.accessToken,
-                          );
-                        } catch (err) {
-                          console.error(err);
-                          Alert.alert('Error', 'No se pudo registrar la toma.');
+                  {todayDoses.length > 0 && (
+                    <View style={[
+                      styles.statusBadge,
+                      {
+                        backgroundColor: allCompleted ? `${theme.colors.textMuted}20` : `${theme.colors.accentPrimary}10`,
+                      },
+                    ]}>
+                      <MaterialCommunityIcons
+                        name={allCompleted ? 'check-circle' : 'progress-clock'}
+                        size={16}
+                        color={allCompleted ? theme.colors.textMuted : theme.colors.accentPrimary}
+                      />
+                      <Text style={[
+                        styles.statusBadgeText,
+                        { color: allCompleted ? theme.colors.textMuted : theme.colors.accentPrimary },
+                      ]}>
+                        {allCompleted
+                          ? 'Completado hoy'
+                          : `${completedCount}/${todayDoses.length} tomada${todayDoses.length !== 1 ? 's' : ''}`
                         }
-                      }}
-                    >
-                      <MaterialCommunityIcons name="check" size={18} color={theme.colors.buttonText} />
-                      <Text style={[styles.takeButtonText, { color: theme.colors.buttonText }]}>Tomar dosis</Text>
-                    </Pressable>
+                      </Text>
+                    </View>
                   )}
 
                   <View style={styles.iconActions}>
@@ -494,11 +613,27 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         }}
         onMedicationAdded={(medication) => {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setMedications((current) => [medication, ...current]);
+          setMedications((current) => {
+            const updated = [medication, ...current];
+            getStoredSession().then((session) => {
+              if (session?.accessToken) {
+                computeDoseStatus(updated, session.accessToken);
+              }
+            });
+            return updated;
+          });
         }}
         onMedicationUpdated={(medication) => {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setMedications((current) => current.map((m) => (m.id === medication.id ? medication : m)));
+          setMedications((current) => {
+            const updated = current.map((m) => (m.id === medication.id ? medication : m));
+            getStoredSession().then((session) => {
+              if (session?.accessToken) {
+                computeDoseStatus(updated, session.accessToken);
+              }
+            });
+            return updated;
+          });
         }}
         initialData={editingMedication}
         theme={theme}
@@ -546,8 +681,8 @@ const styles = StyleSheet.create({
   notesBox: { padding: 12, borderRadius: 16 },
   notesText: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
   cardActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  takeButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18 },
-  takeButtonText: { fontSize: 14, fontWeight: '800' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18 },
+  statusBadgeText: { fontSize: 13, fontWeight: '800' },
   iconActions: { flexDirection: 'row', gap: 8 },
   iconBtn: { padding: 8 },
   timesBadgeList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
