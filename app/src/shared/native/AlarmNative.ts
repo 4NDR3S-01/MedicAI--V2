@@ -1,12 +1,10 @@
 import { NativeModules, Platform } from 'react-native';
 
-/**
- * Promise-based bridge to the native AlarmModule (Android only).
- *
- * The Java side uses `@ReactMethod` with `Promise` parameters,
- * which is fully compatible with both the old bridge and the
- * New Architecture interop layer (RN 0.81+, bridgeless mode).
- */
+type PendingAction = {
+  medicationId: string;
+  action: 'TAKEN' | 'SKIPPED' | 'SNOOZED';
+  timestamp: number;
+};
 
 type PromiseAlarmModule = {
   scheduleAlarm: (
@@ -17,6 +15,8 @@ type PromiseAlarmModule = {
   ) => Promise<string>;
   cancelAlarm: (id: string) => Promise<string>;
   cancelAlarmsForMedication: (medicationId: string) => Promise<number>;
+  stopAlarm: () => Promise<string>;
+  getPendingAlarmActions: () => Promise<PendingAction[]>;
 };
 
 const getModule = (): PromiseAlarmModule | null => {
@@ -52,5 +52,17 @@ export default {
     const mod = getModule();
     if (!mod) throw new Error('Native AlarmModule not available');
     return mod.cancelAlarmsForMedication(medicationId);
+  },
+
+  stopAlarm: async (): Promise<void> => {
+    const mod = getModule();
+    if (!mod) return;
+    await mod.stopAlarm();
+  },
+
+  getPendingAlarmActions: async (): Promise<PendingAction[]> => {
+    const mod = getModule();
+    if (!mod) return [];
+    return mod.getPendingAlarmActions();
   },
 };

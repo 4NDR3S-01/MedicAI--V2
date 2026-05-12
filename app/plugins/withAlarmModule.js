@@ -10,7 +10,7 @@
  * Run `npx expo prebuild --clean` after modifying this file or the Java sources.
  */
 
-const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const { withAndroidManifest, withDangerousMod, withAppBuildGradle } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -47,6 +47,12 @@ function ensureActivity(application, name, attrs) {
   if (!application.activity) application.activity = [];
   const already = application.activity.some(a => a.$['android:name'] === name);
   if (!already) application.activity.push({ $: { 'android:name': name, ...attrs } });
+}
+
+function ensureService(application, name, attrs) {
+  if (!application.service) application.service = [];
+  const already = application.service.some(s => s.$['android:name'] === name);
+  if (!already) application.service.push({ $: { 'android:name': name, ...attrs } });
 }
 
 // ─── Plugin ───────────────────────────────────────────────────────────────────
@@ -91,7 +97,9 @@ const withAlarmModule = config => {
     ensurePermission(manifest, 'android.permission.WAKE_LOCK');
     ensurePermission(manifest, 'android.permission.VIBRATE');
     ensurePermission(manifest, 'android.permission.FOREGROUND_SERVICE');
+    ensurePermission(manifest, 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK');
     ensurePermission(manifest, 'android.permission.POST_NOTIFICATIONS');
+    ensurePermission(manifest, 'android.permission.SYSTEM_ALERT_WINDOW');
 
     // AlarmReceiver — handles fired alarms and shows full-screen notification
     ensureReceiver(application, 'com.william20.medicai.AlarmReceiver', {
@@ -119,7 +127,15 @@ const withAlarmModule = config => {
       'android:showWhenLocked': 'true',
       'android:turnScreenOn': 'true',
       'android:launchMode': 'singleTop',
+      'android:excludeFromRecents': 'true',
+      'android:taskAffinity': '',
       'android:theme': '@style/Theme.AppCompat.DayNight.NoActionBar',
+    });
+
+    // AlarmService — foreground service for looping alarm sound/vibration
+    ensureService(application, 'com.william20.medicai.AlarmService', {
+      'android:exported': 'false',
+      'android:foregroundServiceType': 'mediaPlayback',
     });
 
     return config;
@@ -197,6 +213,29 @@ const withAlarmModule = config => {
       return config;
     },
   ]);
+
+  // ── Step 4: Force debug builds to bundle JS + assets (standalone APK) ──
+  config = withAppBuildGradle(config, config => {
+    let gradle = config.modResults.contents;
+
+    // Set debuggableVariants = [] so assembleDebug bundles JS + assets
+    // just like release. This enables standalone APK builds without Metro.
+    if (gradle.includes('// debuggableVariants = ["liteDebug", "prodDebug"]')) {
+      gradle = gradle.replace(
+        '// debuggableVariants = ["liteDebug", "prodDebug"]',
+        'debuggableVariants = []',
+      );
+    } else if (!gradle.includes('debuggableVariants = []')) {
+      // Insert after bundleCommand line if the comment isn't found
+      gradle = gradle.replace(
+        'bundleCommand = "export:embed"',
+        'bundleCommand = "export:embed"\n    debuggableVariants = []',
+      );
+    }
+
+    config.modResults.contents = gradle;
+    return config;
+  });
 
   return config;
 };

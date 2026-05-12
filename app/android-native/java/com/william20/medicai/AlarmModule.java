@@ -1,11 +1,15 @@
 package com.william20.medicai;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Promise;
+import com.facebook.react.bridge.WritableArray;
+import com.facebook.react.bridge.WritableMap;
 
 import java.util.Date;
+import java.util.Map;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
@@ -64,6 +68,20 @@ public class AlarmModule extends ReactContextBaseJavaModule {
     }
 
     /**
+     * Stops the currently playing alarm (sound, vibration, foreground service).
+     * Called from JS when the user dismisses the alarm from the in-app overlay.
+     */
+    @ReactMethod
+    public void stopAlarm(Promise promise) {
+        try {
+            AlarmService.stopFromExternal(getReactApplicationContext());
+            promise.resolve("stopped");
+        } catch (Exception e) {
+            promise.reject("stop_alarm_failed", e.getMessage(), e);
+        }
+    }
+
+    /**
      * Cancels ALL alarms whose persisted key starts with the given medication ID prefix.
      * This handles compound IDs (format: medicationId_timestamp) used for multiple daily doses.
      */
@@ -93,6 +111,44 @@ public class AlarmModule extends ReactContextBaseJavaModule {
             promise.resolve(cancelledCount);
         } catch (Exception e) {
             promise.reject("cancel_alarms_failed", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Returns all pending alarm actions stored by AlarmActivity and clears them.
+     * Each action contains medicationId, action (TAKEN/SKIPPED/SNOOZED), and timestamp.
+     */
+    @ReactMethod
+    public void getPendingAlarmActions(Promise promise) {
+        try {
+            SharedPreferences prefs = getReactApplicationContext().getSharedPreferences("MedicAI_alarm_actions", Context.MODE_PRIVATE);
+            Map<String, ?> all = prefs.getAll();
+            WritableArray actions = Arguments.createArray();
+
+            if (all != null) {
+                for (Map.Entry<String, ?> entry : all.entrySet()) {
+                    if (entry.getKey() != null && entry.getKey().startsWith("pending_") && entry.getValue() instanceof String) {
+                        try {
+                            JSONObject obj = new JSONObject((String) entry.getValue());
+                            WritableMap item = Arguments.createMap();
+                            item.putString("medicationId", obj.optString("medicationId", ""));
+                            item.putString("action", obj.optString("action", ""));
+                            item.putDouble("timestamp", obj.optDouble("timestamp", 0));
+                            actions.pushMap(item);
+                        } catch (Exception ex) {
+                            Log.w("MedicAI-Alarm", "Failed to parse pending action: " + ex.getMessage());
+                        }
+                    }
+                }
+            }
+
+            // Clear all pending actions after reading
+            prefs.edit().clear().apply();
+
+            promise.resolve(actions);
+        } catch (Exception e) {
+            Log.e("MedicAI-Alarm", "getPendingAlarmActions failed: " + e.getMessage(), e);
+            promise.reject("get_pending_actions_failed", e.getMessage(), e);
         }
     }
 }

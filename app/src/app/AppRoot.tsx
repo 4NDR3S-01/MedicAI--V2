@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { Asset } from 'expo-asset';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -37,8 +37,10 @@ import {
   registerForPushNotificationsAsync,
   NOTIFICATION_ACTIONS,
   snoozeNotification,
+  cancelNotificationsByDataId,
 } from '../shared/services/notifications.service';
-import { logMedicationAction } from '../features/tabs/services/medications.service';
+import AlarmNative from '../shared/native/AlarmNative';
+import { logMedicationAction, fetchMedications } from '../features/tabs/services/medications.service';
 
 const SPLASH_DURATION_MS = 1200;
 const AUTH_STATE_STORAGE_KEY = 'medicai_auth_state_v1';
@@ -523,7 +525,39 @@ export function AppRoot() {
     };
   }, []);
 
-  // Setup Notifications
+  // Process pending alarm actions from native AlarmActivity (when app was in background)
+  const processPendingAlarmActions = useCallback(async () => {
+    try {
+      if (!AlarmNative.isAvailable()) return;
+
+      const actions = await AlarmNative.getPendingAlarmActions();
+      if (!actions || actions.length === 0) return;
+
+      const session = await getStoredSession();
+      if (!session?.accessToken) return;
+
+      for (const action of actions) {
+        try {
+          if (action.action === 'TAKEN' || action.action === 'SKIPPED') {
+            await logMedicationAction(action.medicationId, session.accessToken, action.action);
+            await cancelNotificationsByDataId(action.medicationId + '_snooze');
+          }
+        } catch (err) {
+          console.warn('[MedicAI] Failed to process pending alarm action:', err);
+        }
+      }
+    } catch (err) {
+      console.warn('[MedicAI] Failed to get pending alarm actions:', err);
+    }
+  }, []);
+
+  // Check for pending actions on mount and when session changes
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    void processPendingAlarmActions();
+  }, [session?.accessToken, processPendingAlarmActions]);
+
+  // Setup Notifications — must complete without blocking on user interaction
   useEffect(() => {
     const initNotifications = async () => {
       try {
@@ -567,17 +601,18 @@ export function AppRoot() {
 
         if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
           await logMedicationAction(data.id, session.accessToken, 'TAKEN');
+          await cancelNotificationsByDataId(data.id);
           setActiveAlarm(null);
           Alert.alert('Éxito', 'Toma de medicamento registrada.');
         } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
           await logMedicationAction(data.id, session.accessToken, 'SKIPPED');
+          await cancelNotificationsByDataId(data.id);
           setActiveAlarm(null);
           Alert.alert('Información', 'Dosis marcada como omitida.');
         } else if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE) {
           setActiveAlarm(null);
           await snoozeNotification(notification.request.content);
         } else if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
-          // logic for confirming appointment if needed
           Alert.alert('Cita Confirmada', 'Se ha confirmado tu asistencia.');
         }
       } catch (error) {
@@ -668,9 +703,7 @@ export function AppRoot() {
   }, [activeAlarm, alarmPulseAnim]);
 
   const handleAlarmTake = async () => {
-    if (!activeAlarm) {
-      return;
-    }
+    if (!activeAlarm) return;
 
     try {
       const session = await getStoredSession();
@@ -679,6 +712,8 @@ export function AppRoot() {
         return;
       }
       await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN');
+      await cancelNotificationsByDataId(activeAlarm.id);
+      void AlarmNative.stopAlarm();
       setActiveAlarm(null);
     } catch (error) {
       Alert.alert('Error', 'No se pudo registrar la toma.');
@@ -687,9 +722,7 @@ export function AppRoot() {
   };
 
   const handleAlarmSkip = async () => {
-    if (!activeAlarm) {
-      return;
-    }
+    if (!activeAlarm) return;
 
     try {
       const session = await getStoredSession();
@@ -698,6 +731,8 @@ export function AppRoot() {
         return;
       }
       await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED');
+      await cancelNotificationsByDataId(activeAlarm.id);
+      void AlarmNative.stopAlarm();
       setActiveAlarm(null);
     } catch (error) {
       Alert.alert('Error', 'No se pudo registrar la omisión.');
@@ -706,12 +741,11 @@ export function AppRoot() {
   };
 
   const handleAlarmSnooze = async () => {
-    if (!activeAlarm) {
-      return;
-    }
+    if (!activeAlarm) return;
 
     try {
       await snoozeNotification(activeAlarm.notificationContent);
+      void AlarmNative.stopAlarm();
       setActiveAlarm(null);
     } catch (error) {
       Alert.alert('Error', 'No se pudo posponer la alarma.');

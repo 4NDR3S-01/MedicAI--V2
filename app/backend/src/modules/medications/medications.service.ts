@@ -111,18 +111,25 @@ export class MedicationsService {
     return { message: 'Medicamento eliminado correctamente.' };
   }
 
-  async logAction(medicationId: string, userId: string, action: string) {
-    const medication = await this.findById(medicationId, userId);
+  async getLogs(medicationId: string, userId: string) {
+    await this.findById(medicationId, userId);
+    return this.prisma.medicationLog.findMany({
+      where: { medicationId },
+      orderBy: { takenAt: 'desc' },
+      take: 200,
+    });
+  }
 
+  async logAction(medicationId: string, userId: string, action: string, scheduledFor?: string) {
+    const medication = await this.findById(medicationId, userId);
     const log = await this.prisma.medicationLog.create({
       data: {
         medicationId: medication.id,
         action: action.toUpperCase(),
+        scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
       },
     });
-
     this.logger.log('Medication action logged', { userId, medicationId, action });
-
     return log;
   }
 }

@@ -24,6 +24,7 @@ model User {
   recentSurgeries  Boolean                  @default(false)
   immunosuppression Boolean                 @default(false)
   anticoagulantTreatment Boolean            @default(false)
+  notificationLeadMinutes Int              @default(5)
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 
@@ -88,11 +89,11 @@ model MedicationLog {
   medicationId String
   action       String   // "TAKEN", "SKIPPED", "SNOOZED"
   takenAt      DateTime @default(now())
-  
+  scheduledFor DateTime? // The originally scheduled time for this dose
   medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
-
   @@index([medicationId])
   @@index([takenAt])
+  @@index([scheduledFor])
 }
 
 model Appointment {

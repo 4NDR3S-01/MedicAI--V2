@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards, UnauthorizedException } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { MedicationsService } from './medications.service';
@@ -44,13 +44,24 @@ export class MedicationsController {
     return this.medicationsService.delete(medicationId, userId);
   }
 
-  @Post(':id/logs')
-  logAction(
+  @Get(':id/logs')
+  getLogs(
     @Param('id') medicationId: string,
-    @Body('action') action: string,
     @Request() req: any,
   ) {
     const userId = req.user?.sub;
-    return this.medicationsService.logAction(medicationId, userId, action);
+    if (!userId) throw new UnauthorizedException();
+    return this.medicationsService.getLogs(medicationId, userId);
+  }
+
+  @Post(':id/logs')
+  logAction(
+    @Param('id') medicationId: string,
+    @Body() dto: { action: string; scheduledFor?: string },
+    @Request() req: any,
+  ) {
+    const userId = req.user?.sub;
+    if (!userId) throw new UnauthorizedException();
+    return this.medicationsService.logAction(medicationId, userId, dto.action, dto.scheduledFor);
   }
 }

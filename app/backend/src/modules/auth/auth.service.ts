@@ -567,6 +567,37 @@ export class AuthService {
     }
   }
 
+  async updateProfile(userId: string, dto: { notificationLeadMinutes?: number }) {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado.');
+    }
+
+    const data: Record<string, unknown> = {};
+    if (dto.notificationLeadMinutes !== undefined) {
+      data.notificationLeadMinutes = dto.notificationLeadMinutes;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return { message: 'Sin cambios.', user: await this.prisma.user.findUnique({ where: { id: userId } }) };
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+
+    this.logger.log('User profile updated', { userId });
+    return {
+      message: 'Perfil actualizado correctamente.',
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        notificationLeadMinutes: user.notificationLeadMinutes,
+      },
+    };
+  }
+
   async updateAvatar(userId: string, avatarData: string) {
     if (!userId) {
       throw new UnauthorizedException('Usuario no autenticado.');

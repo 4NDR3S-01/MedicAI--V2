@@ -16,12 +16,16 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification",
+          "remote-notification"
+        ]
       },
       "entitlements": {
         "com.apple.developer.usernotifications.critical-alerts": true,
         "com.apple.developer.usernotifications.time-sensitive": true
-      }
+      },
+      "bundleIdentifier": "com.william20.medicai"
     },
     "android": {
       "adaptiveIcon": {

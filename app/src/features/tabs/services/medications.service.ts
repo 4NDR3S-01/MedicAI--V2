@@ -169,25 +169,57 @@ export async function deleteMedication(medicationId: string, accessToken: string
   }
 }
 
+export async function fetchMedicationLogs(
+  medicationId: string,
+  accessToken: string,
+): Promise<MedicationLog[]> {
+  if (!API_BASE_URL) {
+    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
+  }
+
+  const response = await requestWithAutoRefresh(`/medications/${medicationId}/logs`, 'GET', accessToken);
+
+  if (!response.ok) {
+    throw new Error(await parseApiErrorMessage(response, 'No se pudieron cargar los registros'));
+  }
+
+  return readResponseBody<MedicationLog[]>(response);
+}
+
 export async function logMedicationAction(
   medicationId: string,
   accessToken: string,
   action: 'TAKEN' | 'SKIPPED' | 'SNOOZED',
+  scheduledFor?: string,
 ): Promise<void> {
   if (!API_BASE_URL) {
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
+  }
+
+  const body: Record<string, unknown> = { action };
+  if (scheduledFor) {
+    body.scheduledFor = scheduledFor;
   }
 
   const response = await requestWithAutoRefresh(
     `/medications/${medicationId}/logs`,
     'POST',
     accessToken,
-    { action },
+    body,
   );
 
   if (!response.ok) {
-    throw new Error(await parseApiErrorMessage(response, 'No se pudo registrar la accion'));
+    const errorMsg = await parseApiErrorMessage(response, 'No se pudo registrar la accion');
+    throw new Error(errorMsg);
   }
 }
+
+export type MedicationLog = {
+  id: string;
+  medicationId: string;
+  action: 'TAKEN' | 'SKIPPED' | 'SNOOZED';
+  takenAt: string;
+  scheduledFor: string | null;
+};
 
 export type { MedicationData, CreateMedicationPayload };

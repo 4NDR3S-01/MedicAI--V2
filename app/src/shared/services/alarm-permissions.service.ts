@@ -11,9 +11,10 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Linking, Platform } from 'react-native';
+import { Alert, AppState, Linking, Platform } from 'react-native';
 
 import AlarmEnvironmentNative from '../native/AlarmEnvironmentNative';
+import { appStorage as _appStorage } from '../storage';
 
 type NotificationPermissionsResponse = Awaited<ReturnType<typeof Notifications.getPermissionsAsync>>;
 type IosNotificationPermissions = NotificationPermissionsResponse['ios'];
@@ -51,6 +52,14 @@ export type AlarmPermissionsStatus = {
   shouldPromptBatteryOptimization: boolean;
   /** True on Android 12+ when the user should be guided to grant exact alarms. */
   shouldPromptExactAlarmPermission: boolean;
+  /**
+   * Android 14+ (API 34+) only — can the app use full-screen intents?
+   * Required for alarm to show over lockscreen.
+   * Always 'unavailable' on iOS and Android < 14.
+   */
+  fullScreenIntent: PermissionLevel;
+  /** True on Android 14+ when the user should grant full-screen intent permission. */
+  shouldPromptFullScreenIntent: boolean;
 };
 
 const toPermissionLevel = (status: string): PermissionLevel => {
@@ -90,13 +99,28 @@ const shouldPromptBatteryOptimization = (batteryOptimizationExempted: boolean | 
 const shouldPromptExactAlarmPermission = (exactAlarms: PermissionLevel): boolean =>
   Platform.OS === 'android' && exactAlarms === 'denied';
 
+const getFullScreenIntentStatus = async (): Promise<PermissionLevel> => {
+  if (Platform.OS !== 'android') return 'unavailable';
+  if (Platform.Version < 34) return 'unavailable';
+
+  const canUse = await AlarmEnvironmentNative.canUseFullScreenIntent();
+  if (canUse === true) return 'granted';
+  if (canUse === false) return 'denied';
+  return 'undetermined';
+};
+
+const shouldPromptFullScreenIntent = (fullScreenIntent: PermissionLevel): boolean =>
+  Platform.OS === 'android' && fullScreenIntent === 'denied';
+
 const isAlarmReady = (
   notifications: PermissionLevel,
   exactAlarms: PermissionLevel,
   batteryOptimizationExempted: boolean | null,
+  fullScreenIntentLevel: PermissionLevel,
 ): boolean =>
   notifications === 'granted' &&
   (Platform.OS !== 'android' || exactAlarms !== 'denied') &&
+  (Platform.OS !== 'android' || fullScreenIntentLevel !== 'denied') &&
   !shouldPromptBatteryOptimization(batteryOptimizationExempted);
 
 // ─── Status query ─────────────────────────────────────────────────────────────
@@ -116,6 +140,8 @@ export async function getAlarmPermissionsStatus(): Promise<AlarmPermissionsStatu
       isAlarmReady: true,
       shouldPromptBatteryOptimization: false,
       shouldPromptExactAlarmPermission: false,
+      fullScreenIntent: 'unavailable',
+      shouldPromptFullScreenIntent: false,
     };
   }
 
@@ -124,10 +150,12 @@ export async function getAlarmPermissionsStatus(): Promise<AlarmPermissionsStatu
   const criticalAlerts = getCriticalAlertsStatus(notifications, ios);
   const exactAlarms = await getExactAlarmsStatus();
   const batteryOptimizationExempted = await getBatteryOptimizationStatus();
+  const fullScreenIntent = await getFullScreenIntentStatus();
 
   const shouldPromptBatteryOptimizationFlag = shouldPromptBatteryOptimization(batteryOptimizationExempted);
   const shouldPromptExactAlarmPermissionFlag = shouldPromptExactAlarmPermission(exactAlarms);
-  const isAlarmReadyFlag = isAlarmReady(notifications, exactAlarms, batteryOptimizationExempted);
+  const shouldPromptFullScreenIntentFlag = shouldPromptFullScreenIntent(fullScreenIntent);
+  const isAlarmReadyFlag = isAlarmReady(notifications, exactAlarms, batteryOptimizationExempted, fullScreenIntent);
 
   return {
     notifications,
@@ -137,6 +165,8 @@ export async function getAlarmPermissionsStatus(): Promise<AlarmPermissionsStatu
     isAlarmReady: isAlarmReadyFlag,
     shouldPromptBatteryOptimization: shouldPromptBatteryOptimizationFlag,
     shouldPromptExactAlarmPermission: shouldPromptExactAlarmPermissionFlag,
+    fullScreenIntent,
+    shouldPromptFullScreenIntent: shouldPromptFullScreenIntentFlag,
   };
 }
 
@@ -193,6 +223,19 @@ export async function openExactAlarmSettings(): Promise<void> {
 }
 
 /**
+ * Android 14+ (API 34+): opens the system settings screen where the user
+ * can grant USE_FULL_SCREEN_INTENT permission. Required for alarm to show
+ * over lockscreen as a full-screen activity.
+ */
+export async function openFullScreenIntentSettings(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  const opened = await AlarmEnvironmentNative.openFullScreenIntentSettings();
+  if (!opened) {
+    await Linking.openSettings();
+  }
+}
+
+/**
  * Android: opens the battery-optimisation settings list so the user can
  * add MedicAI to the "unrestricted / not optimised" list.
  * This is the most reliable way to ensure alarm delivery on OEM devices
@@ -219,6 +262,169 @@ export async function requestBatteryOptimizationExemption(): Promise<void> {
   } catch {
     await openBatteryOptimizationSettings();
   }
+}
+
+// ─── Contextual permission flow (blocking gate) ─────────────────────────────
+
+const BATTERY_PROMPTED_KEY = 'medicai_battery_opt_prompted_v1';
+const AUTOSTART_PROMPTED_KEY = 'medicai_autostart_prompted_v1';
+
+export type EnsurePermissionsResult = {
+  /** True if ALL critical permissions are granted and alarms will work reliably. */
+  ready: boolean;
+  /** The full permission status snapshot after the flow completes. */
+  status: AlarmPermissionsStatus;
+};
+
+// Promisified Alert.alert — resolves with the button index the user tapped.
+const showAlertAsync = (
+  title: string,
+  message: string,
+  buttons: { text: string; style?: 'cancel' | 'destructive' | 'default' }[],
+): Promise<number> =>
+  new Promise((resolve) => {
+    Alert.alert(
+      title,
+      message,
+      buttons.map((b, i) => ({ ...b, onPress: () => resolve(i) })),
+      { cancelable: false },
+    );
+  });
+
+// Waits for the user to return from system settings by listening to AppState.
+// Resolves once the app comes back to 'active' (max 60 s timeout).
+const waitForReturnFromSettings = (): Promise<void> =>
+  new Promise((resolve) => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      sub.remove();
+      clearTimeout(timer);
+      resolve();
+    };
+    const sub = AppState.addEventListener('change', (state: string) => {
+      if (state === 'active') done();
+    });
+    const timer = setTimeout(done, 60_000);
+  });
+
+/**
+ * Blocking permission gate — call before scheduling alarms.
+ *
+ * Walks through each critical permission one-by-one:
+ *  1. Notifications (programmatic request)
+ *  2. Exact alarms (Android 12+) — settings redirect + re-check
+ *  3. Full-screen intent (Android 14+) — settings redirect + re-check
+ *  4. Battery optimization (Android) — settings redirect, once per install
+ *  5. OEM autostart (Xiaomi/OPPO/etc.) — settings redirect, once per install
+ *
+ * For each missing permission the user sees ONE alert with "Configurar" / "Cancelar".
+ * - "Configurar": opens system settings, waits for the user to return, re-checks.
+ * - "Cancelar": stops the entire flow → returns { ready: false }.
+ *
+ * Permissions already granted are silently skipped.
+ * Persistent flags (battery/autostart) are checked so we never re-ask after the
+ * user has already been prompted once per installation.
+ *
+ * Returns `ready: true` only when ALL applicable permissions are satisfied.
+ */
+export async function ensureAlarmPermissions(): Promise<EnsurePermissionsResult> {
+  // ── 1. Notifications (programmatic) ────────────────────────────────────────
+  let notifLevel = await requestNotificationPermission();
+  if (notifLevel !== 'granted') {
+    const btn = await showAlertAsync(
+      'Permiso de notificaciones',
+      'MedicAI necesita permiso de notificaciones para enviar recordatorios de medicamentos.',
+      [{ text: 'Cancelar', style: 'cancel' }, { text: 'Abrir Configuración' }],
+    );
+    if (btn === 1) {
+      await openNotificationSettings();
+      await waitForReturnFromSettings();
+      notifLevel = await requestNotificationPermission();
+    }
+    if (notifLevel !== 'granted') {
+      return { ready: false, status: await getAlarmPermissionsStatus() };
+    }
+  }
+
+  // ── 2. Exact alarms (Android 12+) ─────────────────────────────────────────
+  let status = await getAlarmPermissionsStatus();
+  if (status.shouldPromptExactAlarmPermission) {
+    const btn = await showAlertAsync(
+      'Alarmas exactas',
+      'MedicAI necesita permiso para programar alarmas exactas y recordarte tus medicamentos a la hora precisa.',
+      [{ text: 'Cancelar', style: 'cancel' }, { text: 'Configurar' }],
+    );
+    if (btn === 1) {
+      await openExactAlarmSettings();
+      await waitForReturnFromSettings();
+      status = await getAlarmPermissionsStatus();
+    }
+    if (status.shouldPromptExactAlarmPermission) {
+      return { ready: false, status };
+    }
+  }
+
+  // ── 3. Full-screen intent (Android 14+) ───────────────────────────────────
+  status = await getAlarmPermissionsStatus();
+  if (status.shouldPromptFullScreenIntent) {
+    const btn = await showAlertAsync(
+      'Pantalla completa',
+      'Para que la alarma aparezca sobre la pantalla de bloqueo como una alarma real, MedicAI necesita el permiso de "Pantalla completa".',
+      [{ text: 'Cancelar', style: 'cancel' }, { text: 'Configurar' }],
+    );
+    if (btn === 1) {
+      await openFullScreenIntentSettings();
+      await waitForReturnFromSettings();
+      status = await getAlarmPermissionsStatus();
+    }
+    if (status.shouldPromptFullScreenIntent) {
+      return { ready: false, status };
+    }
+  }
+
+  // ── 4. Battery optimization (Android) — once per installation ─────────────
+  status = await getAlarmPermissionsStatus();
+  if (status.shouldPromptBatteryOptimization) {
+    const alreadyPrompted = await _appStorage.getItem(BATTERY_PROMPTED_KEY);
+    if (!alreadyPrompted) {
+      const btn = await showAlertAsync(
+        'Optimización de batería',
+        'Para que las alarmas suenen en segundo plano, MedicAI necesita estar excluida de la optimización de batería.',
+        [{ text: 'Cancelar', style: 'cancel' }, { text: 'Configurar' }],
+      );
+      void _appStorage.setItem(BATTERY_PROMPTED_KEY, 'true');
+      if (btn === 1) {
+        await openBatteryOptimizationSettings();
+        await waitForReturnFromSettings();
+      }
+      // We don't block on this — no reliable API to verify on all OEMs.
+    }
+  }
+
+  // ── 5. OEM autostart — once per installation ──────────────────────────────
+  const needsAutostart = await isOemAutostartRequired();
+  if (needsAutostart) {
+    const alreadyPrompted = await _appStorage.getItem(AUTOSTART_PROMPTED_KEY);
+    if (!alreadyPrompted) {
+      const btn = await showAlertAsync(
+        'Inicio automático',
+        'Tu dispositivo necesita que MedicAI tenga permiso de inicio automático para que las alarmas funcionen con la app cerrada.',
+        [{ text: 'Cancelar', style: 'cancel' }, { text: 'Configurar' }],
+      );
+      void _appStorage.setItem(AUTOSTART_PROMPTED_KEY, 'true');
+      if (btn === 1) {
+        await openAutostartSettings();
+        await waitForReturnFromSettings();
+      }
+      // We don't block on this — no API to verify actual status.
+    }
+  }
+
+  // ── Final check ───────────────────────────────────────────────────────────
+  const finalStatus = await getAlarmPermissionsStatus();
+  return { ready: finalStatus.isAlarmReady, status: finalStatus };
 }
 
 // ─── OEM autostart (MIUI, OPPO, Vivo, Huawei, etc.) ─────────────────────────

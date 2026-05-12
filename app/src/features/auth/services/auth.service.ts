@@ -233,6 +233,51 @@ export const validateEmailVerificationToken = async (token: string) => {
   );
 };
 
+export const updateProfileOnBackend = async (profileData: { notificationLeadMinutes?: number }) => {
+  ensureApiConfigured();
+
+  const session = await getStoredSession();
+  if (!session) {
+    throw new Error(
+      "No hay sesión activa. Por favor inicia sesión nuevamente.",
+    );
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/profile`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+      body: JSON.stringify(profileData),
+    });
+  } catch {
+    throw new Error(
+      "No se pudo conectar con el backend. Verifica que el servidor este activo.",
+    );
+  }
+
+  if (!response.ok) {
+    const errorMessage = await parseApiError(response);
+    throw new Error(mapAuthError(errorMessage));
+  }
+
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    return {} as { message: string };
+  }
+
+  try {
+    return JSON.parse(rawBody) as { message: string };
+  } catch {
+    throw new Error(
+      "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",
+    );
+  }
+};
+
 export const updateAvatarOnBackend = async (avatarData: string) => {
   ensureApiConfigured();
 

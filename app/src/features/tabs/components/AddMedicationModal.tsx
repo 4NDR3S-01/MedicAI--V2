@@ -22,6 +22,7 @@ import * as medicationsAPI from '../services/medications.service';
 import { getStoredSession } from '../../auth';
 import type { MedicationData } from '../services/medications.service';
 import { scheduleMedicationNotifications } from '../../../shared/services/notifications.service';
+import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 
 const DOSAGE_UNITS = ['mg', 'g', 'ml', 'gotas', 'comprimido'] as const;
 const FREQUENCY_OPTIONS = [
@@ -204,16 +205,28 @@ export function AddMedicationModal({
         payload.customEndDate = null;
       }
 
+      // Gate: all critical permissions must be granted before saving.
+      // ensureAlarmPermissions() walks the user through each missing permission
+      // one-by-one. If the user cancels at any step, ready=false and we abort.
+      const { ready } = await ensureAlarmPermissions();
+      if (!ready) {
+        Alert.alert(
+          'Permisos incompletos',
+          'No se puede programar alarmas sin los permisos necesarios. Completa la configuración para continuar.',
+        );
+        return;
+      }
+
       if (initialData) {
         const medication = await medicationsAPI.updateMedication(initialData.id, session.accessToken, payload);
         void scheduleMedicationNotifications(medication);
         onMedicationUpdated?.(medication);
-        Alert.alert('Éxito', 'Alarma actualizada correctamente.');
+        Alert.alert('Éxito', 'Medicamento actualizado y alarmas programadas.');
       } else {
         const medication = await medicationsAPI.createMedication(session.accessToken, payload);
         void scheduleMedicationNotifications(medication);
         onMedicationAdded(medication);
-        Alert.alert('Éxito', 'Alarmas programadas correctamente.');
+        Alert.alert('Éxito', 'Medicamento creado y alarmas programadas.');
       }
 
       onClose();

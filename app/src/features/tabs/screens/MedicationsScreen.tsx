@@ -25,6 +25,20 @@ import {
   cancelNotificationsByDataId,
   rescheduleMedicationsAfterLaunch,
 } from '../../../shared/services/notifications.service';
+import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+
+type DoseStatus = 'pending' | 'taken' | 'skipped';
+
+const getTodayDoses = (times: string[]): string[] => {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  return times.filter((t) => {
+    const [h, m] = t.split(':').map(Number);
+    const doseDate = new Date(now);
+    doseDate.setHours(h, m, 0, 0);
+    return doseDate.toISOString().slice(0, 10) === todayStr;
+  });
+};
 
 export type MedicationsScreenProps = {
   theme: AppTheme;
@@ -38,15 +52,15 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMedication, setEditingMedication] = useState<MedicationData | null>(null);
+  const [doseStatusMap, setDoseStatusMap] = useState<Record<string, Record<string, DoseStatus>>>({});
+  const [takenCount, setTakenCount] = useState(0);
+  const [totalDosesToday, setTotalDosesToday] = useState(0);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   const isEmpty = medications.length === 0;
-  const takenToday = 3; // Mock value for progress
-  const totalToday = medications.length > 0 ? medications.length : 4;
-  const progress = totalToday > 0 ? takenToday / totalToday : 0;
 
   const deleteMedication = useCallback(async (medicationId: string) => {
     if (Platform.OS === 'android') {
@@ -65,6 +79,62 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     setMedications((current) => current.filter((med) => med.id !== medicationId));
   }, []);
 
+  const computeDoseStatus = useCallback(async (
+    medications: MedicationData[],
+    accessToken: string,
+  ) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const statusMap: Record<string, Record<string, DoseStatus>> = {};
+    let taken = 0;
+    let total = 0;
+
+    for (const med of medications) {
+      if (!med.active) continue;
+      statusMap[med.id] = {};
+
+      const doses = getTodayDoses(med.times);
+      total += doses.length;
+
+      try {
+        const logs = await medicationsAPI.fetchMedicationLogs(med.id, accessToken);
+        const todayLogs = logs.filter((l) => new Date(l.takenAt) >= todayStart);
+
+        for (const doseTime of doses) {
+          const doseDate = new Date(now);
+          const [h, m] = doseTime.split(':').map(Number);
+          doseDate.setHours(h, m, 0, 0);
+
+          const matchingLog = todayLogs.find((l) => {
+            if (l.scheduledFor) {
+              const logTime = new Date(l.scheduledFor);
+              return logTime.getHours() === h && logTime.getMinutes() === m;
+            }
+            return false;
+          });
+
+          if (matchingLog?.action === 'TAKEN') {
+            statusMap[med.id][doseTime] = 'taken';
+            taken++;
+          } else if (matchingLog?.action === 'SKIPPED') {
+            statusMap[med.id][doseTime] = 'skipped';
+          } else {
+            statusMap[med.id][doseTime] = 'pending';
+          }
+        }
+      } catch {
+        for (const doseTime of doses) {
+          statusMap[med.id][doseTime] = 'pending';
+        }
+      }
+    }
+
+    setDoseStatusMap(statusMap);
+    setTakenCount(taken);
+    setTotalDosesToday(total);
+  }, []);
+
   const loadMedications = useCallback(async () => {
     try {
       setError(null);
@@ -81,6 +151,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       // Safe to call on every launch — skips medications that already have pending notifications.
       void rescheduleMedicationsAfterLaunch(data || []);
 
+      // Compute dose status for today
+      void computeDoseStatus(data || [], session.accessToken);
+
       // Trigger entry animation
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -93,7 +166,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [fadeAnim, slideAnim]);
+  }, [fadeAnim, slideAnim, computeDoseStatus]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -117,6 +190,19 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   }, [deleteMedication]);
 
   const toggleMedicationStatus = async (med: MedicationData) => {
+    // When ENABLING: check permissions first, before any state change or API call.
+    // If permissions are incomplete, block the toggle entirely.
+    if (!med.active) {
+      const { ready } = await ensureAlarmPermissions();
+      if (!ready) {
+        Alert.alert(
+          'Permisos incompletos',
+          'Completa la configuración de permisos para poder activar alarmas.',
+        );
+        return;
+      }
+    }
+
     if (Platform.OS === 'android') {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
@@ -136,10 +222,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       const updated = await medicationsAPI.updateMedication(med.id, session.accessToken, {
         active: !med.active,
       });
-      
-      // Update notifications schedule
+
       await scheduleMedicationNotifications(updated);
-      
+
       setMedications((current) => current.map((m) => (m.id === med.id ? updated : m)));
     } catch (err) {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -150,6 +235,8 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       Alert.alert('Error', message);
     }
   };
+
+  const progress = totalDosesToday > 0 ? takenCount / totalDosesToday : 0;
 
   const renderHeader = () => {
     if (isLoading || isEmpty) return null;
@@ -167,7 +254,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             <View>
               <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>Progreso de hoy</Text>
               <Text style={[styles.progressValue, { color: theme.colors.textPrimary }]}>
-                {takenToday} de {totalToday} <Text style={styles.progressSubtext}>dosis completadas</Text>
+                {takenCount} de {totalDosesToday} <Text style={styles.progressSubtext}>dosis completadas</Text>
               </Text>
             </View>
             <View style={[styles.progressIcon, { backgroundColor: `${theme.colors.success}15` }]}>
@@ -175,7 +262,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             </View>
           </View>
           <View style={[styles.progressTrack, { backgroundColor: `${theme.colors.textMuted}20` }]}>
-            <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: theme.colors.accentPrimary }]} />
+            <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: theme.colors.accentPrimary }]} />
           </View>
         </View>
       </Animated.View>
@@ -242,7 +329,12 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             </View>
           )
         }
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          const todayDoses = getTodayDoses(item.times);
+          const pendingCount = todayDoses.filter((t) => doseStatusMap[item.id]?.[t] === 'pending').length;
+          const allTaken = todayDoses.length > 0 && pendingCount === 0;
+
+          return (
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
             <View style={styles.medicationCardWrapper}>
               <View style={styles.timeSection}>
@@ -275,16 +367,36 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                       <View style={[styles.separator, { backgroundColor: theme.colors.textMuted }]} />
                       <Text style={[styles.frequencyText, { color: theme.colors.textSecondary }]}>{item.frequency}</Text>
                     </View>
-                    
-                    {/* Display multiple times */}
+
+                    {/* Display multiple times with dose status */}
                     {item.times && item.times.length > 0 && (
                       <View style={styles.timesBadgeList}>
-                        {item.times.map((t) => (
-                          <View key={`${item.id}-${t}`} style={[styles.timeBadge, { backgroundColor: `${theme.colors.accentPrimary}10` }]}> 
-                            <MaterialCommunityIcons name="alarm" size={12} color={theme.colors.accentPrimary} />
-                            <Text style={[styles.timeBadgeText, { color: theme.colors.accentPrimary }]}>{t}</Text>
-                          </View>
-                        ))}
+                        {item.times.map((t) => {
+                          const status = doseStatusMap[item.id]?.[t];
+                          let bgColor = `${theme.colors.accentPrimary}10`;
+                          let iconColor = theme.colors.accentPrimary;
+                          let textColor = theme.colors.accentPrimary;
+                          let iconName: keyof typeof MaterialCommunityIcons.glyphMap = 'alarm';
+
+                          if (status === 'taken') {
+                            bgColor = `${theme.colors.success}20`;
+                            iconColor = theme.colors.success;
+                            textColor = theme.colors.success;
+                            iconName = 'check-circle';
+                          } else if (status === 'skipped') {
+                            bgColor = `${theme.colors.accentTertiary}20`;
+                            iconColor = theme.colors.textMuted;
+                            textColor = theme.colors.textMuted;
+                            iconName = 'close-circle';
+                          }
+
+                          return (
+                            <View key={`${item.id}-${t}`} style={[styles.timeBadge, { backgroundColor: bgColor }]}>
+                              <MaterialCommunityIcons name={iconName} size={12} color={iconColor} />
+                              <Text style={[styles.timeBadgeText, { color: textColor }]}>{t}</Text>
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                   </View>
@@ -304,28 +416,38 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                 )}
 
                 <View style={styles.cardActions}>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.takeButton,
-                      { backgroundColor: theme.colors.accentPrimary },
-                      pressed && { opacity: 0.8 },
-                    ]}
-                    onPress={async () => {
-                      try {
-                        const session = await getStoredSession();
-                        if (!session?.accessToken) return;
-                        await medicationsAPI.logMedicationAction(item.id, session.accessToken, 'TAKEN');
-                        Alert.alert('Completado', `${item.name} marcado como tomado.`);
-                      } catch (err) {
-                        console.error(err);
-                        Alert.alert('Error', 'No se pudo registrar la toma.');
-                      }
-                    }}
-                  >
-                    <MaterialCommunityIcons name="check" size={18} color={theme.colors.buttonText} />
-                    <Text style={[styles.takeButtonText, { color: theme.colors.buttonText }]}>Tomar dosis</Text>
-                  </Pressable>
-                  
+                  {allTaken ? (
+                    <View style={[styles.takeButton, { backgroundColor: `${theme.colors.success}20` }]}>
+                      <MaterialCommunityIcons name="check-decagram" size={18} color={theme.colors.success} />
+                      <Text style={[styles.takeButtonText, { color: theme.colors.success }]}>Completado hoy</Text>
+                    </View>
+                  ) : (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.takeButton,
+                        { backgroundColor: theme.colors.accentPrimary },
+                        pressed && { opacity: 0.8 },
+                      ]}
+                      onPress={async () => {
+                        try {
+                          const session = await getStoredSession();
+                          if (!session?.accessToken) return;
+                          await medicationsAPI.logMedicationAction(item.id, session.accessToken, 'TAKEN');
+                          void computeDoseStatus(
+                            medications,
+                            session.accessToken,
+                          );
+                        } catch (err) {
+                          console.error(err);
+                          Alert.alert('Error', 'No se pudo registrar la toma.');
+                        }
+                      }}
+                    >
+                      <MaterialCommunityIcons name="check" size={18} color={theme.colors.buttonText} />
+                      <Text style={[styles.takeButtonText, { color: theme.colors.buttonText }]}>Tomar dosis</Text>
+                    </Pressable>
+                  )}
+
                   <View style={styles.iconActions}>
                     <Pressable
                       style={styles.iconBtn}
@@ -344,7 +466,8 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
               </Pressable>
             </View>
           </Animated.View>
-        )}
+          );
+        }}
       />
 
       <Pressable

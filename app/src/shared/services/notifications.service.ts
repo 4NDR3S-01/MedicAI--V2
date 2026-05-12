@@ -46,9 +46,10 @@ export const NOTIFICATION_ACTIONS = {
 // ─── Internal constants ───────────────────────────────────────────────────────
 
 const LEAD_MINUTES_STORAGE_KEY = 'medicai_medication_reminder_lead_minutes_v1';
-const DEFAULT_LEAD_MINUTES = 0;
+const DEFAULT_LEAD_MINUTES = 5;
 const MAX_SCHEDULED = 500;
 const LOOKAHEAD_DAYS = 30;
+const SNOOZE_MINUTES = 10;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -461,20 +462,36 @@ export async function cancelNotificationsByDataId(id: string): Promise<void> {
 }
 
 /**
- * Reschedules a dismissed notification 15 minutes from now.
+ * Schedules a snoozed notification after the given number of minutes.
+ * Attempts native AlarmManager first, falls back to expo-notifications.
  */
-export async function snoozeNotification(
-  notificationData: Notifications.NotificationContent,
+async function scheduleSnoozeNotification(
+  medicationId: string,
+  medicationName: string,
+  body: string | undefined | null,
+  minutes: number,
 ): Promise<void> {
-  const snoozeDate = new Date(Date.now() + 15 * 60_000);
+  const snoozeDate = new Date(Date.now() + minutes * 60_000);
+  const snoozeId = `${medicationId}_snooze_${snoozeDate.getTime()}`;
+  const snoozeTitle = `[Pospuesto] ${medicationName}`;
+  const snoozeBody = body ?? 'Recuerda tomar tu medicamento.';
+
+  // Try native alarm first
+  if (AlarmNative.isAvailable()) {
+    try {
+      await AlarmNative.scheduleAlarm(snoozeId, snoozeDate.getTime(), snoozeTitle, snoozeBody);
+      return;
+    } catch (err) {
+      console.warn('[MedicAI] Native snooze failed, falling back:', err);
+    }
+  }
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `[Pospuesto] ${notificationData.title ?? 'Medicamento'}`,
-      body: notificationData.body ?? 'Recuerda tomar tu medicamento.',
-      data: notificationData.data,
-      categoryIdentifier:
-        notificationData.categoryIdentifier ?? NOTIFICATION_CATEGORIES.MEDICATION,
+      title: snoozeTitle,
+      body: snoozeBody,
+      data: { id: medicationId, type: 'MEDICATION', isSnooze: true },
+      categoryIdentifier: NOTIFICATION_CATEGORIES.MEDICATION,
       sound: true,
     },
     trigger: {
@@ -483,6 +500,31 @@ export async function snoozeNotification(
       channelId: CHANNELS.MEDICATION_ALARMS,
     },
   });
+}
+
+/**
+ * Reschedules a dismissed notification 10 minutes from now.
+ */
+export async function snoozeNotification(
+  notificationData: Notifications.NotificationContent,
+): Promise<void> {
+  const data = notificationData.data as { id?: string } | undefined;
+  const medicationId = data?.id ?? 'unknown';
+  const medicationName = notificationData.title ?? 'Medicamento';
+  await scheduleSnoozeNotification(medicationId, medicationName, notificationData.body, SNOOZE_MINUTES);
+}
+
+/**
+ * Reschedules a dismissed notification with a custom duration in minutes.
+ */
+export async function snoozeNotificationWithDuration(
+  notificationData: Notifications.NotificationContent,
+  minutes: number,
+): Promise<void> {
+  const data = notificationData.data as { id?: string } | undefined;
+  const medicationId = data?.id ?? 'unknown';
+  const medicationName = notificationData.title ?? 'Medicamento';
+  await scheduleSnoozeNotification(medicationId, medicationName, notificationData.body, minutes);
 }
 
 /**

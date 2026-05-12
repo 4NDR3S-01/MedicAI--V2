@@ -1,12 +1,14 @@
 package com.william20.medicai;
 
 import android.app.AlarmManager;
+import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 
 import com.facebook.react.bridge.Promise;
@@ -56,6 +58,52 @@ public class AlarmEnvironmentModule extends ReactContextBaseJavaModule {
             promise.resolve(canSchedule);
         } catch (Exception ex) {
             promise.reject("exact_alarm_check_failed", ex);
+        }
+    }
+
+    /**
+     * Android 14+ (API 34+): checks if the app can use full-screen intents.
+     * On older versions, this is always true (permission auto-granted).
+     * On Android 14+, the user must explicitly grant USE_FULL_SCREEN_INTENT.
+     */
+    @ReactMethod
+    public void canUseFullScreenIntent(Promise promise) {
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                promise.resolve(true);
+                return;
+            }
+
+            NotificationManager nm = (NotificationManager)
+                getReactApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            boolean can = nm != null && nm.canUseFullScreenIntent();
+            promise.resolve(can);
+        } catch (Exception ex) {
+            promise.reject("full_screen_intent_check_failed", ex);
+        }
+    }
+
+    /**
+     * Android 14+ (API 34+): opens the system settings screen where the user
+     * can grant USE_FULL_SCREEN_INTENT permission to this app.
+     */
+    @ReactMethod
+    public void openFullScreenIntentSettings(Promise promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                Intent intent = new Intent(
+                    Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                    android.net.Uri.parse("package:" + getReactApplicationContext().getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getReactApplicationContext().startActivity(intent);
+                promise.resolve(true);
+            } else {
+                promise.resolve(false);
+            }
+        } catch (Exception ex) {
+            Log.w(TAG, "Failed to open full-screen intent settings: " + ex.getMessage());
+            promise.resolve(false);
         }
     }
 

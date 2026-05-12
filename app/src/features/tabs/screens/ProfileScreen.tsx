@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Modal, Image } from 'react-native';
 import { useState, useMemo } from 'react';
-import { updateAvatarOnBackend } from '../../auth/services/auth.service';
+import { updateAvatarOnBackend, updateProfileOnBackend } from '../../auth/services/auth.service';
 import { getStoredSession } from '../../auth';
 import { fetchMedications } from '../services/medications.service';
 import {
@@ -146,6 +146,13 @@ export function ProfileScreen({
 
       const session = await getStoredSession();
       if (session?.accessToken) {
+        // Sync with backend
+        try {
+          await updateProfileOnBackend({ notificationLeadMinutes: reminderLeadMinutes });
+        } catch (syncError) {
+          console.warn('[MedicAI] Failed to sync lead minutes with backend:', syncError);
+        }
+
         const medications = await fetchMedications(session.accessToken);
         for (const medication of medications) {
           await scheduleMedicationNotifications(medication);

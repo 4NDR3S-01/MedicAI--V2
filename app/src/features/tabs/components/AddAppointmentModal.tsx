@@ -2,8 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCallback, useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import MapView, { Region } from 'react-native-maps';
-import * as Location from 'expo-location';
+import { LeafletMapModal } from '../../../shared/components/LeafletMapModal';
 import {
   ActivityIndicator,
   Alert,
@@ -52,69 +51,6 @@ export function AddAppointmentModal({
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [mapVisible, setMapVisible] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
-  const [mapRegion, setMapRegion] = useState<Region>({
-    latitude: -34.6037,
-    longitude: -58.3816,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
-  });
-  const [selectedCoords, setSelectedCoords] = useState<{latitude: number, longitude: number} | null>(null);
-  const [selectedPoiName, setSelectedPoiName] = useState('');
-
-  const handleOpenMap = async () => {
-    setMapVisible(true);
-    setIsGettingLocation(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setMapRegion({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        });
-        setSelectedCoords({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-        });
-      }
-    } catch (e) {
-      console.log(e);
-    } finally {
-      setIsGettingLocation(false);
-    }
-  };
-
-  const handleConfirmMap = async () => {
-    setMapVisible(false);
-    if (selectedPoiName) {
-      setLocation(selectedPoiName);
-      return;
-    }
-    
-    if (!selectedCoords) return;
-    
-    setIsLoading(true);
-    try {
-      const geocode = await Location.reverseGeocodeAsync(selectedCoords);
-      if (geocode.length > 0) {
-        const place = geocode[0];
-        if (place.name && place.name !== place.street && place.name !== place.streetNumber) {
-          setLocation(place.name);
-        } else {
-          const address = [place.street, place.streetNumber].filter(Boolean).join(' ');
-          setLocation(address || place.city || 'Ubicación seleccionada');
-        }
-      }
-    } catch (e) {
-      console.log(e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
 
   const clearForm = () => {
     setTitle('');
@@ -361,7 +297,7 @@ export function AddAppointmentModal({
                   />
                   <Pressable
                     style={[styles.mapButton, { backgroundColor: theme.colors.accentSecondary }]}
-                    onPress={handleOpenMap}
+                    onPress={() => setMapVisible(true)}
                     disabled={isLoading}
                   >
                     <MaterialCommunityIcons name="map-marker-radius" size={24} color={theme.colors.buttonText} />
@@ -410,74 +346,12 @@ export function AddAppointmentModal({
         </View>
       </KeyboardAvoidingView>
 
-      {/* Map Modal */}
-      <Modal visible={mapVisible} transparent animationType="slide" onRequestClose={() => setMapVisible(false)}>
-        <View style={styles.mapOverlay}>
-          <View style={[styles.mapContent, { backgroundColor: theme.colors.background }]}>
-            <View style={styles.header}>
-              <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Elegir ubicacion</Text>
-              <Pressable onPress={() => setMapVisible(false)}>
-                <MaterialCommunityIcons name="close" size={24} color={theme.colors.textPrimary} />
-              </Pressable>
-            </View>
-
-            <View style={styles.mapWrapper}>
-              <MapView
-                style={styles.map}
-                region={mapRegion}
-                onRegionChangeComplete={(region, details) => {
-                  setMapRegion(region);
-                  setSelectedCoords({ latitude: region.latitude, longitude: region.longitude });
-                  if (details?.isGesture) {
-                    setSelectedPoiName('');
-                  }
-                }}
-                showsUserLocation={true}
-                showsPointsOfInterest={true}
-                onPoiClick={(e) => {
-                  const { coordinate, name } = e.nativeEvent;
-                  setMapRegion({ ...mapRegion, latitude: coordinate.latitude, longitude: coordinate.longitude });
-                  setSelectedCoords(coordinate);
-                  setSelectedPoiName(name);
-                }}
-              />
-              <View style={styles.mapPinOverlay} pointerEvents="none">
-                <MaterialCommunityIcons name="map-marker" size={40} color={theme.colors.accentSecondary} style={{ marginTop: -20 }} />
-              </View>
-              
-              <View style={{ position: 'absolute', bottom: 20, left: 20, right: 20, backgroundColor: theme.colors.surface, padding: 12, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, flexDirection: 'row', alignItems: 'center' }}>
-                <MaterialCommunityIcons name={selectedPoiName ? "hospital-building" : "map-marker-outline"} size={24} color={theme.colors.accentSecondary} style={{ marginRight: 12 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '600' }}>{selectedPoiName ? 'Centro seleccionado' : 'Ubicación'}</Text>
-                  <Text style={{ fontSize: 15, color: theme.colors.textPrimary, fontWeight: '700' }} numberOfLines={1}>{selectedPoiName || 'Ubicación en el mapa'}</Text>
-                </View>
-              </View>
-
-              {isGettingLocation && (
-                <View style={[StyleSheet.absoluteFill, styles.mapLoadingOverlay]}>
-                  <ActivityIndicator size="large" color={theme.colors.accentSecondary} />
-                  <Text style={[styles.label, { color: theme.colors.textPrimary, marginTop: 8 }]}>Buscando...</Text>
-                </View>
-              )}
-            </View>
-
-            <Pressable
-              style={{
-                marginTop: 16,
-                backgroundColor: theme.colors.accentSecondary,
-                paddingVertical: 14,
-                paddingHorizontal: 32,
-                borderRadius: 12,
-                alignItems: 'center',
-                alignSelf: 'center'
-              }}
-              onPress={handleConfirmMap}
-            >
-              <Text style={[styles.submitButtonText, { color: theme.colors.buttonText }]}>Confirmar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      <LeafletMapModal
+        visible={mapVisible}
+        onClose={() => setMapVisible(false)}
+        onConfirm={(address) => setLocation(address)}
+        theme={theme}
+      />
 
     </Modal>
   );
@@ -579,37 +453,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  mapOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  mapContent: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 24,
-    paddingHorizontal: 16,
-    paddingBottom: 32,
-    height: '80%',
-  },
-  mapWrapper: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  map: {
-    flex: 1,
-  },
-  mapPinOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  mapLoadingOverlay: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)',
   },
 });
