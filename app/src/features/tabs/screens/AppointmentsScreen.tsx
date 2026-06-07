@@ -30,6 +30,29 @@ export type AppointmentsScreenProps = {
   contentBottomInset: number;
 };
 
+const getDateParts = (date: Date) => ({
+  day: String(date.getDate()).padStart(2, '0'),
+  month: date.toLocaleString('es-ES', { month: 'short' }).replace('.', '').toUpperCase(),
+});
+
+const getRelativeDateLabel = (date: Date): string => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays === 0) return 'Hoy';
+  if (diffDays === 1) return 'Mañana';
+  if (diffDays === -1) return 'Ayer';
+  if (diffDays > 1) return `En ${diffDays} días`;
+  return `Hace ${Math.abs(diffDays)} días`;
+};
+
+const formatAppointmentTime = (date: Date): string =>
+  date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
 export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<AppointmentsScreenProps>) {
   const [appointments, setAppointments] = useState<AppointmentData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -165,40 +188,71 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
     ]);
   };
 
+  const now = new Date();
+  const upcomingAppointments = appointments.filter((appointment) => {
+    const parsed = new Date(appointment.scheduledAt);
+    return !Number.isNaN(parsed.getTime()) && parsed.getTime() >= now.getTime();
+  });
+  const nextAppointment = upcomingAppointments[0] ?? null;
+  const pendingAppointmentsCount = appointments.filter((appointment) => appointment.attendanceStatus === 'PENDING').length;
+  const attendedAppointmentsCount = appointments.filter((appointment) => appointment.attendanceStatus === 'ATTENDED').length;
+  const currentMonthLabel = now.toLocaleString('es-ES', { month: 'short', year: 'numeric' }).replace('.', '');
+
   const renderHeader = () => {
-    if (isLoading || isEmpty) return null;
+    if (isLoading) return null;
+
+    const nextDate = nextAppointment ? new Date(nextAppointment.scheduledAt) : null;
+    const nextDateParts = nextDate && !Number.isNaN(nextDate.getTime()) ? getDateParts(nextDate) : null;
+
     return (
-      <Animated.View style={[styles.headerWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      <Animated.View style={[styles.headerWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}> 
         <View style={styles.headerTitleRow}>
-          <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Mi Agenda</Text>
-          <View style={[styles.dateBadge, { backgroundColor: `${theme.colors.accentSecondary}10` }]}>
-            <Text style={[styles.dateBadgeText, { color: theme.colors.accentSecondary }]}>Mayo 2026</Text>
+          <View style={styles.headerCopy}>
+            <Text style={[styles.headerEyebrow, { color: theme.colors.accentSecondary }]}>Citas médicas</Text>
+            <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Agenda</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>Tus consultas, recordatorios y asistencia en un solo lugar.</Text>
+          </View>
+          <View style={[styles.dateBadge, { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}30` }]}> 
+            <MaterialCommunityIcons name="calendar-month-outline" size={18} color={theme.colors.accentSecondary} />
+            <Text style={[styles.dateBadgeText, { color: theme.colors.accentSecondary }]}>{currentMonthLabel}</Text>
           </View>
         </View>
 
-        {/* Weekly Mini Calendar Selector (Visual only for now) */}
-        <View style={styles.calendarStrip}>
-          {[
-            { day: 'Lun', num: '04' },
-            { day: 'Mar', num: '05' },
-            { day: 'Mié', num: '06' },
-            { day: 'Jue', num: '07' },
-            { day: 'Vie', num: '08' },
-            { day: 'Sáb', num: '09', active: true },
-            { day: 'Dom', num: '10' },
-          ].map((item) => (
-            <View
-              key={item.num}
-              style={[
-                styles.calendarDay,
-                item.active && { backgroundColor: theme.colors.accentSecondary, borderColor: theme.colors.accentSecondary },
-                !item.active && { borderColor: theme.colors.surfaceBorder },
-              ]}
-            >
-              <Text style={[styles.dayName, { color: item.active ? '#FFF' : theme.colors.textMuted }]}>{item.day}</Text>
-              <Text style={[styles.dayNum, { color: item.active ? '#FFF' : theme.colors.textPrimary }]}>{item.num}</Text>
+        {nextAppointment && nextDate && nextDateParts ? (
+          <View style={[styles.nextCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
+            <View style={[styles.nextDatePill, { backgroundColor: `${theme.colors.accentSecondary}14` }]}> 
+              <Text style={[styles.nextDateDay, { color: theme.colors.textPrimary }]}>{nextDateParts.day}</Text>
+              <Text style={[styles.nextDateMonth, { color: theme.colors.accentSecondary }]}>{nextDateParts.month}</Text>
             </View>
-          ))}
+            <View style={styles.nextInfo}>
+              <View style={styles.nextTopRow}>
+                <Text style={[styles.nextKicker, { color: theme.colors.accentSecondary }]}>Próxima cita</Text>
+                <Text style={[styles.nextTime, { color: theme.colors.textMuted }]}>{formatAppointmentTime(nextDate)}</Text>
+              </View>
+              <Text style={[styles.nextTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>{nextAppointment.title}</Text>
+              <Text style={[styles.nextMeta, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                {getRelativeDateLabel(nextDate)} con {nextAppointment.doctorName}
+              </Text>
+              {nextAppointment.location ? (
+                <Text style={[styles.nextLocation, { color: theme.colors.textMuted }]} numberOfLines={1}>{nextAppointment.location}</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: `${theme.colors.accentSecondary}10`, borderColor: `${theme.colors.accentSecondary}20` }]}> 
+            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{upcomingAppointments.length}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Próximas</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: `${theme.colors.accentPrimary}10`, borderColor: `${theme.colors.accentPrimary}20` }]}> 
+            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{pendingAppointmentsCount}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Pendientes</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: '#16A34A15', borderColor: '#16A34A25' }]}> 
+            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{attendedAppointmentsCount}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Asistidas</Text>
+          </View>
         </View>
       </Animated.View>
     );
@@ -258,8 +312,8 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
                 <MaterialCommunityIcons name="calendar-blank" size={64} color={theme.colors.accentSecondary} />
               </View>
               <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>Tu agenda está libre</Text>
-              <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
-                Programa tus próximas citas médicas para mantener un control óptimo de tu salud.
+              <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}> 
+                Toca el botón + para crear tu primera cita y activar recordatorios automáticos.
               </Text>
             </View>
           )
@@ -267,11 +321,9 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         renderItem={({ item, index }) => {
           const parsed = new Date(item.scheduledAt);
           const isValid = !Number.isNaN(parsed.getTime());
-          const day = isValid ? parsed.getDate() : '--';
-          const month = isValid ? parsed.toLocaleString('es-ES', { month: 'short' }).toUpperCase() : '--';
-          const timeStr = isValid
-            ? parsed.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-            : '--:--';
+          const dateParts = isValid ? getDateParts(parsed) : { day: '--', month: '--' };
+          const timeStr = isValid ? formatAppointmentTime(parsed) : '--:--';
+          const relativeDate = isValid ? getRelativeDateLabel(parsed) : 'Sin fecha';
           const attendanceStatus = item.attendanceStatus ?? 'PENDING';
           const attendanceLabel = attendanceStatus === 'ATTENDED'
             ? 'Asistió'
@@ -288,8 +340,10 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
             <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
               <View style={styles.appointmentCardWrapper}>
                 <View style={styles.dateColumn}>
-                  <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{day}</Text>
-                  <Text style={[styles.dateMonth, { color: theme.colors.accentSecondary }]}>{month}</Text>
+                  <View style={[styles.dateCapsule, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
+                    <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{dateParts.day}</Text>
+                    <Text style={[styles.dateMonth, { color: theme.colors.accentSecondary }]}>{dateParts.month}</Text>
+                  </View>
                   <View style={[styles.dateLine, { backgroundColor: theme.colors.surfaceBorder }]} />
                 </View>
 
@@ -306,31 +360,35 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
                 >
                   <View style={styles.cardTop}>
                     <View style={styles.titleGroup}>
-                      <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                      <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}> 
                         {item.title}
                       </Text>
-                      <View style={[styles.timeTag, { backgroundColor: `${theme.colors.accentSecondary}10` }]}> 
-                        <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.accentSecondary} />
-                        <Text style={[styles.timeLabel, { color: theme.colors.accentSecondary }]}>{timeStr}</Text>
-                      </View>
-                      <Pressable
-                        onPress={() => handleMarkAttendance(item)}
-                        style={[styles.attendanceTag, { backgroundColor: `${attendanceColor}15` }]}
-                      >
-                        <MaterialCommunityIcons
-                          name={attendanceStatus === 'ATTENDED' ? 'check-circle-outline' : attendanceStatus === 'MISSED' ? 'close-circle-outline' : 'clock-alert-outline'}
-                          size={14}
-                          color={attendanceColor}
-                        />
-                        <Text style={[styles.attendanceLabel, { color: attendanceColor }]}>{attendanceLabel}</Text>
-                      </Pressable>
+                      <Text style={[styles.relativeDate, { color: theme.colors.textMuted }]}>{relativeDate}</Text>
                     </View>
-                    <MaterialCommunityIcons name="chevron-right" size={24} color={theme.colors.textMuted} />
+                    <Pressable
+                      onPress={() => handleMarkAttendance(item)}
+                      style={[styles.attendanceTag, { backgroundColor: `${attendanceColor}15` }]}
+                    >
+                      <MaterialCommunityIcons
+                        name={attendanceStatus === 'ATTENDED' ? 'check-circle-outline' : attendanceStatus === 'MISSED' ? 'close-circle-outline' : 'clock-alert-outline'}
+                        size={14}
+                        color={attendanceColor}
+                      />
+                      <Text style={[styles.attendanceLabel, { color: attendanceColor }]}>{attendanceLabel}</Text>
+                    </Pressable>
                   </View>
 
                   <View style={styles.detailsGroup}>
                     <View style={styles.detailItem}>
-                      <View style={[styles.detailIconBox, { backgroundColor: `${theme.colors.accentSecondary}10` }]}>
+                      <View style={[styles.detailIconBox, { backgroundColor: `${theme.colors.accentSecondary}10` }]}> 
+                        <MaterialCommunityIcons name="clock-outline" size={16} color={theme.colors.accentSecondary} />
+                      </View>
+                      <Text style={[styles.detailValue, { color: theme.colors.textPrimary }]} numberOfLines={1}> 
+                        {timeStr}
+                      </Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <View style={[styles.detailIconBox, { backgroundColor: `${theme.colors.accentSecondary}10` }]}> 
                         <MaterialCommunityIcons name="stethoscope" size={16} color={theme.colors.accentSecondary} />
                       </View>
                       <Text style={[styles.detailValue, { color: theme.colors.textPrimary }]} numberOfLines={1}>
@@ -346,6 +404,11 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
                         <Text style={[styles.detailValue, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                           {item.location}
                         </Text>
+                      </View>
+                    ) : null}
+                    {item.notes ? (
+                      <View style={styles.noteBox}>
+                        <Text style={[styles.noteText, { color: theme.colors.textSecondary }]} numberOfLines={2}>{item.notes}</Text>
                       </View>
                     ) : null}
                   </View>
@@ -416,44 +479,60 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { paddingHorizontal: 20, paddingTop: 20, gap: 20 },
+  listContent: { paddingHorizontal: 20, paddingTop: 20, gap: 18 },
   listContentEmpty: { justifyContent: 'center' },
-  headerWrapper: { gap: 20, marginBottom: 8 },
-  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1 },
-  dateBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  dateBadgeText: { fontSize: 14, fontWeight: '800' },
-  calendarStrip: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  calendarDay: { flex: 1, height: 74, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  dayName: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  dayNum: { fontSize: 18, fontWeight: '900' },
+  headerWrapper: { gap: 16, marginBottom: 10 },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 },
+  headerCopy: { flex: 1, gap: 4 },
+  headerEyebrow: { fontSize: 12, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
+  headerTitle: { fontSize: 36, fontWeight: '900', letterSpacing: -1.2, lineHeight: 40 },
+  headerSubtitle: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  dateBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, borderWidth: 1 },
+  dateBadgeText: { fontSize: 13, fontWeight: '900', textTransform: 'capitalize' },
+  nextCard: { flexDirection: 'row', gap: 14, borderWidth: 1, borderRadius: 28, padding: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
+  nextDatePill: { width: 62, height: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  nextDateDay: { fontSize: 28, fontWeight: '900', letterSpacing: -1 },
+  nextDateMonth: { fontSize: 11, fontWeight: '900', letterSpacing: 0.6 },
+  nextInfo: { flex: 1, gap: 4, justifyContent: 'center' },
+  nextTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  nextKicker: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.7 },
+  nextTime: { fontSize: 13, fontWeight: '800' },
+  nextTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
+  nextMeta: { fontSize: 14, fontWeight: '700' },
+  nextLocation: { fontSize: 12, fontWeight: '600' },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: { flex: 1, borderWidth: 1, borderRadius: 20, paddingVertical: 14, paddingHorizontal: 12, gap: 2 },
+  statValue: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  statLabel: { fontSize: 12, fontWeight: '800' },
   emptyState: { alignItems: 'center', paddingVertical: 80, gap: 20 },
   emptyIconBox: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
   emptySubtext: { fontSize: 16, fontWeight: '500', textAlign: 'center', lineHeight: 24, opacity: 0.7 },
   retryButton: { paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16, marginTop: 12 },
   retryButtonText: { fontSize: 16, fontWeight: '800' },
-  appointmentCardWrapper: { flexDirection: 'row', gap: 16 },
-  dateColumn: { width: 50, alignItems: 'center', paddingTop: 10 },
-  dateDay: { fontSize: 28, fontWeight: '900', letterSpacing: -1, lineHeight: 30 },
+  appointmentCardWrapper: { flexDirection: 'row', gap: 12 },
+  dateColumn: { width: 54, alignItems: 'center', paddingTop: 2 },
+  dateCapsule: { width: 54, height: 66, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  dateDay: { fontSize: 26, fontWeight: '900', letterSpacing: -1, lineHeight: 28 },
   dateMonth: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  dateLine: { position: 'absolute', top: 60, bottom: -20, width: 2, left: 24, opacity: 0.5 },
-  cardBody: { flex: 1, borderRadius: 28, borderWidth: 1, padding: 20, gap: 16 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  titleGroup: { flex: 1, gap: 6 },
+  dateLine: { position: 'absolute', top: 70, bottom: -18, width: 2, left: 26, opacity: 0.45 },
+  cardBody: { flex: 1, borderRadius: 28, borderWidth: 1, padding: 18, gap: 16 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  titleGroup: { flex: 1, gap: 3 },
   cardTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
-  timeTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  timeLabel: { fontSize: 13, fontWeight: '800' },
-  attendanceTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  relativeDate: { fontSize: 13, fontWeight: '800' },
+  attendanceTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
   attendanceLabel: { fontSize: 13, fontWeight: '800' },
-  detailsGroup: { gap: 12 },
+  detailsGroup: { gap: 10 },
   detailItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   detailIconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   detailValue: { fontSize: 15, fontWeight: '600' },
+  noteBox: { borderRadius: 16, padding: 12, backgroundColor: 'rgba(148, 163, 184, 0.10)' },
+  noteText: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTopWidth: 1 },
   actionRow: { flexDirection: 'row', gap: 8 },
   actionBtn: { padding: 8 },
-  primaryAction: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 },
+  primaryAction: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 14 },
   primaryActionText: { fontSize: 14, fontWeight: '800' },
   fab: {
     position: 'absolute',

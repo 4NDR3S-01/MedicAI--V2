@@ -149,6 +149,16 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  getProfile(@Request() req: any) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedException('Token inválido.');
+    }
+    return this.authService.getProfile(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('profile')
   updateProfile(@Body() dto: UpdateProfileDto, @Request() req: any) {
     const userId = req.user?.sub;

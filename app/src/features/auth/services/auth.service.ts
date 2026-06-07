@@ -11,10 +11,36 @@ export type AppAuthSession = {
     email: string;
     fullName?: string | null;
     avatar?: string | null;
+    birthDate?: string | null;
+    phone?: string | null;
+    conditions?: string | null;
+    allergies?: string | null;
+    pregnancy?: boolean;
+    lactation?: boolean;
+    recentSurgeries?: boolean;
+    immunosuppression?: boolean;
+    anticoagulantTreatment?: boolean;
+    notificationLeadMinutes?: number;
   };
   accessToken: string;
   refreshToken: string;
 };
+
+export type ProfileUser = AppAuthSession["user"];
+
+export type ProfileUpdatePayload = Partial<{
+  fullName: string;
+  birthDate: string;
+  phone: string;
+  conditions: string;
+  allergies: string;
+  pregnancy: boolean;
+  lactation: boolean;
+  recentSurgeries: boolean;
+  immunosuppression: boolean;
+  anticoagulantTreatment: boolean;
+  notificationLeadMinutes: number;
+}>;
 
 export type EmailAvailabilityResponse = {
   available: boolean;
@@ -129,6 +155,21 @@ const persistSession = async (session: AppAuthSession) => {
   await appStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
 };
 
+const mergeStoredSessionUser = async (user: Partial<ProfileUser>) => {
+  const session = await getStoredSession();
+  if (!session) return null;
+
+  const updatedSession: AppAuthSession = {
+    ...session,
+    user: {
+      ...session.user,
+      ...user,
+    },
+  };
+  await persistSession(updatedSession);
+  return updatedSession;
+};
+
 export const getStoredSession = async (): Promise<AppAuthSession | null> => {
   const raw = await appStorage.getItem(AUTH_SESSION_KEY);
   if (!raw) {
@@ -233,7 +274,55 @@ export const validateEmailVerificationToken = async (token: string) => {
   );
 };
 
-export const updateProfileOnBackend = async (profileData: { notificationLeadMinutes?: number }) => {
+export const fetchProfileFromBackend = async () => {
+  ensureApiConfigured();
+
+  const session = await getStoredSession();
+  if (!session) {
+    throw new Error(
+      "No hay sesión activa. Por favor inicia sesión nuevamente.",
+    );
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/profile`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+    });
+  } catch {
+    throw new Error(
+      "No se pudo conectar con el backend. Verifica que el servidor este activo.",
+    );
+  }
+
+  if (!response.ok) {
+    const errorMessage = await parseApiError(response);
+    throw new Error(mapAuthError(errorMessage));
+  }
+
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    return {} as { user: ProfileUser };
+  }
+
+  try {
+    const payload = JSON.parse(rawBody) as { user: ProfileUser };
+    if (payload.user) {
+      await mergeStoredSessionUser(payload.user);
+    }
+    return payload;
+  } catch {
+    throw new Error(
+      "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",
+    );
+  }
+};
+
+export const updateProfileOnBackend = async (profileData: ProfileUpdatePayload) => {
   ensureApiConfigured();
 
   const session = await getStoredSession();
@@ -266,11 +355,15 @@ export const updateProfileOnBackend = async (profileData: { notificationLeadMinu
 
   const rawBody = await response.text();
   if (!rawBody.trim()) {
-    return {} as { message: string };
+    return {} as { message: string; user?: ProfileUser };
   }
 
   try {
-    return JSON.parse(rawBody) as { message: string };
+    const payload = JSON.parse(rawBody) as { message: string; user?: ProfileUser };
+    if (payload.user) {
+      await mergeStoredSessionUser(payload.user);
+    }
+    return payload;
   } catch {
     throw new Error(
       "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",
@@ -315,7 +408,11 @@ export const updateAvatarOnBackend = async (avatarData: string) => {
   }
 
   try {
-    return JSON.parse(rawBody) as { message: string; avatar: string };
+    const payload = JSON.parse(rawBody) as { message: string; avatar: string };
+    if (payload.avatar) {
+      await mergeStoredSessionUser({ avatar: payload.avatar });
+    }
+    return payload;
   } catch {
     throw new Error(
       "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",

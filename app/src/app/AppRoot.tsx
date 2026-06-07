@@ -1208,6 +1208,9 @@ export function AppRoot() {
           userEmail={session.user.email ?? null}
           avatarData={session.user.avatar ?? null}
           isSigningOut={isSubmittingAuth}
+          onProfileUpdated={(user) => {
+            setSession((current) => current ? { ...current, user: { ...current.user, ...user } } : current);
+          }}
           onSignOut={() => {
             if (!isSubmittingAuth) {
               void handleSignOut();

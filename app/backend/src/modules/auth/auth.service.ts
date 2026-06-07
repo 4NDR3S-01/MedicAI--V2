@@ -15,6 +15,7 @@ import { MailService } from '../../infrastructure/mail/mail.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const EMAIL_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
 const PASSWORD_RESET_TOKEN_TTL_MS = 1000 * 60 * 30;
@@ -567,18 +568,42 @@ export class AuthService {
     }
   }
 
-  async updateProfile(userId: string, dto: { notificationLeadMinutes?: number }) {
+  async getProfile(userId: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado.');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado.');
+    }
+
+    return { user: this.mapProfileUser(user) };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
     if (!userId) {
       throw new UnauthorizedException('Usuario no autenticado.');
     }
 
     const data: Record<string, unknown> = {};
+    if (dto.fullName !== undefined) data.fullName = dto.fullName.trim() || null;
+    if (dto.birthDate !== undefined) data.birthDate = dto.birthDate.trim() || null;
+    if (dto.phone !== undefined) data.phone = dto.phone.trim() || null;
+    if (dto.conditions !== undefined) data.conditions = dto.conditions.trim() || null;
+    if (dto.allergies !== undefined) data.allergies = dto.allergies.trim() || null;
+    if (dto.pregnancy !== undefined) data.pregnancy = dto.pregnancy;
+    if (dto.lactation !== undefined) data.lactation = dto.lactation;
+    if (dto.recentSurgeries !== undefined) data.recentSurgeries = dto.recentSurgeries;
+    if (dto.immunosuppression !== undefined) data.immunosuppression = dto.immunosuppression;
+    if (dto.anticoagulantTreatment !== undefined) data.anticoagulantTreatment = dto.anticoagulantTreatment;
     if (dto.notificationLeadMinutes !== undefined) {
       data.notificationLeadMinutes = dto.notificationLeadMinutes;
     }
 
     if (Object.keys(data).length === 0) {
-      return { message: 'Sin cambios.', user: await this.prisma.user.findUnique({ where: { id: userId } }) };
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      return { message: 'Sin cambios.', user: user ? this.mapProfileUser(user) : null };
     }
 
     const user = await this.prisma.user.update({
@@ -589,12 +614,26 @@ export class AuthService {
     this.logger.log('User profile updated', { userId });
     return {
       message: 'Perfil actualizado correctamente.',
-      user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        notificationLeadMinutes: user.notificationLeadMinutes,
-      },
+      user: this.mapProfileUser(user),
+    };
+  }
+
+  private mapProfileUser(user: User) {
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      birthDate: user.birthDate,
+      phone: user.phone,
+      avatar: user.avatar,
+      conditions: user.conditions,
+      allergies: user.allergies,
+      pregnancy: user.pregnancy,
+      lactation: user.lactation,
+      recentSurgeries: user.recentSurgeries,
+      immunosuppression: user.immunosuppression,
+      anticoagulantTreatment: user.anticoagulantTreatment,
+      notificationLeadMinutes: user.notificationLeadMinutes,
     };
   }
 

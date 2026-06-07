@@ -12,6 +12,7 @@ import { HomeScreen } from '../features/home';
 import type { AppTheme } from '../shared/theme';
 import { ChatModal, FloatingChatButton } from '../shared/ui';
 import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBottomBar';
+import type { ProfileUser } from '../features/auth/services/auth.service';
 
 export type MainAppShellProps = {
   theme: AppTheme;
@@ -20,6 +21,7 @@ export type MainAppShellProps = {
   avatarData?: string | null;
   isSigningOut: boolean;
   onSignOut: () => void;
+  onProfileUpdated?: (user: ProfileUser) => void;
 };
 
 export function MainAppShell({
@@ -29,6 +31,7 @@ export function MainAppShell({
   avatarData: initialAvatarData,
   isSigningOut,
   onSignOut,
+  onProfileUpdated,
 }: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
   const [chatVisible, setChatVisible] = useState(false);
@@ -68,6 +71,7 @@ export function MainAppShell({
           userEmail={userEmail}
           avatarData={avatarData}
           onSetAvatar={handleSetAvatar}
+          onProfileUpdated={onProfileUpdated}
           contentBottomInset={contentBottomInset}
           isSigningOut={isSigningOut}
           onSignOut={onSignOut}

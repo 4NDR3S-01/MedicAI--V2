@@ -601,7 +601,7 @@ export async function scheduleAppointmentReminder(appointment: {
     appointment,
     appointmentDate,
     'TIME',
-    `Ahora: ${appointment.title}`,
+    `Tienes una cita: ${appointment.title}`,
     `Es la hora registrada de tu cita médica${doctorText}.`,
   );
 
