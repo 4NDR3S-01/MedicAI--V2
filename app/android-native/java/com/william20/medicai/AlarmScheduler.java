@@ -37,6 +37,28 @@ public class AlarmScheduler {
         );
     }
 
+    private static PendingIntent buildShowPendingIntent(Context context, String id, String title, String body) {
+        Intent intent = new Intent(context, AlarmActivity.class);
+        intent.putExtra("id", id);
+        if (title != null) {
+            intent.putExtra("title", title);
+        }
+        if (body != null) {
+            intent.putExtra("body", body);
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+            | Intent.FLAG_ACTIVITY_SINGLE_TOP
+            | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        int requestCode = id != null ? id.hashCode() : 0;
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+    }
+
     public static void scheduleExactAlarm(Context context, String id, Date when, String title, String body) {
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = buildAlarmIntent(context, id, title, body);
@@ -45,6 +67,17 @@ public class AlarmScheduler {
         long time = when.getTime();
         long delayMs = time - System.currentTimeMillis();
         Log.d("MedicAI-Alarm", "scheduleExactAlarm: id=" + id + ", triggerIn=" + (delayMs / 1000) + "s, SDK=" + Build.VERSION.SDK_INT);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                PendingIntent showPi = buildShowPendingIntent(context, id, title, body);
+                am.setAlarmClock(new AlarmManager.AlarmClockInfo(time, showPi), pi);
+                Log.d("MedicAI-Alarm", "setAlarmClock set for id=" + id);
+                return;
+            } catch (Exception e) {
+                Log.w("MedicAI-Alarm", "setAlarmClock failed for id=" + id + ", falling back: " + e.getMessage());
+            }
+        }
 
         // Android 12+ requires explicit permission to schedule exact alarms.
         // Fall back to inexact if the permission was not granted by the user.

@@ -27,6 +27,11 @@ import { Platform, PermissionsAndroid } from 'react-native';
 
 import { appStorage } from '../storage';
 import AlarmNative from '../native/AlarmNative';
+import {
+  type MedicationLog,
+  logMedicationAction,
+  fetchMedicationLogs,
+} from '../../features/tabs/services/medications.service';
 
 // ─── Public constants ─────────────────────────────────────────────────────────
 
@@ -47,6 +52,8 @@ export const NOTIFICATION_ACTIONS = {
   SNOOZE: 'SNOOZE_ACTION',
   SKIP: 'SKIP_ACTION',
   CONFIRM_APPOINTMENT: 'CONFIRM_APPOINTMENT_ACTION',
+  SNOOZE_APPOINTMENT: 'SNOOZE_APPOINTMENT_ACTION',
+  DECLINE_APPOINTMENT: 'DECLINE_APPOINTMENT_ACTION',
 } as const;
 
 export const SCHEDULE_TYPES = {
@@ -57,10 +64,15 @@ export const SCHEDULE_TYPES = {
 // ─── Internal constants ───────────────────────────────────────────────────────
 
 const LEAD_MINUTES_STORAGE_KEY = 'medicai_medication_reminder_lead_minutes_v1';
+const APPOINTMENT_LEAD_MINUTES_STORAGE_KEY = 'medicai_appointment_reminder_lead_minutes_v1';
 const DEFAULT_LEAD_MINUTES = 5;
+const DEFAULT_APPOINTMENT_LEAD_MINUTES = 60;
+const MIN_APPOINTMENT_LEAD_MINUTES = 30;
 const MAX_SCHEDULED = 500;
+const IOS_MAX_SCHEDULED = 64;
 const LOOKAHEAD_DAYS = 30;
 const SNOOZE_MINUTES = 10;
+const APPOINTMENT_SNOOZE_MINUTES = 10;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +115,7 @@ const scheduleSingleReminder = async (
       data: {
         id: medication.id,
         type: SCHEDULE_TYPES.REMINDER,
+        scheduledFor: triggerDate.toISOString(),
       },
       categoryIdentifier: NOTIFICATION_CATEGORIES.REMINDER,
       sound: true,
@@ -150,6 +163,7 @@ const scheduleSingleDoseAlarm = async (
       data: {
         id: medication.id,
         type: SCHEDULE_TYPES.DOSE_ALARM,
+        scheduledFor: triggerDate.toISOString(),
       },
       categoryIdentifier: NOTIFICATION_CATEGORIES.DOSE_ALARM,
       sound: true,
@@ -177,6 +191,7 @@ const hasCustomRange = (
 const scheduleCustomRangeAlarms = async (
   medication: MedicationScheduleInput,
   leadMinutes: number,
+  maxSlots: number,
 ): Promise<void> => {
   const baseTime = medication.firstDoseTime ?? medication.times?.[0] ?? '00:00';
   const parsed = parseTime(baseTime);
@@ -193,7 +208,7 @@ const scheduleCustomRangeAlarms = async (
   while (next <= now) next = new Date(next.getTime() + intervalMs);
 
   let count = 0;
-  while (next <= endDate && count < MAX_SCHEDULED) {
+  while (next <= endDate && count < maxSlots) {
     // Schedule dose alarm at exact dose time
     await scheduleSingleDoseAlarm(medication, next);
     count += 1;
@@ -213,6 +228,7 @@ const scheduleCustomRangeAlarms = async (
 const scheduleRegularAlarms = async (
   medication: Pick<MedicationScheduleInput, 'id' | 'name' | 'dosage' | 'times'>,
   leadMinutes: number,
+  maxSlots: number,
 ): Promise<void> => {
   if (!medication.times?.length) return;
 
@@ -224,7 +240,7 @@ const scheduleRegularAlarms = async (
     if (!parsed) continue;
 
     for (let day = 0; day < LOOKAHEAD_DAYS; day += 1) {
-      if (count >= MAX_SCHEDULED) break;
+      if (count >= maxSlots) break;
 
       const doseDate = new Date(now);
       doseDate.setDate(now.getDate() + day);
@@ -245,7 +261,7 @@ const scheduleRegularAlarms = async (
       }
     }
 
-    if (count >= MAX_SCHEDULED) break;
+    if (count >= maxSlots) break;
   }
 };
 
@@ -264,6 +280,30 @@ export async function setMedicationReminderLeadMinutes(minutes: number): Promise
     String(Math.max(0, Math.min(120, Math.trunc(minutes)))),
   );
 }
+
+export async function getAppointmentReminderLeadMinutes(): Promise<number> {
+  const raw = await appStorage.getItem(APPOINTMENT_LEAD_MINUTES_STORAGE_KEY);
+  if (!raw) return DEFAULT_APPOINTMENT_LEAD_MINUTES;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= MIN_APPOINTMENT_LEAD_MINUTES && parsed <= 10_080
+    ? parsed
+    : DEFAULT_APPOINTMENT_LEAD_MINUTES;
+}
+
+export async function setAppointmentReminderLeadMinutes(minutes: number): Promise<void> {
+  await appStorage.setItem(
+    APPOINTMENT_LEAD_MINUTES_STORAGE_KEY,
+    String(Math.max(MIN_APPOINTMENT_LEAD_MINUTES, Math.min(10_080, Math.trunc(minutes)))),
+  );
+}
+
+const formatLeadMinutes = (minutes: number): string => {
+  if (minutes < 60) return `${minutes} minutos`;
+  if (minutes === 60) return '1 hora';
+  if (minutes % 1440 === 0) return `${minutes / 1440} ${minutes === 1440 ? 'día' : 'días'}`;
+  if (minutes % 60 === 0) return `${minutes / 60} horas`;
+  return `${minutes} minutos`;
+};
 
 // ─── Notification setup ───────────────────────────────────────────────────────
 
@@ -345,8 +385,18 @@ export async function setupNotifications(): Promise<void> {
   await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.APPOINTMENT, [
     {
       identifier: NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT,
-      buttonTitle: 'Confirmar Asistencia',
+      buttonTitle: 'Asistiré',
       options: { opensAppToForeground: true },
+    },
+    {
+      identifier: NOTIFICATION_ACTIONS.SNOOZE_APPOINTMENT,
+      buttonTitle: 'Recordar luego',
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: NOTIFICATION_ACTIONS.DECLINE_APPOINTMENT,
+      buttonTitle: 'No asistiré',
+      options: { isDestructive: true, opensAppToForeground: true },
     },
   ]);
 }
@@ -452,52 +502,115 @@ export async function scheduleMedicationNotifications(
     return;
   }
 
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  if (Platform.OS === 'ios' && scheduled.length >= IOS_MAX_SCHEDULED) {
+    console.warn('[MedicAI] iOS notification limit reached (' + IOS_MAX_SCHEDULED + '), aborting schedule for', medication.id);
+    return;
+  }
+
+  const remainingSlots = Platform.OS === 'ios' ? IOS_MAX_SCHEDULED - scheduled.length : MAX_SCHEDULED;
+
   const leadMinutes = await getMedicationReminderLeadMinutes();
 
   if (hasCustomRange(medication)) {
-    await scheduleCustomRangeAlarms(medication, leadMinutes);
+    await scheduleCustomRangeAlarms(medication, leadMinutes, remainingSlots);
   } else {
-    await scheduleRegularAlarms(medication, leadMinutes);
+    await scheduleRegularAlarms(medication, leadMinutes, remainingSlots);
   }
 }
 
 /**
- * Schedules a reminder notification 1 hour before an appointment.
+ * Schedules a configurable appointment reminder.
+ * Uses expo-notifications instead of the native medication alarm path because
+ * appointment reminders are informational and need appointment-specific actions.
  */
 export async function scheduleAppointmentReminder(appointment: {
   id: string;
   title: string;
+  doctorName?: string | null;
   scheduledAt: string;
+  active?: boolean;
 }): Promise<void> {
   await cancelNotificationsByDataId(appointment.id);
+  if (appointment.active === false) return;
 
   const appointmentDate = new Date(appointment.scheduledAt);
-  const reminderDate = new Date(appointmentDate.getTime() - 3_600_000);
-  if (reminderDate <= new Date()) return;
+  if (Number.isNaN(appointmentDate.getTime()) || appointmentDate.getTime() <= Date.now()) return;
 
-  if (AlarmNative.isAvailable()) {
-    try {
-      await AlarmNative.scheduleAlarm(appointment.id, reminderDate.getTime(), `Recordatorio: ${appointment.title}`, 'Tu cita médica es en 1 hora.');
-      return;
-    } catch (err) {
-      console.warn('[MedicAI] Native alarm failed for appointment, falling back:', err);
-    }
+  const permission = await registerForPushNotificationsAsync();
+  if (permission !== 'granted') {
+    console.warn('[MedicAI] scheduleAppointmentReminder: permission not granted, aborting schedule for', appointment.id);
+    return;
   }
+
+  const leadMinutes = await getAppointmentReminderLeadMinutes();
+  const reminderAt = appointmentDate.getTime() - leadMinutes * 60_000;
+  const triggerDate = new Date(reminderAt > Date.now() ? reminderAt : Date.now() + 5_000);
+  const doctorText = appointment.doctorName ? ` con ${appointment.doctorName}` : '';
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Recordatorio: ${appointment.title}`,
-      body: 'Tu cita médica es en 1 hora.',
-      data: { id: appointment.id, type: 'APPOINTMENT' },
+      title: `Cita: ${appointment.title}`,
+      body: `Tienes una cita médica${doctorText} en ${formatLeadMinutes(leadMinutes)}.`,
+      data: {
+        id: appointment.id,
+        type: 'APPOINTMENT',
+        scheduledAt: appointment.scheduledAt,
+        title: appointment.title,
+        doctorName: appointment.doctorName ?? undefined,
+      },
       categoryIdentifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
       sound: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: reminderDate,
+      date: triggerDate,
       channelId: CHANNELS.APPOINTMENTS,
     },
   });
+}
+
+export async function snoozeAppointmentReminder(
+  notificationData: Notifications.NotificationContent,
+): Promise<boolean> {
+  const data = notificationData.data as {
+    id?: string;
+    scheduledAt?: string;
+    title?: string;
+    doctorName?: string;
+  } | undefined;
+  if (!data?.id || !data.scheduledAt) return false;
+
+  const appointmentDate = new Date(data.scheduledAt);
+  if (Number.isNaN(appointmentDate.getTime()) || appointmentDate.getTime() <= Date.now()) return false;
+
+  const snoozeAt = Date.now() + APPOINTMENT_SNOOZE_MINUTES * 60_000;
+  if (snoozeAt >= appointmentDate.getTime()) return false;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `[Recordatorio] ${data.title ?? notificationData.title ?? 'Cita médica'}`,
+      body: `Tu cita es pronto. ${notificationData.body ?? ''}`.trim(),
+      data: {
+        id: data.id,
+        type: 'APPOINTMENT',
+        scheduledAt: data.scheduledAt,
+        title: data.title ?? notificationData.title ?? 'Cita médica',
+        doctorName: data.doctorName,
+      },
+      categoryIdentifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: new Date(snoozeAt),
+      channelId: CHANNELS.APPOINTMENTS,
+    },
+  });
+
+  return true;
 }
 
 /**
@@ -551,7 +664,7 @@ async function scheduleSnoozeAlarm(
     content: {
       title: snoozeTitle,
       body: snoozeBody,
-      data: { id: medicationId, type: SCHEDULE_TYPES.DOSE_ALARM },
+      data: { id: medicationId, type: SCHEDULE_TYPES.DOSE_ALARM, scheduledFor: snoozeDate.toISOString() },
       categoryIdentifier: NOTIFICATION_CATEGORIES.DOSE_ALARM,
       sound: true,
     },
@@ -590,6 +703,13 @@ export async function snoozeNotificationWithDuration(
 
 // ─── Post-launch recovery ─────────────────────────────────────────────────────
 
+const isToday = (date: Date): boolean => {
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+};
+
 /**
  * Re-schedules active medications that have NO pending notifications.
  *
@@ -604,17 +724,130 @@ export async function rescheduleMedicationsAfterLaunch(
   if (!active.length) return;
 
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  const scheduledMedIds = new Set(
-    scheduled
-      .map(n => n.content.data?.id)
-      .filter((id): id is string => typeof id === 'string'),
-  );
+
+  const hasDoseAlarmScheduled = (medId: string): boolean =>
+    scheduled.some(n =>
+      n.content.data?.id === medId
+      && n.content.data?.type === SCHEDULE_TYPES.DOSE_ALARM);
 
   for (const med of active) {
-    // If we have NO scheduled events for this med, re-schedule everything
-    if (!scheduledMedIds.has(med.id)) {
-      console.log('[MedicAI] rescheduleMedicationsAfterLaunch: re-scheduling all events for', med.id);
+    if (!hasDoseAlarmScheduled(med.id)) {
+      console.log('[MedicAI] rescheduleMedicationsAfterLaunch: missing dose alarms for', med.id, '— re-scheduling');
       await scheduleMedicationNotifications(med);
+    }
+  }
+}
+
+export async function rescheduleAppointmentsAfterLaunch(
+  appointments: Array<{
+    id: string;
+    title: string;
+    doctorName?: string | null;
+    scheduledAt: string;
+    active?: boolean;
+  }>,
+): Promise<void> {
+  const active = appointments.filter((appointment) => appointment.active !== false);
+  if (!active.length) return;
+
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const hasAppointmentReminderScheduled = (appointmentId: string): boolean =>
+    scheduled.some(n =>
+      n.content.data?.id === appointmentId
+      && n.content.data?.type === 'APPOINTMENT');
+
+  for (const appointment of active) {
+    const appointmentDate = new Date(appointment.scheduledAt);
+    if (Number.isNaN(appointmentDate.getTime()) || appointmentDate.getTime() <= Date.now()) continue;
+    if (!hasAppointmentReminderScheduled(appointment.id)) {
+      console.log('[MedicAI] rescheduleAppointmentsAfterLaunch: missing reminder for', appointment.id, '- re-scheduling');
+      await scheduleAppointmentReminder(appointment);
+    }
+  }
+}
+
+/**
+ * Detects timezone changes since the last known recording and, when a change
+ * is detected, re-schedules alarms for ALL active medications so that dose
+ * times remain correct at the user's new local time.
+ */
+export async function detectTimezoneChangeAndReschedule(
+  medications: MedicationScheduleInput[],
+): Promise<boolean> {
+  const TZ_STORAGE_KEY = 'medicai_last_known_timezone_v1';
+  const currentTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const lastTz = await appStorage.getItem(TZ_STORAGE_KEY);
+  await appStorage.setItem(TZ_STORAGE_KEY, currentTz);
+
+  if (!lastTz || lastTz === currentTz) return false;
+
+  console.log(`[MedicAI] Timezone changed from ${lastTz} to ${currentTz} — re-scheduling all alarms`);
+
+  for (const med of medications) {
+    await scheduleMedicationNotifications(med);
+  }
+
+  return true;
+}
+
+/**
+ * Reconciles missed doses for all active medications by checking today's
+ * past dose times against the existing MedicationLog records.
+ *
+ * If a scheduled dose time has already passed and no TAKEN or SKIPPED log
+ * exists for it, the dose is automatically logged as SKIPPED.
+ *
+ * Call this once on app launch after medications are loaded and
+ * pending alarm actions have been processed.
+ */
+export async function reconcileMissedDoses(
+  medications: MedicationScheduleInput[],
+  accessToken: string,
+): Promise<void> {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+
+  for (const med of medications) {
+    if (!med.active) continue;
+    if (!med.times || med.times.length === 0) continue;
+
+    let logs: MedicationLog[] = [];
+    try {
+      logs = await fetchMedicationLogs(med.id, accessToken);
+    } catch {
+      continue;
+    }
+
+    const todayLogs = logs.filter(l => l.scheduledFor
+      ? new Date(l.scheduledFor).toISOString().slice(0, 10) === todayStr
+      : false);
+
+    for (const timeStr of med.times) {
+      const parsed = parseTime(timeStr);
+      if (!parsed) continue;
+
+      const doseDate = new Date(now);
+      doseDate.setHours(parsed.hour, parsed.minute, 0, 0);
+
+      if (doseDate.getTime() > now.getTime()) continue;
+
+      const alreadyLogged = todayLogs.some(l => {
+        if (!l.scheduledFor) return false;
+        const logDate = new Date(l.scheduledFor);
+        return logDate.getHours() === parsed.hour
+          && logDate.getMinutes() === parsed.minute;
+      });
+
+      if (!alreadyLogged) {
+        try {
+          const scheduledFor = doseDate.toISOString();
+          await logMedicationAction(med.id, accessToken, 'SKIPPED', scheduledFor);
+          console.log(`[MedicAI] reconcileMissedDoses: auto-marked SKIPPED for ${med.name} at ${timeStr}`);
+        } catch (err) {
+          console.warn(`[MedicAI] reconcileMissedDoses: failed for ${med.id} at ${timeStr}:`, err);
+        }
+      }
     }
   }
 }

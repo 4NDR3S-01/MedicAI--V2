@@ -4,9 +4,13 @@ import { useState, useMemo } from 'react';
 import { updateAvatarOnBackend, updateProfileOnBackend } from '../../auth/services/auth.service';
 import { getStoredSession } from '../../auth';
 import { fetchMedications } from '../services/medications.service';
+import { fetchAppointments } from '../services/appointments.service';
 import {
+  getAppointmentReminderLeadMinutes,
   getMedicationReminderLeadMinutes,
+  scheduleAppointmentReminder,
   scheduleMedicationNotifications,
+  setAppointmentReminderLeadMinutes,
   setMedicationReminderLeadMinutes,
 } from '../../../shared/services/notifications.service';
 
@@ -128,27 +132,33 @@ export function ProfileScreen({
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [notificationSettingsVisible, setNotificationSettingsVisible] = useState(false);
   const [isSavingNotificationSettings, setIsSavingNotificationSettings] = useState(false);
-  const [reminderLeadMinutes, setReminderLeadMinutes] = useState(0);
+  const [medicationReminderLeadMinutes, setMedicationReminderLeadMinutesState] = useState(0);
+  const [appointmentReminderLeadMinutes, setAppointmentReminderLeadMinutesState] = useState(60);
   const name = userFullName ?? displayNameFromEmail(userEmail);
   const initial = initialFromName(name);
   const parsedAvatar = useMemo(() => getSafeAvatar(avatarData), [avatarData]);
 
   const openNotificationSettings = async () => {
-    const leadMinutes = await getMedicationReminderLeadMinutes();
-    setReminderLeadMinutes(leadMinutes);
+    const [medicationLeadMinutes, appointmentLeadMinutes] = await Promise.all([
+      getMedicationReminderLeadMinutes(),
+      getAppointmentReminderLeadMinutes(),
+    ]);
+    setMedicationReminderLeadMinutesState(medicationLeadMinutes);
+    setAppointmentReminderLeadMinutesState(appointmentLeadMinutes);
     setNotificationSettingsVisible(true);
   };
 
   const saveNotificationSettings = async () => {
     try {
       setIsSavingNotificationSettings(true);
-      await setMedicationReminderLeadMinutes(reminderLeadMinutes);
+      await setMedicationReminderLeadMinutes(medicationReminderLeadMinutes);
+      await setAppointmentReminderLeadMinutes(appointmentReminderLeadMinutes);
 
       const session = await getStoredSession();
       if (session?.accessToken) {
         // Sync with backend
         try {
-          await updateProfileOnBackend({ notificationLeadMinutes: reminderLeadMinutes });
+          await updateProfileOnBackend({ notificationLeadMinutes: medicationReminderLeadMinutes });
         } catch (syncError) {
           console.warn('[MedicAI] Failed to sync lead minutes with backend:', syncError);
         }
@@ -156,6 +166,11 @@ export function ProfileScreen({
         const medications = await fetchMedications(session.accessToken);
         for (const medication of medications) {
           await scheduleMedicationNotifications(medication);
+        }
+
+        const appointments = await fetchAppointments(session.accessToken);
+        for (const appointment of appointments) {
+          await scheduleAppointmentReminder(appointment);
         }
       }
 
@@ -369,16 +384,19 @@ export function ProfileScreen({
       >
         <View style={[styles.settingsOverlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
           <View style={[styles.settingsCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}> 
-            <Text style={[styles.settingsTitle, { color: theme.colors.textPrimary }]}>Recordatorios de Medicación</Text>
-            <Text style={[styles.settingsSubtitle, { color: theme.colors.textSecondary }]}>¿Cuántos minutos antes de cada toma quieres recibir un aviso?</Text>
+            <Text style={[styles.settingsTitle, { color: theme.colors.textPrimary }]}>Recordatorios</Text>
+            <Text style={[styles.settingsSubtitle, { color: theme.colors.textSecondary }]}>Configura con cuánto tiempo de anticipación quieres recibir tus avisos.</Text>
+
+            <Text style={[styles.settingsSectionTitle, { color: theme.colors.textPrimary }]}>Medicamentos</Text>
+            <Text style={[styles.settingsHint, { color: theme.colors.textMuted }]}>Aviso previo antes de cada toma.</Text>
 
             <View style={styles.minutesSelector}>
               {[0, 5, 10, 15, 30, 60].map((minutes) => {
-                const selected = reminderLeadMinutes === minutes;
+                const selected = medicationReminderLeadMinutes === minutes;
                 return (
                   <Pressable
                     key={minutes}
-                    onPress={() => setReminderLeadMinutes(minutes)}
+                    onPress={() => setMedicationReminderLeadMinutesState(minutes)}
                     style={[
                       styles.minuteOption,
                       {
@@ -390,6 +408,37 @@ export function ProfileScreen({
                     <Text style={[styles.minuteOptionText, { color: theme.colors.textPrimary }]}>
                       {minutes === 0 ? 'Sin recordatorio' : `${minutes} min antes`}
                     </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.settingsSectionTitle, { color: theme.colors.textPrimary }]}>Citas médicas</Text>
+            <Text style={[styles.settingsHint, { color: theme.colors.textMuted }]}>Mínimo 30 minutos antes. Incluye acciones: Asistiré, Recordar luego y No asistiré.</Text>
+
+            <View style={styles.minutesSelector}>
+              {[30, 60, 120, 1440].map((minutes) => {
+                const selected = appointmentReminderLeadMinutes === minutes;
+                const label = minutes === 30
+                  ? '30 min antes'
+                  : minutes === 60
+                    ? '1 hora antes'
+                    : minutes === 120
+                      ? '2 horas antes'
+                      : '1 día antes';
+                return (
+                  <Pressable
+                    key={minutes}
+                    onPress={() => setAppointmentReminderLeadMinutesState(minutes)}
+                    style={[
+                      styles.minuteOption,
+                      {
+                        borderColor: selected ? theme.colors.accentSecondary : theme.colors.surfaceBorder,
+                        backgroundColor: selected ? `${theme.colors.accentSecondary}15` : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.minuteOptionText, { color: theme.colors.textPrimary }]}>{label}</Text>
                   </Pressable>
                 );
               })}
@@ -609,6 +658,15 @@ const styles = StyleSheet.create({
   },
   settingsSubtitle: {
     fontSize: 14,
+  },
+  settingsSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+  settingsHint: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   minutesSelector: {
     gap: 8,

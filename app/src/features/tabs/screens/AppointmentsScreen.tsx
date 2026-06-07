@@ -19,7 +19,10 @@ import { getStoredSession } from '../../auth';
 import { AddAppointmentModal } from '../components/AddAppointmentModal';
 import type { AppointmentData } from '../services/appointments.service';
 import * as appointmentsAPI from '../services/appointments.service';
-import { cancelNotificationsByDataId } from '../../../shared/services/notifications.service';
+import {
+  cancelNotificationsByDataId,
+  rescheduleAppointmentsAfterLaunch,
+} from '../../../shared/services/notifications.service';
 
 export type AppointmentsScreenProps = {
   theme: AppTheme;
@@ -51,6 +54,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
       const data = await appointmentsAPI.fetchAppointments(session.accessToken);
       setAppointments(data || []);
+      void rescheduleAppointmentsAfterLaunch(data || []);
 
       // Trigger entry animation
       Animated.parallel([
@@ -384,4 +388,3 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 });
-

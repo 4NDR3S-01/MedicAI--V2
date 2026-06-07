@@ -81,6 +81,7 @@ public class AlarmService extends Service {
         // Use FULL_WAKE_LOCK + ACQUIRE_CAUSES_WAKEUP to physically turn the screen on.
         // This is essential for the full-screen intent to trigger on the lockscreen.
         // PARTIAL_WAKE_LOCK alone does NOT turn the screen on.
+        // Assign to field BEFORE acquire so onDestroy can always release it.
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = pm.newWakeLock(
             PowerManager.FULL_WAKE_LOCK
@@ -130,6 +131,7 @@ public class AlarmService extends Service {
             directLaunch.putExtra("id", id);
             directLaunch.putExtra("title", title);
             directLaunch.putExtra("body", body);
+            directLaunch.putExtra("playFeedback", false);
             directLaunch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_SINGLE_TOP
                 | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -145,7 +147,10 @@ public class AlarmService extends Service {
 
         // ── Step 7: Auto-stop safety net ──
         autoStopHandler = new Handler(Looper.getMainLooper());
-        autoStopRunnable = this::stopAlarmAndService;
+        autoStopRunnable = () -> {
+            AlarmActionHandler.storePendingAction(this, id, "SKIPPED");
+            stopAlarmAndService();
+        };
         autoStopHandler.postDelayed(autoStopRunnable, AUTO_STOP_MS);
 
         return START_NOT_STICKY;
@@ -277,6 +282,7 @@ public class AlarmService extends Service {
         fullScreenIntent.putExtra("id", id);
         fullScreenIntent.putExtra("title", title);
         fullScreenIntent.putExtra("body", body);
+        fullScreenIntent.putExtra("playFeedback", false);
         fullScreenIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
             | Intent.FLAG_ACTIVITY_SINGLE_TOP
             | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -285,6 +291,31 @@ public class AlarmService extends Service {
         PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(
             this, notifId, fullScreenIntent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        PendingIntent takePendingIntent = buildActionPendingIntent(
+            AlarmActionHandler.ACTION_TAKE_ALARM,
+            id,
+            title,
+            body
+        );
+        PendingIntent snoozePendingIntent = buildActionPendingIntent(
+            AlarmActionHandler.ACTION_SNOOZE_ALARM,
+            id,
+            title,
+            body
+        );
+        PendingIntent skipPendingIntent = buildActionPendingIntent(
+            AlarmActionHandler.ACTION_SKIP_ALARM,
+            id,
+            title,
+            body
+        );
+        PendingIntent dismissPendingIntent = buildActionPendingIntent(
+            AlarmActionHandler.ACTION_DISMISS_ALARM,
+            id,
+            title,
+            body
         );
 
         // Icon
@@ -306,13 +337,42 @@ public class AlarmService extends Service {
             .setSmallIcon(smallIconRes)
             .setColor(0xFF4F46E5)
             .setCategory(Notification.CATEGORY_ALARM)
+            .setPriority(Notification.PRIORITY_MAX)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(fullScreenPendingIntent)
             .setFullScreenIntent(fullScreenPendingIntent, true)
-            .setOngoing(true)
+            .setDeleteIntent(dismissPendingIntent)
+            .setOngoing(false)
             .setAutoCancel(false);
 
+        if (AlarmActionHandler.isMedicationAlarmId(id)) {
+            builder.addAction(smallIconRes, "Ya tom\u00E9", takePendingIntent)
+                .addAction(smallIconRes, "Posponer", snoozePendingIntent)
+                .addAction(smallIconRes, "Omitir", skipPendingIntent);
+        }
+
         return builder.build();
+    }
+
+    private PendingIntent buildActionPendingIntent(String action, String id, String title, String body) {
+        Intent intent = new Intent(this, AlarmReceiver.class);
+        intent.setAction(action);
+        intent.setData(Uri.parse("medicai://alarm-action/" + action + "/" + Uri.encode(id != null ? id : "unknown")));
+        intent.putExtra("id", id);
+        if (title != null) {
+            intent.putExtra("title", title);
+        }
+        if (body != null) {
+            intent.putExtra("body", body);
+        }
+
+        String key = (id != null ? id : "unknown") + ":" + action;
+        return PendingIntent.getBroadcast(
+            this,
+            key.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
     }
 
     private void createNotificationChannel() {

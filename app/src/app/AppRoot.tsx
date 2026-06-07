@@ -38,6 +38,8 @@ import {
   NOTIFICATION_ACTIONS,
   SCHEDULE_TYPES,
   snoozeNotification,
+  snoozeAppointmentReminder,
+  cancelNotificationsByDataId,
 } from '../shared/services/notifications.service';
 import { emitDoseAction } from '../shared/services/dose-refresh-bus';
 import AlarmNative from '../shared/native/AlarmNative';
@@ -526,6 +528,50 @@ export function AppRoot() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!AlarmNative.isAvailable()) return;
+
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+
+    const stopHeartbeat = () => {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = undefined;
+      }
+    };
+
+    const markForeground = (foreground: boolean) => {
+      void AlarmNative.setAppForeground(foreground).catch(() => {});
+    };
+
+    const startHeartbeat = () => {
+      stopHeartbeat();
+      markForeground(true);
+      heartbeat = setInterval(() => markForeground(true), 15_000);
+    };
+
+    if (AppState.currentState === 'active') {
+      startHeartbeat();
+    } else {
+      markForeground(false);
+    }
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        startHeartbeat();
+      } else {
+        stopHeartbeat();
+        markForeground(false);
+      }
+    });
+
+    return () => {
+      stopHeartbeat();
+      markForeground(false);
+      sub.remove();
+    };
+  }, []);
+
   // Process pending alarm actions from native AlarmActivity (when app was in background)
   const processPendingAlarmActions = useCallback(async () => {
     try {
@@ -539,17 +585,16 @@ export function AppRoot() {
 
       for (const action of actions) {
         try {
-          if (action.action === 'TAKEN' || action.action === 'SKIPPED') {
-            const scheduledFor = action.doseTimestamp
-              ? new Date(action.doseTimestamp).toISOString()
-              : undefined;
-            await logMedicationAction(
-              action.medicationId,
-              session.accessToken,
-              action.action,
-              scheduledFor,
-            );
-          }
+          if (!action.medicationId) continue;
+          const scheduledFor = action.doseTimestamp
+            ? new Date(action.doseTimestamp).toISOString()
+            : undefined;
+          await logMedicationAction(
+            action.medicationId,
+            session.accessToken,
+            action.action,
+            scheduledFor,
+          );
         } catch (err) {
           console.warn('[MedicAI] Failed to process pending alarm action:', err);
         }
@@ -611,22 +656,24 @@ export function AppRoot() {
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { actionIdentifier, notification } = response;
-      const data = notification.request.content.data as { id?: string; type?: string };
+      const data = notification.request.content.data as { id?: string; type?: string; scheduledFor?: string };
       if (!data?.id || typeof data.id !== 'string') return;
 
       try {
         const session = await getStoredSession();
         if (!session?.accessToken) return;
 
+        const scheduledFor = typeof data.scheduledFor === 'string' ? data.scheduledFor : undefined;
+
         // DOSE_ALARM actions
         if (data.type === SCHEDULE_TYPES.DOSE_ALARM) {
           if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
-            await logMedicationAction(data.id, session.accessToken, 'TAKEN');
+            await logMedicationAction(data.id, session.accessToken, 'TAKEN', scheduledFor);
             setActiveAlarm(null);
             emitDoseAction();
             Alert.alert('Éxito', 'Toma de medicamento registrada.');
           } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
-            await logMedicationAction(data.id, session.accessToken, 'SKIPPED');
+            await logMedicationAction(data.id, session.accessToken, 'SKIPPED', scheduledFor);
             setActiveAlarm(null);
             emitDoseAction();
             Alert.alert('Información', 'Dosis marcada como omitida.');
@@ -640,12 +687,25 @@ export function AppRoot() {
 
         // REMINDER type: user tapped the reminder notification — just open app
         if (data.type === SCHEDULE_TYPES.REMINDER) {
-          // No action needed — reminder opens app on tap
           return;
         }
 
-        if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
-          Alert.alert('Cita Confirmada', 'Se ha confirmado tu asistencia.');
+        if (data.type === 'APPOINTMENT') {
+          if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
+            await cancelNotificationsByDataId(data.id);
+            Alert.alert('Cita confirmada', 'Marcamos que asistirás a esta cita.');
+          } else if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE_APPOINTMENT) {
+            const snoozed = await snoozeAppointmentReminder(notification.request.content);
+            Alert.alert(
+              snoozed ? 'Recordatorio pospuesto' : 'No se pudo posponer',
+              snoozed
+                ? 'Te recordaremos nuevamente en unos minutos.'
+                : 'La cita está demasiado cerca o ya pasó.',
+            );
+          } else if (actionIdentifier === NOTIFICATION_ACTIONS.DECLINE_APPOINTMENT) {
+            await cancelNotificationsByDataId(data.id);
+            Alert.alert('Cita marcada', 'Marcamos que no asistirás a esta cita.');
+          }
         }
       } catch (error) {
         console.error('Error handling notification action:', error);
@@ -734,6 +794,12 @@ export function AppRoot() {
     return () => loop.stop();
   }, [activeAlarm, alarmPulseAnim]);
 
+  const getActiveAlarmScheduledFor = (): string | undefined => {
+    if (!activeAlarm) return undefined;
+    const data = activeAlarm.notificationContent.data as { scheduledFor?: string } | undefined;
+    return typeof data?.scheduledFor === 'string' ? data.scheduledFor : undefined;
+  };
+
   const handleAlarmTake = async () => {
     if (!activeAlarm) return;
 
@@ -743,7 +809,7 @@ export function AppRoot() {
         Alert.alert('Error', 'No autorizado.');
         return;
       }
-      await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN');
+      await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN', getActiveAlarmScheduledFor());
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
       emitDoseAction();
@@ -762,7 +828,7 @@ export function AppRoot() {
         Alert.alert('Error', 'No autorizado.');
         return;
       }
-      await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED');
+      await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED', getActiveAlarmScheduledFor());
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
       emitDoseAction();

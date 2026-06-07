@@ -243,6 +243,9 @@ export async function openFullScreenIntentSettings(): Promise<void> {
  */
 export async function openBatteryOptimizationSettings(): Promise<void> {
   if (Platform.OS !== 'android') return;
+  const openedDirectPrompt = await AlarmEnvironmentNative.requestIgnoreBatteryOptimizations();
+  if (openedDirectPrompt) return;
+
   try {
     // Opens the per-app battery usage page — most direct path on most OEMs
     await Linking.sendIntent('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS');
@@ -427,9 +430,21 @@ export async function ensureAlarmPermissions(): Promise<EnsurePermissionsResult>
   return { ready: finalStatus.isAlarmReady, status: finalStatus };
 }
 
-// ─── OEM autostart (MIUI, OPPO, Vivo, Huawei, etc.) ─────────────────────────
+// ─── OEM autostart (MIUI, One UI, ColorOS, Funtouch, EMUI, etc.) ────────────
 
-const OEM_AUTOSTART_MANUFACTURERS = ['xiaomi', 'oppo', 'vivo', 'huawei', 'honor'];
+const OEM_AUTOSTART_MANUFACTURERS = [
+  'xiaomi',
+  'oppo',
+  'realme',
+  'vivo',
+  'iqoo',
+  'huawei',
+  'honor',
+  'samsung',
+  'oneplus',
+  'asus',
+  'meizu',
+];
 
 /**
  * Returns the device manufacturer in lowercase, or null if unavailable.
@@ -454,5 +469,13 @@ export async function isOemAutostartRequired(): Promise<boolean> {
  * Returns true if the settings screen was opened, false otherwise.
  */
 export async function openAutostartSettings(): Promise<boolean> {
-  return AlarmEnvironmentNative.openAutostartSettings();
+  const opened = await AlarmEnvironmentNative.openAutostartSettings();
+  if (opened) return true;
+
+  try {
+    await Linking.openSettings();
+    return true;
+  } catch {
+    return false;
+  }
 }

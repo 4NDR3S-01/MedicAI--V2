@@ -93,6 +93,7 @@ const withAlarmModule = config => {
     ensurePermission(manifest, 'android.permission.SCHEDULE_EXACT_ALARM');
     ensurePermission(manifest, 'android.permission.USE_EXACT_ALARM');
     ensurePermission(manifest, 'android.permission.USE_FULL_SCREEN_INTENT');
+    ensurePermission(manifest, 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS');
     ensurePermission(manifest, 'android.permission.RECEIVE_BOOT_COMPLETED');
     ensurePermission(manifest, 'android.permission.WAKE_LOCK');
     ensurePermission(manifest, 'android.permission.VIBRATE');
@@ -116,6 +117,8 @@ const withAlarmModule = config => {
           action: [
             { $: { 'android:name': 'android.intent.action.BOOT_COMPLETED' } },
             { $: { 'android:name': 'android.intent.action.MY_PACKAGE_REPLACED' } },
+            { $: { 'android:name': 'android.intent.action.QUICKBOOT_POWERON' } },
+            { $: { 'android:name': 'com.htc.intent.action.QUICKBOOT_POWERON' } },
           ],
         },
       ],
@@ -136,6 +139,7 @@ const withAlarmModule = config => {
     ensureService(application, 'com.william20.medicai.AlarmService', {
       'android:exported': 'false',
       'android:foregroundServiceType': 'mediaPlayback',
+      'android:stopWithTask': 'false',
     });
 
     return config;

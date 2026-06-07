@@ -5,6 +5,7 @@ type NativeEnvironmentModule = {
   canScheduleExactAlarms: () => Promise<boolean>;
   canUseFullScreenIntent: () => Promise<boolean>;
   openFullScreenIntentSettings: () => Promise<boolean>;
+  requestIgnoreBatteryOptimizations: () => Promise<boolean>;
   getManufacturer: () => Promise<string>;
   openAutostartSettings: () => Promise<boolean>;
 };
@@ -69,6 +70,17 @@ export const AlarmEnvironmentNative = {
       const mod = getModule();
       if (!mod || typeof mod.openFullScreenIntentSettings !== 'function') return false;
       return await mod.openFullScreenIntentSettings();
+    } catch {
+      return false;
+    }
+  },
+
+  requestIgnoreBatteryOptimizations: async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return false;
+    try {
+      const mod = getModule();
+      if (!mod || typeof mod.requestIgnoreBatteryOptimizations !== 'function') return false;
+      return await mod.requestIgnoreBatteryOptimizations();
     } catch {
       return false;
     }

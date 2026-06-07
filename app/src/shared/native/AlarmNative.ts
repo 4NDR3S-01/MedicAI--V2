@@ -18,6 +18,7 @@ type PromiseAlarmModule = {
   cancelAlarmsForMedication: (medicationId: string) => Promise<number>;
   stopAlarm: () => Promise<string>;
   getPendingAlarmActions: () => Promise<PendingAction[]>;
+  setAppForeground: (foreground: boolean) => Promise<boolean>;
 };
 
 const getModule = (): PromiseAlarmModule | null => {
@@ -65,5 +66,11 @@ export default {
     const mod = getModule();
     if (!mod) return [];
     return mod.getPendingAlarmActions();
+  },
+
+  setAppForeground: async (foreground: boolean): Promise<void> => {
+    const mod = getModule();
+    if (!mod || typeof mod.setAppForeground !== 'function') return;
+    await mod.setAppForeground(foreground);
   },
 };

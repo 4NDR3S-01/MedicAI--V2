@@ -27,12 +27,15 @@ import {
   scheduleMedicationNotifications,
   cancelNotificationsByDataId,
   rescheduleMedicationsAfterLaunch,
+  detectTimezoneChangeAndReschedule,
+  reconcileMissedDoses,
 } from '../../../shared/services/notifications.service';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 
 type DoseStatus = 'pending' | 'taken' | 'skipped';
 
 const DOSE_CACHE_KEY = 'medicai_dose_status_cache_v1';
+const RECONCILE_DAILY_KEY = 'medicai_reconciled_today_v1';
 
 const getTodayDoses = (
   times: string[],
@@ -261,7 +264,18 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       const data = await medicationsAPI.fetchMedications(accessToken);
       setMedications(data || []);
       void computeDoseStatus(data || [], accessToken);
-      void rescheduleMedicationsAfterLaunch(data || []);
+
+      const tzChanged = await detectTimezoneChangeAndReschedule(data || []);
+      if (!tzChanged) {
+        void rescheduleMedicationsAfterLaunch(data || []);
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const lastReconciled = await appStorage.getItem(RECONCILE_DAILY_KEY);
+      if (lastReconciled !== today) {
+        await appStorage.setItem(RECONCILE_DAILY_KEY, today);
+        void reconcileMissedDoses(data || [], accessToken);
+      }
     } catch {
       // refresh silently
     }
@@ -279,9 +293,19 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       const data = await medicationsAPI.fetchMedications(session.accessToken);
       setMedications(data || []);
 
-      void rescheduleMedicationsAfterLaunch(data || []);
+      const tzChanged = await detectTimezoneChangeAndReschedule(data || []);
+      if (!tzChanged) {
+        void rescheduleMedicationsAfterLaunch(data || []);
+      }
 
       void computeDoseStatus(data || [], session.accessToken);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const lastReconciled = await appStorage.getItem(RECONCILE_DAILY_KEY);
+      if (lastReconciled !== today) {
+        await appStorage.setItem(RECONCILE_DAILY_KEY, today);
+        void reconcileMissedDoses(data || [], session.accessToken);
+      }
 
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),

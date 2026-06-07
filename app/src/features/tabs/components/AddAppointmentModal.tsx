@@ -133,8 +133,7 @@ export function AddAppointmentModal({
           notes: notes.trim() || undefined,
         });
         
-        // Schedule notification
-        void scheduleAppointmentReminder(appointment);
+        await scheduleAppointmentReminder(appointment);
         
         onAppointmentUpdated?.(appointment);
         Alert.alert('Cita actualizada', 'La cita se actualizó correctamente.');
@@ -147,8 +146,7 @@ export function AddAppointmentModal({
           notes: notes.trim() || undefined,
         });
         
-        // Schedule notification
-        void scheduleAppointmentReminder(appointment);
+        await scheduleAppointmentReminder(appointment);
         
         onAppointmentAdded(appointment);
         Alert.alert('Cita creada', 'La cita se registro correctamente.');
@@ -161,7 +159,7 @@ export function AddAppointmentModal({
     } finally {
       setIsLoading(false);
     }
-  }, [title, doctorName, date, time, location, notes, onAppointmentAdded, onClose]);
+  }, [title, doctorName, date, time, location, notes, initialData, onAppointmentAdded, onAppointmentUpdated, onClose]);
 
   const handleClose = () => {
     if (!isLoading) {

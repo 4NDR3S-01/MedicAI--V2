@@ -3,6 +3,7 @@ package com.william20.medicai;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.WritableArray;
@@ -15,14 +16,40 @@ import android.content.SharedPreferences;
 import android.util.Log;
 import org.json.JSONObject;
 
-public class AlarmModule extends ReactContextBaseJavaModule {
+public class AlarmModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
     public AlarmModule(ReactApplicationContext reactContext) {
         super(reactContext);
+        reactContext.addLifecycleEventListener(this);
     }
 
     @Override
     public String getName() {
         return "AlarmModule";
+    }
+
+    @Override
+    public void onHostResume() {
+        AlarmAppState.setAppForeground(getReactApplicationContext(), true);
+    }
+
+    @Override
+    public void onHostPause() {
+        AlarmAppState.setAppForeground(getReactApplicationContext(), false);
+    }
+
+    @Override
+    public void onHostDestroy() {
+        AlarmAppState.setAppForeground(getReactApplicationContext(), false);
+    }
+
+    @ReactMethod
+    public void setAppForeground(boolean foreground, Promise promise) {
+        try {
+            AlarmAppState.setAppForeground(getReactApplicationContext(), foreground);
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("set_app_foreground_failed", e.getMessage(), e);
+        }
     }
 
     @ReactMethod
@@ -115,8 +142,12 @@ public class AlarmModule extends ReactContextBaseJavaModule {
     }
 
     /**
-     * Returns all pending alarm actions stored by AlarmActivity and clears them.
-     * Each action contains medicationId, action (TAKEN/SKIPPED/SNOOZED), and timestamp.
+     * Returns all pending alarm actions stored by AlarmActivity and clears ONLY
+     * the entries that were successfully read. Each action contains medicationId,
+     * action (TAKEN/SKIPPED/SNOOZED), and timestamp.
+     *
+     * Pending actions are removed one-by-one after being read so that if JS
+     * processing fails midway, remaining actions survive for the next attempt.
      */
     @ReactMethod
     public void getPendingAlarmActions(Promise promise) {
@@ -126,6 +157,8 @@ public class AlarmModule extends ReactContextBaseJavaModule {
             WritableArray actions = Arguments.createArray();
 
             if (all != null) {
+                SharedPreferences.Editor editor = prefs.edit();
+
                 for (Map.Entry<String, ?> entry : all.entrySet()) {
                     if (entry.getKey() != null && entry.getKey().startsWith("pending_") && entry.getValue() instanceof String) {
                         try {
@@ -138,15 +171,16 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                                 item.putDouble("doseTimestamp", obj.optDouble("doseTimestamp", 0));
                             }
                             actions.pushMap(item);
+                            editor.remove(entry.getKey());
                         } catch (Exception ex) {
-                            Log.w("MedicAI-Alarm", "Failed to parse pending action: " + ex.getMessage());
+                            Log.w("MedicAI-Alarm", "Failed to parse pending action, removing stale entry: " + ex.getMessage());
+                            editor.remove(entry.getKey());
                         }
                     }
                 }
-            }
 
-            // Clear all pending actions after reading
-            prefs.edit().clear().apply();
+                editor.apply();
+            }
 
             promise.resolve(actions);
         } catch (Exception e) {

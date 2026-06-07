@@ -5,6 +5,7 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlarmManager;
+import android.app.KeyguardManager;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -15,6 +16,10 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -25,6 +30,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -41,6 +49,10 @@ public class AlarmActivity extends Activity {
     private String alarmId;
     private String alarmTitle;
     private String alarmBody;
+    private boolean userInteracted = false;
+    private boolean playLocalFeedback = false;
+    private MediaPlayer mediaPlayer;
+    private Vibrator vibrator;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,21 +66,40 @@ public class AlarmActivity extends Activity {
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
             | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         );
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            if (keyguardManager != null) {
+                keyguardManager.requestDismissKeyguard(this, null);
+            }
+        }
 
         Intent intent = getIntent();
         alarmId = intent.getStringExtra("id");
         alarmTitle = intent.getStringExtra("title");
         alarmBody = intent.getStringExtra("body");
+        playLocalFeedback = intent.getBooleanExtra("playFeedback", false);
 
         buildAlarmUI(
             alarmTitle != null ? alarmTitle : "MedicAI",
             alarmBody != null ? alarmBody : "Es hora de tu medicamento"
         );
 
-        // Auto-dismiss after 60 seconds
+        if (playLocalFeedback) {
+            startLocalAlarmFeedback();
+        }
+
+        // Auto-dismiss after 60 seconds — marks dose as SKIPPED
         autoDismissHandler = new Handler(Looper.getMainLooper());
-        autoDismissRunnable = () -> dismissAlarm();
+        autoDismissRunnable = () -> {
+            if (!userInteracted) {
+                storePendingAction("SKIPPED");
+                userInteracted = true;
+            }
+            dismissAlarm();
+        };
         autoDismissHandler.postDelayed(autoDismissRunnable, AUTO_DISMISS_MS);
     }
 
@@ -216,6 +247,7 @@ public class AlarmActivity extends Activity {
             0.95f
         );
         takeBtn.setOnClickListener(v -> {
+            userInteracted = true;
             storePendingAction("TAKEN");
             dismissAlarm();
         });
@@ -231,6 +263,7 @@ public class AlarmActivity extends Activity {
             0.95f
         );
         snoozeBtn.setOnClickListener(v -> {
+            userInteracted = true;
             storePendingAction("SNOOZED");
             scheduleSnooze();
             dismissAlarm();
@@ -246,6 +279,7 @@ public class AlarmActivity extends Activity {
             0xFFDC2626
         );
         skipBtn.setOnClickListener(v -> {
+            userInteracted = true;
             storePendingAction("SKIPPED");
             dismissAlarm();
         });
@@ -407,6 +441,7 @@ public class AlarmActivity extends Activity {
     }
 
     private void dismissAlarm() {
+        stopLocalAlarmFeedback();
         AlarmService.stopFromExternal(this);
 
         if (autoDismissHandler != null && autoDismissRunnable != null) {
@@ -419,6 +454,10 @@ public class AlarmActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        stopLocalAlarmFeedback();
+        if (!userInteracted) {
+            storePendingAction("SKIPPED");
+        }
         AlarmService.stopFromExternal(this);
         if (autoDismissHandler != null && autoDismissRunnable != null) {
             autoDismissHandler.removeCallbacks(autoDismissRunnable);
@@ -427,5 +466,80 @@ public class AlarmActivity extends Activity {
 
     private int dpToPx(int dp) {
         return (int) (dp * getResources().getDisplayMetrics().density);
+    }
+
+    private void startLocalAlarmFeedback() {
+        startLocalAlarmSound();
+        startLocalVibration();
+    }
+
+    private void stopLocalAlarmFeedback() {
+        if (mediaPlayer != null) {
+            try {
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.stop();
+                }
+                mediaPlayer.release();
+            } catch (Exception e) {
+                android.util.Log.w("MedicAI-Alarm", "Error stopping local MediaPlayer: " + e.getMessage());
+            }
+            mediaPlayer = null;
+        }
+
+        if (vibrator != null) {
+            try {
+                vibrator.cancel();
+            } catch (Exception e) {
+                android.util.Log.w("MedicAI-Alarm", "Error stopping local Vibrator: " + e.getMessage());
+            }
+            vibrator = null;
+        }
+    }
+
+    private void startLocalAlarmSound() {
+        try {
+            Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            if (alarmSound == null) {
+                alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            }
+            if (alarmSound == null) {
+                alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            }
+
+            mediaPlayer = new MediaPlayer();
+            mediaPlayer.setDataSource(this, alarmSound);
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+            mediaPlayer.setAudioAttributes(attrs);
+            mediaPlayer.setLooping(true);
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+        } catch (Exception e) {
+            android.util.Log.e("MedicAI-Alarm", "Failed to start local alarm sound: " + e.getMessage());
+        }
+    }
+
+    private void startLocalVibration() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                vibrator = vm.getDefaultVibrator();
+            } else {
+                vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            }
+
+            if (vibrator != null && vibrator.hasVibrator()) {
+                long[] pattern = new long[]{0, 800, 400, 800, 400, 800, 1000};
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0));
+                } else {
+                    vibrator.vibrate(pattern, 0);
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.e("MedicAI-Alarm", "Failed to start local vibration: " + e.getMessage());
+        }
     }
 }
