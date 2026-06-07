@@ -17,11 +17,12 @@ import {
 import type { AppTheme } from '../../../shared/theme';
 import { getStoredSession } from '../../auth';
 import { AddAppointmentModal } from '../components/AddAppointmentModal';
-import type { AppointmentData } from '../services/appointments.service';
+import type { AppointmentAttendanceStatus, AppointmentData } from '../services/appointments.service';
 import * as appointmentsAPI from '../services/appointments.service';
 import {
   cancelNotificationsByDataId,
   rescheduleAppointmentsAfterLaunch,
+  scheduleAppointmentReminder,
 } from '../../../shared/services/notifications.service';
 
 export type AppointmentsScreenProps = {
@@ -102,6 +103,63 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
             const message = err instanceof Error ? err.message : 'No se pudo eliminar la cita.';
             Alert.alert('Error', message);
           }
+        },
+      },
+    ]);
+  };
+
+  const updateAppointmentAttendance = async (
+    appointment: AppointmentData,
+    status: AppointmentAttendanceStatus,
+  ) => {
+    if (Platform.OS === 'android') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+
+    try {
+      const session = await getStoredSession();
+      if (!session?.accessToken) {
+        Alert.alert('Error', 'No autorizado.');
+        return;
+      }
+
+      const updated = await appointmentsAPI.updateAppointment(appointment.id, session.accessToken, {
+        attendanceStatus: status,
+      });
+
+      setAppointments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+
+      if (updated.attendanceStatus === 'PENDING') {
+        await scheduleAppointmentReminder(updated);
+      } else {
+        await cancelNotificationsByDataId(updated.id);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo marcar la asistencia.';
+      Alert.alert('Error', message);
+    }
+  };
+
+  const handleMarkAttendance = (appointment: AppointmentData) => {
+    Alert.alert('Asistencia a la cita', 'Marca manualmente el estado de esta cita.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Asistí',
+        onPress: () => {
+          void updateAppointmentAttendance(appointment, 'ATTENDED');
+        },
+      },
+      {
+        text: 'No asistí',
+        style: 'destructive',
+        onPress: () => {
+          void updateAppointmentAttendance(appointment, 'MISSED');
+        },
+      },
+      {
+        text: 'Dejar pendiente',
+        onPress: () => {
+          void updateAppointmentAttendance(appointment, 'PENDING');
         },
       },
     ]);
@@ -214,6 +272,17 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
           const timeStr = isValid
             ? parsed.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
             : '--:--';
+          const attendanceStatus = item.attendanceStatus ?? 'PENDING';
+          const attendanceLabel = attendanceStatus === 'ATTENDED'
+            ? 'Asistió'
+            : attendanceStatus === 'MISSED'
+              ? 'No asistió'
+              : 'Pendiente';
+          const attendanceColor = attendanceStatus === 'ATTENDED'
+            ? '#16A34A'
+            : attendanceStatus === 'MISSED'
+              ? theme.colors.accentTertiary
+              : theme.colors.accentSecondary;
 
           return (
             <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
@@ -240,10 +309,21 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
                       <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                         {item.title}
                       </Text>
-                      <View style={[styles.timeTag, { backgroundColor: `${theme.colors.accentSecondary}10` }]}>
+                      <View style={[styles.timeTag, { backgroundColor: `${theme.colors.accentSecondary}10` }]}> 
                         <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.accentSecondary} />
                         <Text style={[styles.timeLabel, { color: theme.colors.accentSecondary }]}>{timeStr}</Text>
                       </View>
+                      <Pressable
+                        onPress={() => handleMarkAttendance(item)}
+                        style={[styles.attendanceTag, { backgroundColor: `${attendanceColor}15` }]}
+                      >
+                        <MaterialCommunityIcons
+                          name={attendanceStatus === 'ATTENDED' ? 'check-circle-outline' : attendanceStatus === 'MISSED' ? 'close-circle-outline' : 'clock-alert-outline'}
+                          size={14}
+                          color={attendanceColor}
+                        />
+                        <Text style={[styles.attendanceLabel, { color: attendanceColor }]}>{attendanceLabel}</Text>
+                      </Pressable>
                     </View>
                     <MaterialCommunityIcons name="chevron-right" size={24} color={theme.colors.textMuted} />
                   </View>
@@ -285,8 +365,8 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
                         <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.accentTertiary} />
                       </Pressable>
                     </View>
-                    <Pressable style={[styles.primaryAction, { backgroundColor: theme.colors.accentSecondary }]}>
-                      <Text style={[styles.primaryActionText, { color: theme.colors.buttonText }]}>Ver Mapa</Text>
+                    <Pressable style={[styles.primaryAction, { backgroundColor: attendanceColor }]} onPress={() => handleMarkAttendance(item)}>
+                      <Text style={[styles.primaryActionText, { color: theme.colors.buttonText }]}>Marcar asistencia</Text>
                     </Pressable>
                   </View>
                 </Pressable>
@@ -364,6 +444,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
   timeTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
   timeLabel: { fontSize: 13, fontWeight: '800' },
+  attendanceTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  attendanceLabel: { fontSize: 13, fontWeight: '800' },
   detailsGroup: { gap: 12 },
   detailItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   detailIconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

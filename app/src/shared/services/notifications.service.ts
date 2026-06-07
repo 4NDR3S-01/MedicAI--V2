@@ -51,9 +51,7 @@ export const NOTIFICATION_ACTIONS = {
   TAKE: 'TAKE_ACTION',
   SNOOZE: 'SNOOZE_ACTION',
   SKIP: 'SKIP_ACTION',
-  CONFIRM_APPOINTMENT: 'CONFIRM_APPOINTMENT_ACTION',
   SNOOZE_APPOINTMENT: 'SNOOZE_APPOINTMENT_ACTION',
-  DECLINE_APPOINTMENT: 'DECLINE_APPOINTMENT_ACTION',
 } as const;
 
 export const SCHEDULE_TYPES = {
@@ -384,19 +382,9 @@ export async function setupNotifications(): Promise<void> {
 
   await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.APPOINTMENT, [
     {
-      identifier: NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT,
-      buttonTitle: 'Asistiré',
-      options: { opensAppToForeground: true },
-    },
-    {
       identifier: NOTIFICATION_ACTIONS.SNOOZE_APPOINTMENT,
       buttonTitle: 'Recordar luego',
       options: { opensAppToForeground: true },
-    },
-    {
-      identifier: NOTIFICATION_ACTIONS.DECLINE_APPOINTMENT,
-      buttonTitle: 'No asistiré',
-      options: { isDestructive: true, opensAppToForeground: true },
     },
   ]);
 }
@@ -519,42 +507,41 @@ export async function scheduleMedicationNotifications(
   }
 }
 
-/**
- * Schedules a configurable appointment reminder.
- * Uses expo-notifications instead of the native medication alarm path because
- * appointment reminders are informational and need appointment-specific actions.
- */
-export async function scheduleAppointmentReminder(appointment: {
-  id: string;
-  title: string;
-  doctorName?: string | null;
-  scheduledAt: string;
-  active?: boolean;
-}): Promise<void> {
-  await cancelNotificationsByDataId(appointment.id);
-  if (appointment.active === false) return;
+const getAppointmentEndOfDayReminderDate = (appointmentDate: Date): Date => {
+  const endOfDay = new Date(appointmentDate);
+  endOfDay.setHours(21, 0, 0, 0);
 
-  const appointmentDate = new Date(appointment.scheduledAt);
-  if (Number.isNaN(appointmentDate.getTime()) || appointmentDate.getTime() <= Date.now()) return;
-
-  const permission = await registerForPushNotificationsAsync();
-  if (permission !== 'granted') {
-    console.warn('[MedicAI] scheduleAppointmentReminder: permission not granted, aborting schedule for', appointment.id);
-    return;
+  if (endOfDay.getTime() <= appointmentDate.getTime()) {
+    endOfDay.setTime(appointmentDate.getTime() + 60 * 60_000);
   }
 
-  const leadMinutes = await getAppointmentReminderLeadMinutes();
-  const reminderAt = appointmentDate.getTime() - leadMinutes * 60_000;
-  const triggerDate = new Date(reminderAt > Date.now() ? reminderAt : Date.now() + 5_000);
-  const doctorText = appointment.doctorName ? ` con ${appointment.doctorName}` : '';
+  const lastReasonableReminder = new Date(appointmentDate);
+  lastReasonableReminder.setHours(23, 30, 0, 0);
+  return endOfDay.getTime() > lastReasonableReminder.getTime() ? lastReasonableReminder : endOfDay;
+};
+
+const scheduleAppointmentNotification = async (
+  appointment: {
+    id: string;
+    title: string;
+    doctorName?: string | null;
+    scheduledAt: string;
+  },
+  triggerDate: Date,
+  kind: 'LEAD' | 'TIME' | 'END_OF_DAY' | 'SNOOZE',
+  title: string,
+  body: string,
+): Promise<void> => {
+  if (triggerDate.getTime() <= Date.now()) return;
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Cita: ${appointment.title}`,
-      body: `Tienes una cita médica${doctorText} en ${formatLeadMinutes(leadMinutes)}.`,
+      title,
+      body,
       data: {
         id: appointment.id,
         type: 'APPOINTMENT',
+        appointmentNotificationKind: kind,
         scheduledAt: appointment.scheduledAt,
         title: appointment.title,
         doctorName: appointment.doctorName ?? undefined,
@@ -569,6 +556,62 @@ export async function scheduleAppointmentReminder(appointment: {
       channelId: CHANNELS.APPOINTMENTS,
     },
   });
+};
+
+/**
+ * Schedules three appointment notifications:
+ *  1. Configurable lead reminder (minimum 30 minutes)
+ *  2. Exact appointment-time reminder
+ *  3. End-of-day follow-up if the user did not manually mark attendance
+ */
+export async function scheduleAppointmentReminder(appointment: {
+  id: string;
+  title: string;
+  doctorName?: string | null;
+  scheduledAt: string;
+  active?: boolean;
+  attendanceStatus?: 'PENDING' | 'ATTENDED' | 'MISSED';
+}): Promise<void> {
+  await cancelNotificationsByDataId(appointment.id);
+  if (appointment.active === false) return;
+  if (appointment.attendanceStatus && appointment.attendanceStatus !== 'PENDING') return;
+
+  const appointmentDate = new Date(appointment.scheduledAt);
+  if (Number.isNaN(appointmentDate.getTime()) || appointmentDate.getTime() <= Date.now()) return;
+
+  const permission = await registerForPushNotificationsAsync();
+  if (permission !== 'granted') {
+    console.warn('[MedicAI] scheduleAppointmentReminder: permission not granted, aborting schedule for', appointment.id);
+    return;
+  }
+
+  const leadMinutes = await getAppointmentReminderLeadMinutes();
+  const reminderAt = appointmentDate.getTime() - leadMinutes * 60_000;
+  const doctorText = appointment.doctorName ? ` con ${appointment.doctorName}` : '';
+
+  await scheduleAppointmentNotification(
+    appointment,
+    new Date(reminderAt),
+    'LEAD',
+    `Próxima cita: ${appointment.title}`,
+    `Tienes una cita médica${doctorText} en ${formatLeadMinutes(leadMinutes)}.`,
+  );
+
+  await scheduleAppointmentNotification(
+    appointment,
+    appointmentDate,
+    'TIME',
+    `Ahora: ${appointment.title}`,
+    `Es la hora registrada de tu cita médica${doctorText}.`,
+  );
+
+  await scheduleAppointmentNotification(
+    appointment,
+    getAppointmentEndOfDayReminderDate(appointmentDate),
+    'END_OF_DAY',
+    `¿Asististe a ${appointment.title}?`,
+    'Marca manualmente si asististe o no para mantener tu agenda actualizada.',
+  );
 }
 
 export async function snoozeAppointmentReminder(
@@ -588,27 +631,18 @@ export async function snoozeAppointmentReminder(
   const snoozeAt = Date.now() + APPOINTMENT_SNOOZE_MINUTES * 60_000;
   if (snoozeAt >= appointmentDate.getTime()) return false;
 
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: `[Recordatorio] ${data.title ?? notificationData.title ?? 'Cita médica'}`,
-      body: `Tu cita es pronto. ${notificationData.body ?? ''}`.trim(),
-      data: {
-        id: data.id,
-        type: 'APPOINTMENT',
-        scheduledAt: data.scheduledAt,
-        title: data.title ?? notificationData.title ?? 'Cita médica',
-        doctorName: data.doctorName,
-      },
-      categoryIdentifier: NOTIFICATION_CATEGORIES.APPOINTMENT,
-      sound: true,
-      priority: Notifications.AndroidNotificationPriority.HIGH,
+  await scheduleAppointmentNotification(
+    {
+      id: data.id,
+      title: data.title ?? notificationData.title ?? 'Cita médica',
+      doctorName: data.doctorName,
+      scheduledAt: data.scheduledAt,
     },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: new Date(snoozeAt),
-      channelId: CHANNELS.APPOINTMENTS,
-    },
-  });
+    new Date(snoozeAt),
+    'SNOOZE',
+    `[Recordatorio] ${data.title ?? notificationData.title ?? 'Cita médica'}`,
+    `Tu cita es pronto. ${notificationData.body ?? ''}`.trim(),
+  );
 
   return true;
 }
@@ -745,6 +779,7 @@ export async function rescheduleAppointmentsAfterLaunch(
     doctorName?: string | null;
     scheduledAt: string;
     active?: boolean;
+    attendanceStatus?: 'PENDING' | 'ATTENDED' | 'MISSED';
   }>,
 ): Promise<void> {
   const active = appointments.filter((appointment) => appointment.active !== false);
@@ -757,6 +792,8 @@ export async function rescheduleAppointmentsAfterLaunch(
       && n.content.data?.type === 'APPOINTMENT');
 
   for (const appointment of active) {
+    if (appointment.attendanceStatus && appointment.attendanceStatus !== 'PENDING') continue;
+
     const appointmentDate = new Date(appointment.scheduledAt);
     if (Number.isNaN(appointmentDate.getTime()) || appointmentDate.getTime() <= Date.now()) continue;
     if (!hasAppointmentReminderScheduled(appointment.id)) {

@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards } f
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
 @Controller('appointments')
 @UseGuards(JwtAuthGuard)
@@ -30,7 +31,7 @@ export class AppointmentsController {
   @Put(':id')
   update(
     @Param('id') appointmentId: string,
-    @Body() dto: Partial<CreateAppointmentDto>,
+    @Body() dto: UpdateAppointmentDto,
     @Request() req: any,
   ) {
     const userId = req.user?.sub;

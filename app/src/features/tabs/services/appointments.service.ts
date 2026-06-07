@@ -9,9 +9,13 @@ type AppointmentData = {
   location: string | null;
   notes: string | null;
   active: boolean;
+  attendanceStatus: AppointmentAttendanceStatus;
+  attendanceMarkedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+type AppointmentAttendanceStatus = 'PENDING' | 'ATTENDED' | 'MISSED';
 
 type CreateAppointmentPayload = {
   title: string;
@@ -19,6 +23,11 @@ type CreateAppointmentPayload = {
   scheduledAt: string;
   location?: string;
   notes?: string;
+};
+
+type UpdateAppointmentPayload = Partial<CreateAppointmentPayload> & {
+  active?: boolean;
+  attendanceStatus?: AppointmentAttendanceStatus;
 };
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
@@ -143,7 +152,7 @@ export async function deleteAppointment(appointmentId: string, accessToken: stri
 export async function updateAppointment(
   appointmentId: string,
   accessToken: string,
-  payload: Partial<CreateAppointmentPayload> & { active?: boolean },
+  payload: UpdateAppointmentPayload,
 ): Promise<AppointmentData> {
   if (!API_BASE_URL) {
     throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
@@ -163,4 +172,4 @@ export async function updateAppointment(
   return readResponseBody<AppointmentData>(response);
 }
 
-export type { AppointmentData, CreateAppointmentPayload };
+export type { AppointmentAttendanceStatus, AppointmentData, CreateAppointmentPayload, UpdateAppointmentPayload };

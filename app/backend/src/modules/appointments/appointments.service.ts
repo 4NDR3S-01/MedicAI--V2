@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nest
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
 @Injectable()
 export class AppointmentsService {
@@ -41,6 +42,8 @@ export class AppointmentsService {
         scheduledAt: dto.scheduledAt,
         location: dto.location?.trim() || null,
         notes: dto.notes?.trim() || null,
+        attendanceStatus: 'PENDING',
+        attendanceMarkedAt: null,
       },
     });
 
@@ -48,17 +51,26 @@ export class AppointmentsService {
     return appointment;
   }
 
-  async update(appointmentId: string, userId: string, dto: Partial<CreateAppointmentDto>) {
+  async update(appointmentId: string, userId: string, dto: UpdateAppointmentDto) {
     const appointment = await this.findById(appointmentId, userId);
+
+    const attendanceStatus = dto.attendanceStatus
+      ?? (dto.scheduledAt ? 'PENDING' : appointment.attendanceStatus);
+    const attendanceMarkedAt = dto.attendanceStatus
+      ? (dto.attendanceStatus === 'PENDING' ? null : new Date())
+      : (dto.scheduledAt ? null : appointment.attendanceMarkedAt);
 
     const updated = await this.prisma.appointment.update({
       where: { id: appointment.id },
       data: {
-        title: dto.title?.trim() || appointment.title,
-        doctorName: dto.doctorName?.trim() || appointment.doctorName,
+        title: dto.title !== undefined ? dto.title.trim() : appointment.title,
+        doctorName: dto.doctorName !== undefined ? dto.doctorName.trim() : appointment.doctorName,
         scheduledAt: dto.scheduledAt || appointment.scheduledAt,
-        location: dto.location?.trim() || appointment.location,
-        notes: dto.notes?.trim() || appointment.notes,
+        location: dto.location !== undefined ? dto.location.trim() || null : appointment.location,
+        notes: dto.notes !== undefined ? dto.notes.trim() || null : appointment.notes,
+        active: dto.active ?? appointment.active,
+        attendanceStatus,
+        attendanceMarkedAt,
       },
     });
 

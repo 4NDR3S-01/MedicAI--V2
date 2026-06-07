@@ -414,7 +414,7 @@ export function ProfileScreen({
             </View>
 
             <Text style={[styles.settingsSectionTitle, { color: theme.colors.textPrimary }]}>Citas médicas</Text>
-            <Text style={[styles.settingsHint, { color: theme.colors.textMuted }]}>Mínimo 30 minutos antes. Incluye acciones: Asistiré, Recordar luego y No asistiré.</Text>
+            <Text style={[styles.settingsHint, { color: theme.colors.textMuted }]}>Mínimo 30 minutos antes. También se avisará a la hora exacta y al final del día si no marcaste asistencia.</Text>
 
             <View style={styles.minutesSelector}>
               {[30, 60, 120, 1440].map((minutes) => {

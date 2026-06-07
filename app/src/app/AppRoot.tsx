@@ -39,7 +39,6 @@ import {
   SCHEDULE_TYPES,
   snoozeNotification,
   snoozeAppointmentReminder,
-  cancelNotificationsByDataId,
 } from '../shared/services/notifications.service';
 import { emitDoseAction } from '../shared/services/dose-refresh-bus';
 import AlarmNative from '../shared/native/AlarmNative';
@@ -660,13 +659,25 @@ export function AppRoot() {
       if (!data?.id || typeof data.id !== 'string') return;
 
       try {
-        const session = await getStoredSession();
-        if (!session?.accessToken) return;
+        if (data.type === 'APPOINTMENT') {
+          if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE_APPOINTMENT) {
+            const snoozed = await snoozeAppointmentReminder(notification.request.content);
+            Alert.alert(
+              snoozed ? 'Recordatorio pospuesto' : 'No se pudo posponer',
+              snoozed
+                ? 'Te recordaremos nuevamente en unos minutos.'
+                : 'La cita está demasiado cerca o ya pasó.',
+            );
+          }
+          return;
+        }
 
-        const scheduledFor = typeof data.scheduledFor === 'string' ? data.scheduledFor : undefined;
-
-        // DOSE_ALARM actions
         if (data.type === SCHEDULE_TYPES.DOSE_ALARM) {
+          const session = await getStoredSession();
+          if (!session?.accessToken) return;
+
+          const scheduledFor = typeof data.scheduledFor === 'string' ? data.scheduledFor : undefined;
+
           if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
             await logMedicationAction(data.id, session.accessToken, 'TAKEN', scheduledFor);
             setActiveAlarm(null);
@@ -688,24 +699,6 @@ export function AppRoot() {
         // REMINDER type: user tapped the reminder notification — just open app
         if (data.type === SCHEDULE_TYPES.REMINDER) {
           return;
-        }
-
-        if (data.type === 'APPOINTMENT') {
-          if (actionIdentifier === NOTIFICATION_ACTIONS.CONFIRM_APPOINTMENT) {
-            await cancelNotificationsByDataId(data.id);
-            Alert.alert('Cita confirmada', 'Marcamos que asistirás a esta cita.');
-          } else if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE_APPOINTMENT) {
-            const snoozed = await snoozeAppointmentReminder(notification.request.content);
-            Alert.alert(
-              snoozed ? 'Recordatorio pospuesto' : 'No se pudo posponer',
-              snoozed
-                ? 'Te recordaremos nuevamente en unos minutos.'
-                : 'La cita está demasiado cerca o ya pasó.',
-            );
-          } else if (actionIdentifier === NOTIFICATION_ACTIONS.DECLINE_APPOINTMENT) {
-            await cancelNotificationsByDataId(data.id);
-            Alert.alert('Cita marcada', 'Marcamos que no asistirás a esta cita.');
-          }
         }
       } catch (error) {
         console.error('Error handling notification action:', error);

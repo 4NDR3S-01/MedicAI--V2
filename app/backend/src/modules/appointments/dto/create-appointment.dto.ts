@@ -1,6 +1,9 @@
 import { Type } from 'class-transformer';
 import { IsDate, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
+export const APPOINTMENT_ATTENDANCE_STATUSES = ['PENDING', 'ATTENDED', 'MISSED'] as const;
+export type AppointmentAttendanceStatus = typeof APPOINTMENT_ATTENDANCE_STATUSES[number];
+
 export class CreateAppointmentDto {
   @IsString()
   @IsNotEmpty()

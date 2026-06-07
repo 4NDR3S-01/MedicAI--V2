@@ -105,6 +105,8 @@ model Appointment {
   location    String?
   notes       String?
   active      Boolean  @default(true)
+  attendanceStatus String @default("PENDING") // "PENDING", "ATTENDED", "MISSED"
+  attendanceMarkedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -112,5 +114,6 @@ model Appointment {
 
   @@index([userId])
   @@index([scheduledAt])
+  @@index([attendanceStatus])
   @@index([createdAt])
 }
