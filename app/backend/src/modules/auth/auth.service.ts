@@ -193,12 +193,7 @@ export class AuthService {
     this.logger.log('Login succeeded', { userId: user.id });
 
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        avatar: user.avatar,
-      },
+      user: this.mapProfileUser(user),
       ...tokens,
     };
   }

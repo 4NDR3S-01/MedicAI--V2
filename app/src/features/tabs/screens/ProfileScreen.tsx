@@ -409,6 +409,21 @@ export function ProfileScreen({
     }));
   }, [avatarData, userEmail, userFullName]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchProfileFromBackend()
+      .then((res) => {
+        if (!cancelled && res.user) {
+          setProfile(res.user);
+          setProfileForm(profileFormFromUser(res.user));
+          onProfileUpdated?.(res.user);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const currentAvatarData = profile.avatar ?? avatarData;
   const parsedAvatar = useMemo(() => getSafeAvatar(currentAvatarData), [currentAvatarData]);
   const name = profile.fullName || userFullName || displayNameFromEmail(userEmail);
@@ -647,7 +662,7 @@ export function ProfileScreen({
 
           <View style={styles.metricsRow}>
             <ProfileMetric icon="calendar-account-outline" label="Edad" value={ageLabel ?? 'Sin dato'} theme={theme} />
-            <ProfileMetric icon="alert-decagram-outline" label="Alertas" value={String(activeRiskCount)} theme={theme} />
+            <ProfileMetric icon="alert-decagram-outline" label="Alertas" value={activeRiskCount > 0 ? String(activeRiskCount) : 'Ninguna'} theme={theme} />
             <ProfileMetric icon="bell-ring-outline" label="Aviso meds" value={formatLeadOption(profile.notificationLeadMinutes ?? medicationReminderLeadMinutes).replace(' antes', '')} theme={theme} />
           </View>
         </View>
