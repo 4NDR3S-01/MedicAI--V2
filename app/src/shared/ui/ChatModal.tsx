@@ -93,7 +93,7 @@ export function ChatModal({ visible, onClose, theme }: Readonly<Props>) {
           }),
         });
       } catch {
-        throw new Error('No se pudo conectar con el backend del chat. Verifica que este activo.');
+        throw new Error('La conexión con el servidor de chat no está disponible. Inténtalo de nuevo.');
       }
 
       const rawBody = await response.text();

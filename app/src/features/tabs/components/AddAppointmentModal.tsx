@@ -174,7 +174,10 @@ export function AddAppointmentModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.container}
+      >
         <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
           <View style={[styles.content, { backgroundColor: theme.colors.background }]}>
             <View style={styles.header}>
@@ -184,7 +187,12 @@ export function AddAppointmentModal({
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="none"
+            >
               <View style={styles.fieldGroup}>
                 <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Titulo*</Text>
                 <TextInput
@@ -416,6 +424,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+    marginBottom: 16,
   },
   button: {
     flex: 1,

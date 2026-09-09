@@ -357,6 +357,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
                     setEditingAppointment(item);
                     setShowAddModal(true);
                   }}
+                  delayLongPress={250}
                 >
                   <View style={styles.cardTop}>
                     <View style={styles.titleGroup}>

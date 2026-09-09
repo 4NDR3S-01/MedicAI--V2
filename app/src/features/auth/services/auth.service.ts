@@ -128,7 +128,7 @@ const apiRequest = async <T>(
     });
   } catch {
     throw new Error(
-      "No se pudo conectar con el backend. Verifica que el servidor este activo.",
+      "No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.",
     );
   }
 
@@ -295,7 +295,7 @@ export const fetchProfileFromBackend = async () => {
     });
   } catch {
     throw new Error(
-      "No se pudo conectar con el backend. Verifica que el servidor este activo.",
+      "No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.",
     );
   }
 
@@ -344,7 +344,7 @@ export const updateProfileOnBackend = async (profileData: ProfileUpdatePayload) 
     });
   } catch {
     throw new Error(
-      "No se pudo conectar con el backend. Verifica que el servidor este activo.",
+      "No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.",
     );
   }
 
@@ -393,7 +393,7 @@ export const updateAvatarOnBackend = async (avatarData: string) => {
     });
   } catch {
     throw new Error(
-      "No se pudo conectar con el backend. Verifica que el servidor este activo.",
+      "No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.",
     );
   }
 

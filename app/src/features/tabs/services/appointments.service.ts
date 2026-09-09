@@ -86,7 +86,7 @@ const executeAuthorizedRequest = async (
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error('No se pudo conectar con el backend. Verifica que este activo.');
+    throw new Error('No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.');
   }
 };
 

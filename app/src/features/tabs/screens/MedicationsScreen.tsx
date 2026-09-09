@@ -34,7 +34,7 @@ import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissio
 
 type DoseStatus = 'pending' | 'taken' | 'skipped';
 
-type Segment = 'active' | 'paused';
+type Segment = 'active' | 'inactive';
 
 const DOSE_CACHE_KEY = 'medicai_dose_status_cache_v1';
 const RECONCILE_DAILY_KEY = 'medicai_reconciled_today_v1';
@@ -190,9 +190,11 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const greeting = useMemo(() => getGreeting(), []);
   const motivationalPhrase = useMemo(() => getMotivationalPhrase(progress), [progress]);
 
-  const activeMeds = useMemo(() => medications.filter((m) => m.active), [medications]);
-  const pausedMeds = useMemo(() => medications.filter((m) => !m.active), [medications]);
-  const filteredMeds = segment === 'active' ? activeMeds : pausedMeds;
+  const activeMeds = useMemo(() => medications.filter((m) => m.active === true), [medications]);
+  const inactiveMeds = useMemo(() => medications.filter((m) => m.active !== true), [medications]);
+  const filteredMeds = segment === 'active' ? activeMeds : inactiveMeds;
+  const isSegmentEmpty = filteredMeds.length === 0;
+  const showFloatingAddButton = !isEmpty && segment === 'active';
 
   const nextDoseInfo = useMemo(() => {
     let earliest: { medId: string; time: string } | null = null;
@@ -325,7 +327,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       void sessionPromise.then((session) => {
         if (session?.accessToken) {
           if (dateChanged) {
-            void loadMedicationsInternal(session.accessToken, medications);
+            void loadMedicationsInternal(session.accessToken);
           } else {
             void computeDoseStatus(medications, session.accessToken);
           }
@@ -345,7 +347,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 
   const loadMedicationsInternal = useCallback(async (
     accessToken: string,
-    currentMedications: MedicationData[],
   ) => {
     try {
       const data = await medicationsAPI.fetchMedications(accessToken);
@@ -467,8 +468,19 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       const updated = await medicationsAPI.updateMedication(med.id, session.accessToken, {
         active: !med.active,
       });
-      await scheduleMedicationNotifications(updated);
       setMedications((current) => current.map((m) => (m.id === med.id ? updated : m)));
+      if (!updated.active) setSegment('inactive');
+
+      try {
+        await scheduleMedicationNotifications(updated);
+      } catch {
+        Alert.alert(
+          'Medicamento actualizado',
+          updated.active
+            ? 'El medicamento se activó, pero no se pudieron reprogramar sus alarmas.'
+            : 'El medicamento se desactivó, pero no se pudieron cancelar sus alarmas locales.',
+        );
+      }
     } catch (err) {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setMedications((current) =>
@@ -518,8 +530,8 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
               </View>
               <View style={[styles.progressStatDivider, { backgroundColor: theme.colors.surfaceBorder }]} />
               <View style={styles.progressStatItem}>
-                <Text style={[styles.progressStatValue, { color: theme.colors.textMuted }]}>{pausedMeds.length}</Text>
-                <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>pausados</Text>
+                <Text style={[styles.progressStatValue, { color: theme.colors.textMuted }]}>{inactiveMeds.length}</Text>
+                <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>inactivos</Text>
               </View>
             </View>
           </View>
@@ -564,13 +576,13 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           </Text>
         </Pressable>
         <Pressable
-          style={[styles.segmentBtn, segment === 'paused' && { backgroundColor: `${theme.colors.textMuted}40` }]}
-          onPress={() => setSegment('paused')}
+          style={[styles.segmentBtn, segment === 'inactive' && { backgroundColor: `${theme.colors.textMuted}40` }]}
+          onPress={() => setSegment('inactive')}
           accessibilityRole="tab"
-          accessibilityState={{ selected: segment === 'paused' }}
+          accessibilityState={{ selected: segment === 'inactive' }}
         >
-          <Text style={[styles.segmentBtnText, { color: segment === 'paused' ? '#fff' : theme.colors.textSecondary }]}>
-            Pausados ({pausedMeds.length})
+          <Text style={[styles.segmentBtnText, { color: segment === 'inactive' ? '#fff' : theme.colors.textSecondary }]}>
+            Inactivos ({inactiveMeds.length})
           </Text>
         </Pressable>
       </View>
@@ -599,18 +611,18 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         data={filteredMeds}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <>
+        ListHeaderComponent={() => (
+          <View>
             {renderHero()}
             {renderSegmentBar()}
-          </>
-        }
-        stickyHeaderIndices={!isEmpty && !isLoading ? [1] : undefined}
+          </View>
+        )}
         contentContainerStyle={[
           styles.listContent,
-          isEmpty && styles.listContentEmpty,
+          isSegmentEmpty && styles.listContentEmpty,
           { paddingBottom: contentBottomInset + 100 },
         ]}
+        extraData={{ segment }}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -649,27 +661,41 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           ) : (
             <View style={styles.emptyState}>
               <View style={[styles.emptyIconBox, { backgroundColor: `${theme.colors.accentPrimary}12` }]}>
-                <MaterialCommunityIcons name="pill" size={52} color={theme.colors.accentPrimary} />
+                <MaterialCommunityIcons
+                  name={isEmpty ? 'pill' : segment === 'inactive' ? 'pause-circle-outline' : 'pill-multiple'}
+                  size={52}
+                  color={theme.colors.accentPrimary}
+                />
               </View>
               <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>
-                Tu botiquín está vacío
+                {isEmpty
+                  ? 'Tu botiquín está vacío'
+                  : segment === 'inactive'
+                    ? 'No hay medicamentos inactivos'
+                    : 'No hay medicamentos activos'}
               </Text>
               <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
-                Añade tus medicamentos y recibe recordatorios inteligentes para no olvidar ninguna dosis.
+                {isEmpty
+                  ? 'Añade tus medicamentos y recibe recordatorios inteligentes para no olvidar ninguna dosis.'
+                  : segment === 'inactive'
+                    ? 'Cuando desactives un medicamento aparecerá aquí.'
+                    : 'Activa un medicamento inactivo o agrega uno nuevo con el botón +.'}
               </Text>
-              <Pressable
-                onPress={() => {
-                  setEditingMedication(null);
-                  setShowAddModal(true);
-                }}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  { backgroundColor: theme.colors.accentPrimary, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-                <Text style={styles.primaryButtonText}>Agregar primer medicamento</Text>
-              </Pressable>
+              {isEmpty ? (
+                <Pressable
+                  onPress={() => {
+                    setEditingMedication(null);
+                    setShowAddModal(true);
+                  }}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    { backgroundColor: theme.colors.accentPrimary, opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  <MaterialCommunityIcons name="plus" size={20} color="#fff" />
+                  <Text style={styles.primaryButtonText}>Agregar primer medicamento</Text>
+                </Pressable>
+              ) : null}
             </View>
           )
         }
@@ -705,20 +731,21 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                     borderLeftWidth: 4,
                     borderColor: theme.colors.surfaceBorder,
                   },
-                  !item.active && styles.cardPaused,
+                  !item.active && styles.cardInactive,
                   pressed && { transform: [{ scale: 0.99 }], backgroundColor: accentBg },
                 ]}
                 onLongPress={() => {
                   setEditingMedication(item);
                   setShowAddModal(true);
                 }}
+                delayLongPress={250}
                 onPress={() => {
                   if (todayDoses.length > 0 && pendingCount > 0 && item.active) {
                     setEditingMedication(item);
                     setShowAddModal(true);
                   }
                 }}
-                accessibilityLabel={`${item.name}, ${item.dosage}, ${item.active ? 'activo' : 'pausado'}, ${completedCount} de ${todayDoses.length} tomadas`}
+                accessibilityLabel={`${item.name}, ${item.dosage}, ${item.active ? 'activo' : 'inactivo'}, ${completedCount} de ${todayDoses.length} tomadas`}
               >
                 <View style={styles.cardHeader}>
                   <View style={[styles.medIconCircle, { backgroundColor: accentBg }]}>
@@ -827,7 +854,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                     <View style={[styles.statusPill, { backgroundColor: `${theme.colors.textMuted}08` }]}>
                       <MaterialCommunityIcons name="information-outline" size={14} color={theme.colors.textMuted} />
                       <Text style={[styles.statusPillText, { color: theme.colors.textMuted }]}>
-                        {!item.active ? 'Pausado' : todayDoses.length === 0 ? 'Sin dosis hoy' : ''}
+                        {!item.active ? 'Inactivo' : todayDoses.length === 0 ? 'Sin dosis hoy' : ''}
                       </Text>
                     </View>
                   )}
@@ -873,24 +900,26 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         }
       />
 
-      <Pressable
-        style={({ pressed }) => [
-          styles.fab,
-          {
-            backgroundColor: theme.colors.accentPrimary,
-            bottom: contentBottomInset + 24,
-            transform: [{ scale: pressed ? 0.9 : 1 }],
-          },
-        ]}
-        onPress={() => {
-          setEditingMedication(null);
-          setShowAddModal(true);
-        }}
-        accessibilityLabel="Agregar medicamento"
-        accessibilityRole="button"
-      >
-        <MaterialCommunityIcons name="plus" size={28} color="#fff" />
-      </Pressable>
+      {showFloatingAddButton ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.fab,
+            {
+              backgroundColor: theme.colors.accentPrimary,
+              bottom: contentBottomInset + 24,
+              transform: [{ scale: pressed ? 0.9 : 1 }],
+            },
+          ]}
+          onPress={() => {
+            setEditingMedication(null);
+            setShowAddModal(true);
+          }}
+          accessibilityLabel="Agregar medicamento"
+          accessibilityRole="button"
+        >
+          <MaterialCommunityIcons name="plus" size={28} color="#fff" />
+        </Pressable>
+      ) : null}
 
       <AddMedicationModal
         visible={showAddModal}
@@ -1014,7 +1043,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-  cardPaused: { opacity: 0.7 },
+  cardInactive: { opacity: 0.7 },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',

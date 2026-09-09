@@ -261,7 +261,10 @@ export function AddMedicationModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.container}
+      >
         <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
           <View style={[styles.content, { backgroundColor: theme.colors.background }]}>
             <View style={styles.header}>
@@ -273,7 +276,12 @@ export function AddMedicationModal({
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="none"
+            >
               <View style={styles.fieldGroup}>
                 <Text style={[styles.label, { color: theme.colors.textPrimary }]}>Nombre del medicamento*</Text>
                 <TextInput
@@ -495,10 +503,10 @@ const styles = StyleSheet.create({
   timeTriggerText: { fontSize: 16, fontWeight: '800' },
   helperText: { fontSize: 12, fontStyle: 'italic', paddingLeft: 4 },
   noteInput: { textAlignVertical: 'top' },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 4, marginBottom: 16 },
   button: { flex: 1, paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   cancelButton: { borderWidth: 1 },
-  submitButton: { elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+  submitButton: {},
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   pickerContent: { width: '80%', borderRadius: 24, padding: 20 },
   pickerItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
