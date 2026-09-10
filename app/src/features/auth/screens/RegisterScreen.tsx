@@ -2422,7 +2422,7 @@ const styles = StyleSheet.create({
   primaryActionText: { fontSize: 14, fontWeight: "800" },
   modalRoot: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
   modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.58)",
   },
   modalCard: {

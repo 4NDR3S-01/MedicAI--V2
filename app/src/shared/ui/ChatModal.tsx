@@ -242,7 +242,7 @@ function normalizeAssistantReply(reply: string) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   container: {

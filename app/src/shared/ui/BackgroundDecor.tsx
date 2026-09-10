@@ -195,7 +195,7 @@ export function BackgroundDecor({ theme }: Readonly<BackgroundDecorProps>) {
 
 const styles = StyleSheet.create({
   background: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   centerSoftMask: {
     position: 'absolute',

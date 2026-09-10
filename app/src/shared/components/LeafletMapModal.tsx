@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   mapPinOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center',
     alignItems: 'center',
   },

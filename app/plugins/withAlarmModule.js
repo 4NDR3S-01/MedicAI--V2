@@ -10,7 +10,7 @@
  * Run `npx expo prebuild --clean` after modifying this file or the Java sources.
  */
 
-const { withAndroidManifest, withDangerousMod, withAppBuildGradle } = require('@expo/config-plugins');
+const { withAndroidManifest, withDangerousMod, withAppBuildGradle } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 

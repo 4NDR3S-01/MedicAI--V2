@@ -18,7 +18,7 @@ const SIDE_TABS: {
   activeIcon: keyof typeof MaterialCommunityIcons.glyphMap;
 }[] = [
   { tab: 'home', label: 'Inicio', icon: 'home-outline', activeIcon: 'home' },
-  { tab: 'medications', label: 'Medicamentos', icon: 'pill', activeIcon: 'pill' },
+  { tab: 'medications', label: 'Medicinas', icon: 'pill', activeIcon: 'pill' },
   { tab: 'appointments', label: 'Citas', icon: 'calendar-clock-outline', activeIcon: 'calendar-clock' },
   { tab: 'profile', label: 'Perfil', icon: 'account-outline', activeIcon: 'account' },
 ];
@@ -27,6 +27,13 @@ const BAR_BODY_MIN_HEIGHT = 56;
 const FAB_SIZE = 58;
 /** Espacio reservado encima de la barra para el botón central. */
 export const MAIN_TAB_FAB_OVERFLOW = 24;
+
+/**
+ * Distancia desde el borde inferior de la pantalla para los FABs flotantes
+ * secundarios (agregar medicamento, agregar cita, chat IA).
+ * Debe dejar el botón justo encima de la barra de navegación.
+ */
+export const FLOATING_ACTION_BUTTON_BOTTOM = 76;
 
 /**
  * Padding inferior recomendado para listas / scroll del área principal,
@@ -63,10 +70,10 @@ export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomB
             }}
             accessibilityRole="tab"
             accessibilityState={{ selected: isFamily }}
-            accessibilityLabel="Familia"
+            accessibilityLabel="Círculo"
             accessibilityHint="Perfiles y cuidado familiar"
           >
-            <MaterialCommunityIcons name="account-group" size={28} color={theme.colors.buttonText} />
+            <MaterialCommunityIcons name="account-group" size={28} color="#fff" />
           </Pressable>
           <Text
             style={[
@@ -78,7 +85,7 @@ export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomB
             ]}
             numberOfLines={1}
           >
-            Familia
+            Círculo
           </Text>
         </View>
 

@@ -11,7 +11,7 @@ export type AssistantScreenProps = {
 
 /**
  * Asistente IA: pantalla a pantalla completa (no ocupa un slot en la barra inferior)
- * para no saturar la navegación (4 pestañas + FAB Familia).
+ * para no saturar la navegación (4 pestañas + FAB Círculo).
  */
 export function AssistantScreen({ theme, onClose }: Readonly<AssistantScreenProps>) {
   const insets = useSafeAreaInsets();

@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { Asset } from 'expo-asset';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, AppState, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -31,7 +31,6 @@ import {
 import { MainAppShell } from './MainAppShell';
 import { appStorage } from '../shared/storage';
 import { useAppTheme } from '../shared/theme';
-import SystemNavigationBar from 'react-native-system-navigation-bar';
 import * as Notifications from 'expo-notifications';
 import {
   setupNotifications,
@@ -735,16 +734,6 @@ export function AppRoot() {
   const statusBarStyle = useMemo(() => {
     return theme.mode === 'dark' ? 'light' : 'dark';
   }, [theme.mode]);
-
-  useEffect(() => {
-    const navigationBarColor = theme.colors.background;
-    const navigationBarButtonStyle = theme.mode === 'dark' ? 'light' : 'dark';
-
-    void SystemNavigationBar.setNavigationColor(
-      navigationBarColor,
-      navigationBarButtonStyle,
-    );
-  }, [theme.mode, theme.colors.background]);
 
   const alarmPulseScale = alarmPulseAnim.interpolate({
     inputRange: [0, 1],

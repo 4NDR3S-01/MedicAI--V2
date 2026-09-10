@@ -23,6 +23,7 @@ import * as medicationsAPI from '../services/medications.service';
 import type { MedicationData } from '../services/medications.service';
 import { getStoredSession } from '../../auth';
 import { AddMedicationModal } from '../components/AddMedicationModal';
+import { FloatingActionButton } from '../../../shared/ui';
 import {
   scheduleMedicationNotifications,
   cancelNotificationsByDataId,
@@ -469,7 +470,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         active: !med.active,
       });
       setMedications((current) => current.map((m) => (m.id === med.id ? updated : m)));
-      if (!updated.active) setSegment('inactive');
 
       try {
         await scheduleMedicationNotifications(updated);
@@ -901,24 +901,16 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       />
 
       {showFloatingAddButton ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.fab,
-            {
-              backgroundColor: theme.colors.accentPrimary,
-              bottom: contentBottomInset + 24,
-              transform: [{ scale: pressed ? 0.9 : 1 }],
-            },
-          ]}
+        <FloatingActionButton
+          theme={theme}
+          icon="plus"
           onPress={() => {
             setEditingMedication(null);
             setShowAddModal(true);
           }}
           accessibilityLabel="Agregar medicamento"
-          accessibilityRole="button"
-        >
-          <MaterialCommunityIcons name="plus" size={28} color="#fff" />
-        </Pressable>
+          backgroundColor={theme.colors.accentPrimary}
+        />
       ) : null}
 
       <AddMedicationModal
@@ -1138,21 +1130,6 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 
   listFooterText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 12 },
-
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
-  },
 
   skelCircle: { width: 46, height: 46, borderRadius: 16 },
   skelLine: { height: 12, borderRadius: 6 },

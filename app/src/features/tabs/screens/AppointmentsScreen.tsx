@@ -19,6 +19,7 @@ import { getStoredSession } from '../../auth';
 import { AddAppointmentModal } from '../components/AddAppointmentModal';
 import type { AppointmentAttendanceStatus, AppointmentData } from '../services/appointments.service';
 import * as appointmentsAPI from '../services/appointments.service';
+import { FloatingActionButton } from '../../../shared/ui';
 import {
   cancelNotificationsByDataId,
   rescheduleAppointmentsAfterLaunch,
@@ -440,21 +441,16 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         }}
       />
 
-      <Pressable
-        style={[
-          styles.fab,
-          {
-            backgroundColor: theme.colors.accentSecondary,
-            bottom: contentBottomInset + 24,
-          },
-        ]}
+      <FloatingActionButton
+        theme={theme}
+        icon="calendar-plus"
         onPress={() => {
           setEditingAppointment(null);
           setShowAddModal(true);
         }}
-      >
-        <MaterialCommunityIcons name="calendar-plus" size={26} color={theme.colors.buttonText} />
-      </Pressable>
+        accessibilityLabel="Agregar cita"
+        backgroundColor={theme.colors.accentSecondary}
+      />
 
       <AddAppointmentModal
         visible={showAddModal}
@@ -482,14 +478,14 @@ const styles = StyleSheet.create({
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingHorizontal: 20, paddingTop: 20, gap: 18 },
   listContentEmpty: { justifyContent: 'center' },
-  headerWrapper: { gap: 16, marginBottom: 10 },
-  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 },
-  headerCopy: { flex: 1, gap: 4 },
+  headerWrapper: { gap: 12, marginBottom: 10 },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  headerCopy: { flex: 1, flexShrink: 1, gap: 3 },
   headerEyebrow: { fontSize: 12, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
-  headerTitle: { fontSize: 36, fontWeight: '900', letterSpacing: -1.2, lineHeight: 40 },
-  headerSubtitle: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
-  dateBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, borderWidth: 1 },
-  dateBadgeText: { fontSize: 13, fontWeight: '900', textTransform: 'capitalize' },
+  headerTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1, lineHeight: 36 },
+  headerSubtitle: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  dateBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, borderWidth: 1, flexShrink: 0 },
+  dateBadgeText: { fontSize: 12, fontWeight: '900', textTransform: 'capitalize' },
   nextCard: { flexDirection: 'row', gap: 14, borderWidth: 1, borderRadius: 28, padding: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
   nextDatePill: { width: 62, height: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   nextDateDay: { fontSize: 28, fontWeight: '900', letterSpacing: -1 },
@@ -502,51 +498,37 @@ const styles = StyleSheet.create({
   nextMeta: { fontSize: 14, fontWeight: '700' },
   nextLocation: { fontSize: 12, fontWeight: '600' },
   statsRow: { flexDirection: 'row', gap: 10 },
-  statCard: { flex: 1, borderWidth: 1, borderRadius: 20, paddingVertical: 14, paddingHorizontal: 12, gap: 2 },
-  statValue: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  statLabel: { fontSize: 12, fontWeight: '800' },
+  statCard: { flex: 1, borderWidth: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 10, gap: 2 },
+  statValue: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  statLabel: { fontSize: 11, fontWeight: '800' },
   emptyState: { alignItems: 'center', paddingVertical: 80, gap: 20 },
   emptyIconBox: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
   emptySubtext: { fontSize: 16, fontWeight: '500', textAlign: 'center', lineHeight: 24, opacity: 0.7 },
   retryButton: { paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16, marginTop: 12 },
   retryButtonText: { fontSize: 16, fontWeight: '800' },
-  appointmentCardWrapper: { flexDirection: 'row', gap: 12 },
-  dateColumn: { width: 54, alignItems: 'center', paddingTop: 2 },
-  dateCapsule: { width: 54, height: 66, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  dateDay: { fontSize: 26, fontWeight: '900', letterSpacing: -1, lineHeight: 28 },
-  dateMonth: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  dateLine: { position: 'absolute', top: 70, bottom: -18, width: 2, left: 26, opacity: 0.45 },
-  cardBody: { flex: 1, borderRadius: 28, borderWidth: 1, padding: 18, gap: 16 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
-  titleGroup: { flex: 1, gap: 3 },
-  cardTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
-  relativeDate: { fontSize: 13, fontWeight: '800' },
-  attendanceTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
-  attendanceLabel: { fontSize: 13, fontWeight: '800' },
-  detailsGroup: { gap: 10 },
-  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  detailIconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  detailValue: { fontSize: 15, fontWeight: '600' },
-  noteBox: { borderRadius: 16, padding: 12, backgroundColor: 'rgba(148, 163, 184, 0.10)' },
-  noteText: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTopWidth: 1 },
-  actionRow: { flexDirection: 'row', gap: 8 },
-  actionBtn: { padding: 8 },
-  primaryAction: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 14 },
-  primaryActionText: { fontSize: 14, fontWeight: '800' },
-  fab: {
-    position: 'absolute',
-    right: 24,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 8,
-  },
+  appointmentCardWrapper: { flexDirection: 'row', gap: 10 },
+  dateColumn: { width: 48, alignItems: 'center', paddingTop: 2 },
+  dateCapsule: { width: 48, height: 58, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  dateDay: { fontSize: 22, fontWeight: '900', letterSpacing: -1, lineHeight: 24 },
+  dateMonth: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  dateLine: { position: 'absolute', top: 62, bottom: -14, width: 2, left: 23, opacity: 0.45 },
+  cardBody: { flex: 1, borderRadius: 22, borderWidth: 1, padding: 14, gap: 12 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  titleGroup: { flex: 1, gap: 2 },
+  cardTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  relativeDate: { fontSize: 12, fontWeight: '800' },
+  attendanceTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999 },
+  attendanceLabel: { fontSize: 12, fontWeight: '800' },
+  detailsGroup: { gap: 8 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  detailIconBox: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  detailValue: { fontSize: 14, fontWeight: '600' },
+  noteBox: { borderRadius: 14, padding: 10, backgroundColor: 'rgba(148, 163, 184, 0.10)' },
+  noteText: { fontSize: 12, fontWeight: '600', lineHeight: 16 },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1 },
+  actionRow: { flexDirection: 'row', gap: 6 },
+  actionBtn: { padding: 6 },
+  primaryAction: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
+  primaryActionText: { fontSize: 13, fontWeight: '800' },
 });
