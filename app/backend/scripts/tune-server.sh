@@ -96,8 +96,18 @@ fi
 # -----------------------------------------------------------------------------
 # 8. Reiniciar PostgreSQL
 # -----------------------------------------------------------------------------
+# En algunas instalaciones de Debian, systemctl restart postgresql@X-main falla
+# al leer el archivo PID aunque PostgreSQL arranque correctamente. Usamos
+# pg_ctlcluster que es la herramienta nativa de Debian/Ubuntu.
 log "Reiniciando PostgreSQL..."
-systemctl restart "postgresql@${PG_VERSION}-main" || systemctl restart postgresql || true
+if command -v pg_ctlcluster &>/dev/null; then
+  pg_ctlcluster "${PG_VERSION}" main restart || {
+    log "pg_ctlcluster falló, intentando systemctl..."
+    systemctl restart "postgresql@${PG_VERSION}-main" || systemctl restart postgresql || true
+  }
+else
+  systemctl restart "postgresql@${PG_VERSION}-main" || systemctl restart postgresql || true
+fi
 
 # -----------------------------------------------------------------------------
 # 9. Resumen
