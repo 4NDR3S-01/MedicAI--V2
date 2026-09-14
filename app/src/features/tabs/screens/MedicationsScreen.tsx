@@ -182,6 +182,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [segment, setSegment] = useState<Segment>('active');
   const doseRefreshVersionRef = useRef(0);
   const [countdown, setCountdown] = useState<string>('');
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -708,6 +709,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           }).length;
           const completedCount = todayDoses.filter((t) => doseStatusMap[item.id]?.[t] === 'taken').length;
           const allCompleted = todayDoses.length > 0 && pendingCount === 0;
+          const isExpanded = expandedCards[item.id] ?? false;
+          const visibleDoses = isExpanded ? todayDoses : todayDoses.slice(0, 3);
+          const hiddenCount = todayDoses.length - visibleDoses.length;
 
           const accentColor = !item.active
             ? theme.colors.textMuted
@@ -740,7 +744,12 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                 }}
                 delayLongPress={250}
                 onPress={() => {
-                  if (todayDoses.length > 0 && pendingCount > 0 && item.active) {
+                  if (item.active && todayDoses.length > 3) {
+                    if (Platform.OS === 'android') {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    }
+                    setExpandedCards((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
+                  } else if (todayDoses.length > 0 && pendingCount > 0 && item.active) {
                     setEditingMedication(item);
                     setShowAddModal(true);
                   }
@@ -781,7 +790,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 
                 {todayDoses.length > 0 && item.active && (
                   <View style={styles.doseTimeline}>
-                    {todayDoses.map((t) => {
+                    {visibleDoses.map((t) => {
                       const status = doseStatusMap[item.id]?.[t];
                       const isTaken = status === 'taken';
                       const isSkipped = status === 'skipped';
@@ -826,6 +835,13 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                         </View>
                       );
                     })}
+                    {!isExpanded && hiddenCount > 0 && (
+                      <View style={[styles.expandChip, { backgroundColor: `${theme.colors.textMuted}10`, borderColor: `${theme.colors.textMuted}20` }]}>
+                        <Text style={[styles.expandChipText, { color: theme.colors.textMuted }]}>
+                          +{hiddenCount} más
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
 
@@ -1067,6 +1083,15 @@ const styles = StyleSheet.create({
   },
   doseDot: { width: 6, height: 6, borderRadius: 3 },
   dosePillTime: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  expandChip: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  expandChipText: { fontSize: 11, fontWeight: '800' },
 
   notesRow: {
     flexDirection: 'row',

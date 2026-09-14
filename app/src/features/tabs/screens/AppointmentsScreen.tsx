@@ -61,6 +61,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentData | null>(null);
+  const [filter, setFilter] = useState<'upcoming' | 'attended' | 'missed'>('upcoming');
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -195,9 +196,16 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
     return !Number.isNaN(parsed.getTime()) && parsed.getTime() >= now.getTime();
   });
   const nextAppointment = upcomingAppointments[0] ?? null;
-  const pendingAppointmentsCount = appointments.filter((appointment) => appointment.attendanceStatus === 'PENDING').length;
   const attendedAppointmentsCount = appointments.filter((appointment) => appointment.attendanceStatus === 'ATTENDED').length;
+  const missedAppointmentsCount = appointments.filter((appointment) => appointment.attendanceStatus === 'MISSED').length;
   const currentMonthLabel = now.toLocaleString('es-ES', { month: 'short', year: 'numeric' }).replace('.', '');
+
+  const filteredAppointments = appointments.filter((appointment) => {
+    if (filter === 'attended') return appointment.attendanceStatus === 'ATTENDED';
+    if (filter === 'missed') return appointment.attendanceStatus === 'MISSED';
+    const parsed = new Date(appointment.scheduledAt);
+    return !Number.isNaN(parsed.getTime()) && parsed.getTime() >= now.getTime();
+  });
 
   const renderHeader = () => {
     if (isLoading) return null;
@@ -206,21 +214,21 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
     const nextDateParts = nextDate && !Number.isNaN(nextDate.getTime()) ? getDateParts(nextDate) : null;
 
     return (
-      <Animated.View style={[styles.headerWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}> 
-        <View style={styles.headerTitleRow}>
-          <View style={styles.headerCopy}>
-            <Text style={[styles.headerEyebrow, { color: theme.colors.accentSecondary }]}>Citas médicas</Text>
-            <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Agenda</Text>
-            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>Tus consultas, recordatorios y asistencia en un solo lugar.</Text>
-          </View>
-          <View style={[styles.dateBadge, { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}30` }]}> 
+      <Animated.View style={[styles.headerWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <View style={styles.headerTopRow}>
+          <Text style={[styles.headerEyebrow, { color: theme.colors.accentSecondary }]}>Citas médicas</Text>
+          <View style={[styles.dateBadge, { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}30` }]}>
             <MaterialCommunityIcons name="calendar-month-outline" size={18} color={theme.colors.accentSecondary} />
             <Text style={[styles.dateBadgeText, { color: theme.colors.accentSecondary }]}>{currentMonthLabel}</Text>
           </View>
         </View>
+        <View style={styles.headerCopy}>
+          <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Agenda</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>Tus consultas, recordatorios y asistencia en un solo lugar.</Text>
+        </View>
 
         {nextAppointment && nextDate && nextDateParts ? (
-          <View style={[styles.nextCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
+          <View style={[styles.nextCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}> 
             <View style={[styles.nextDatePill, { backgroundColor: `${theme.colors.accentSecondary}14` }]}> 
               <Text style={[styles.nextDateDay, { color: theme.colors.textPrimary }]}>{nextDateParts.day}</Text>
               <Text style={[styles.nextDateMonth, { color: theme.colors.accentSecondary }]}>{nextDateParts.month}</Text>
@@ -242,18 +250,42 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         ) : null}
 
         <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: `${theme.colors.accentSecondary}10`, borderColor: `${theme.colors.accentSecondary}20` }]}> 
+          <Pressable
+            onPress={() => setFilter('upcoming')}
+            style={({ pressed }) => [
+              styles.statCard,
+              filter === 'upcoming' && styles.statCardActive,
+              { backgroundColor: filter === 'upcoming' ? `${theme.colors.accentSecondary}18` : `${theme.colors.accentSecondary}10`, borderColor: filter === 'upcoming' ? theme.colors.accentSecondary : `${theme.colors.accentSecondary}20` },
+              pressed && { opacity: 0.85 },
+            ]}
+          >
             <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{upcomingAppointments.length}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Próximas</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: `${theme.colors.accentPrimary}10`, borderColor: `${theme.colors.accentPrimary}20` }]}> 
-            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{pendingAppointmentsCount}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Pendientes</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: '#16A34A15', borderColor: '#16A34A25' }]}> 
+            <Text style={[styles.statLabel, { color: filter === 'upcoming' ? theme.colors.accentSecondary : theme.colors.textMuted }]}>Próximas</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setFilter('attended')}
+            style={({ pressed }) => [
+              styles.statCard,
+              filter === 'attended' && styles.statCardActive,
+              { backgroundColor: filter === 'attended' ? `${'#16A34A'}22` : '#16A34A15', borderColor: filter === 'attended' ? '#16A34A' : '#16A34A25' },
+              pressed && { opacity: 0.85 },
+            ]}
+          >
             <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{attendedAppointmentsCount}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Asistidas</Text>
-          </View>
+            <Text style={[styles.statLabel, { color: filter === 'attended' ? '#16A34A' : theme.colors.textMuted }]}>Asistidas</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setFilter('missed')}
+            style={({ pressed }) => [
+              styles.statCard,
+              filter === 'missed' && styles.statCardActive,
+              { backgroundColor: filter === 'missed' ? `${theme.colors.accentTertiary}20` : `${theme.colors.accentTertiary}12`, borderColor: filter === 'missed' ? theme.colors.accentTertiary : `${theme.colors.accentTertiary}25` },
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{missedAppointmentsCount}</Text>
+            <Text style={[styles.statLabel, { color: filter === 'missed' ? theme.colors.accentTertiary : theme.colors.textMuted }]}>No asistidas</Text>
+          </Pressable>
         </View>
       </Animated.View>
     );
@@ -272,7 +304,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
       <FlatList
-        data={appointments}
+        data={filteredAppointments}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={renderHeader}
@@ -478,9 +510,9 @@ const styles = StyleSheet.create({
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingHorizontal: 20, paddingTop: 20, gap: 18 },
   listContentEmpty: { justifyContent: 'center' },
-  headerWrapper: { gap: 12, marginBottom: 10 },
-  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
-  headerCopy: { flex: 1, flexShrink: 1, gap: 3 },
+  headerWrapper: { gap: 10, marginBottom: 10 },
+  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  headerCopy: { gap: 3 },
   headerEyebrow: { fontSize: 12, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
   headerTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1, lineHeight: 36 },
   headerSubtitle: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
@@ -498,7 +530,8 @@ const styles = StyleSheet.create({
   nextMeta: { fontSize: 14, fontWeight: '700' },
   nextLocation: { fontSize: 12, fontWeight: '600' },
   statsRow: { flexDirection: 'row', gap: 10 },
-  statCard: { flex: 1, borderWidth: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 10, gap: 2 },
+  statCard: { flex: 1, borderWidth: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 10, gap: 2, alignItems: 'center' },
+  statCardActive: { borderWidth: 1.5 },
   statValue: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
   statLabel: { fontSize: 11, fontWeight: '800' },
   emptyState: { alignItems: 'center', paddingVertical: 80, gap: 20 },

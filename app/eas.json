@@ -24,6 +24,17 @@
         "credentialsSource": "remote",
         "autoIncrement": "buildNumber"
       }
+    },
+    "playstore": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle",
+        "credentialsSource": "remote"
+      },
+      "ios": {
+        "credentialsSource": "remote",
+        "autoIncrement": "buildNumber"
+      }
     }
   },
   "submit": {
