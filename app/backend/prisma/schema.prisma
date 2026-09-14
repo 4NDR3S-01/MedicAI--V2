@@ -116,4 +116,5 @@ model Appointment {
   @@index([scheduledAt])
   @@index([attendanceStatus])
   @@index([createdAt])
+  @@index([userId, active, scheduledAt])
 }

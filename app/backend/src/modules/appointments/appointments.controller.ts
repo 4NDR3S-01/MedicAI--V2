@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards, UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { AppointmentsService } from './appointments.service';
@@ -10,6 +11,9 @@ import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
+  @UseInterceptors(CacheInterceptor)
+  @CacheKey('appointments:all')
+  @CacheTTL(30)
   @Get()
   findAll(@Request() req: any) {
     const userId = req.user?.sub;

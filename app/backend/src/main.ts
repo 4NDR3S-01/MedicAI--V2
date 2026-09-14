@@ -2,11 +2,17 @@ import 'reflect-metadata';
 
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import compression from 'compression';
+import { json, urlencoded } from 'express';
 
 import { AppModule } from './app/app.module';
 import { AppLogger } from './infrastructure/logging/app.logger';
 import { GlobalExceptionFilter } from './infrastructure/logging/global-exception.filter';
 import { HttpRequestLoggerMiddleware } from './infrastructure/logging/http-request-logger.middleware';
+
+// Límites de payload para evitar que requests grandes agoten memoria en un
+// servidor con 2 GB RAM / 16 GB eMMC. Ajusta si la app sube archivos médicos.
+const REQUEST_SIZE_LIMIT = process.env.REQUEST_SIZE_LIMIT || '100kb';
 
 async function bootstrap() {
   const logger = new AppLogger();
@@ -19,6 +25,25 @@ async function bootstrap() {
 
   app.useLogger(logger);
   app.enableShutdownHooks();
+
+  // Limitar tamaño de cuerpo de peticiones: JSON y formularios.
+  app.use(json({ limit: REQUEST_SIZE_LIMIT }));
+  app.use(urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
+
+  // Compresión con nivel 1: bajo consumo de CPU en Celeron, suficiente para
+  // respuestas JSON. Evita comprimir respuestas pequeñas.
+  app.use(
+    compression({
+      level: 1,
+      threshold: 1024,
+      filter: (req, res) => {
+        if (req.headers['x-no-compression']) {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+    }),
+  );
 
   if (isEnabled(process.env.TRUST_PROXY)) {
     const expressInstance = app.getHttpAdapter().getInstance();
@@ -55,7 +80,10 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter(logger));
 
   const port = Number(process.env.PORT ?? 4000);
-  await app.listen(port);
+  // Escuchar solo en 127.0.0.1 si hay un reverse proxy local (nginx/caddy).
+  // En un servidor limitado, evita exponer Node directamente a la red.
+  const host = process.env.HOST || '127.0.0.1';
+  await app.listen(port, host);
 
   logger.log(
     'MedicAI backend listening',

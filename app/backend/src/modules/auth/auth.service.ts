@@ -54,7 +54,7 @@ export class AuthService {
       throw new BadRequestException('Este correo ya está registrado.');
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const passwordHash = await bcrypt.hash(dto.password, 10);
 
     try {
       const user = await this.prisma.$transaction(async (tx) => {
@@ -78,43 +78,48 @@ export class AuthService {
 
         // Create medications if not deferred
         if (dto.medications && dto.medications.length > 0 && !dto.medicationsDeferred) {
-          for (const med of dto.medications) {
-            await tx.medication.create({
-              data: {
-                userId: newUser.id,
-                name: med.name.trim(),
-                dosage: med.dose.trim(),
-                frequency: med.frequency.trim(),
-                times: med.schedule ? [med.schedule.trim()] : [],
-              },
-            });
+          const validMedications = dto.medications
+            .filter((med) => med.name?.trim() && med.dose?.trim() && med.frequency?.trim())
+            .map((med) => ({
+              userId: newUser.id,
+              name: med.name.trim(),
+              dosage: med.dose.trim(),
+              frequency: med.frequency.trim(),
+              times: med.schedule ? [med.schedule.trim()] : [],
+            }));
+
+          if (validMedications.length > 0) {
+            await tx.medication.createMany({ data: validMedications });
           }
         }
 
         // Create appointments if not deferred
         if (dto.appointments && dto.appointments.length > 0 && !dto.appointmentsDeferred) {
-          for (const apt of dto.appointments) {
-            try {
-              const [dateStr, timeStr] = [apt.date.trim(), apt.time.trim()];
-              const dateTime = new Date(`${dateStr}T${timeStr}:00`);
+          const validAppointments = dto.appointments
+            .map((apt) => {
+              try {
+                const [dateStr, timeStr] = [apt.date?.trim(), apt.time?.trim()];
+                if (!dateStr || !timeStr) return null;
 
-              if (Number.isNaN(dateTime.getTime())) {
-                this.logger.warn('Invalid appointment date/time', { dateStr, timeStr, userId: newUser.id });
-                continue;
-              }
+                const dateTime = new Date(`${dateStr}T${timeStr}:00`);
+                if (Number.isNaN(dateTime.getTime())) return null;
 
-              await tx.appointment.create({
-                data: {
+                return {
                   userId: newUser.id,
-                  title: apt.specialty.trim(),
-                  doctorName: '', // No se proporcionó en el registro
+                  title: apt.specialty?.trim() || 'Cita médica',
+                  doctorName: '',
                   scheduledAt: dateTime,
-                  location: apt.place.trim() || null,
-                },
-              });
-            } catch (error) {
-              this.logger.warn('Failed to create appointment', { appointment: apt, error });
-            }
+                  location: apt.place?.trim() || null,
+                };
+              } catch (error) {
+                this.logger.warn('Failed to parse appointment', { appointment: apt, error });
+                return null;
+              }
+            })
+            .filter((apt): apt is NonNullable<typeof apt> => apt !== null);
+
+          if (validAppointments.length > 0) {
+            await tx.appointment.createMany({ data: validAppointments });
           }
         }
 
@@ -348,7 +353,7 @@ export class AuthService {
       throw new BadRequestException(validation.message);
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const passwordHash = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.$transaction([
       this.prisma.user.update({

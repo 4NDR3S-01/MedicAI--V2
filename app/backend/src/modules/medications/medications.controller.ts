@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards, UnauthorizedException, UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { MedicationsService } from './medications.service';
@@ -10,6 +11,9 @@ import { UpdateMedicationDto } from './dto/update-medication.dto';
 export class MedicationsController {
   constructor(private readonly medicationsService: MedicationsService) {}
 
+  @UseInterceptors(CacheInterceptor)
+  @CacheKey('medications:all')
+  @CacheTTL(30)
   @Get()
   findAll(@Request() req: any) {
     const userId = req.user?.sub;
@@ -44,6 +48,9 @@ export class MedicationsController {
     return this.medicationsService.delete(medicationId, userId);
   }
 
+  @UseInterceptors(CacheInterceptor)
+  @CacheKey('medications:logs')
+  @CacheTTL(30)
   @Get(':id/logs')
   getLogs(
     @Param('id') medicationId: string,

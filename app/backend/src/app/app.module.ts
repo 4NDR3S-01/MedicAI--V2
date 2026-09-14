@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { CacheModule } from '@nestjs/cache-manager';
 
 import { HealthController } from './health.controller';
 import { validateEnv } from '../config/env.validation';
@@ -20,12 +21,19 @@ import { AppointmentsModule } from '../modules/appointments/appointments.module'
     }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: () => [
+      useFactory: (configService: ConfigService) => [
         {
           ttl: 60_000,
-          limit: 20,
+          // 300 req/min es excesivo para un Celeron N2840 con 2 GB RAM.
+          // 30 req/min por IP es razonable para una app móvil de salud.
+          limit: configService.get<number>('THROTTLE_LIMIT') ?? 30,
         },
       ],
+    }),
+    CacheModule.register({
+      ttl: 60_000,
+      max: 100,
+      isGlobal: true,
     }),
     PrismaModule,
     MailModule,
