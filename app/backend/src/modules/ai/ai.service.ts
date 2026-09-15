@@ -20,6 +20,8 @@ export class AiService {
 
   constructor(private readonly configService: ConfigService) {}
 
+  private readonly GROQ_TIMEOUT_MS = 25_000;
+
   async chat(dto: ChatRequestDto) {
     const apiKey = this.configService.getOrThrow<string>('GROQ_API_KEY');
     const baseUrl = (this.configService.get<string>('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1').replace(/\/$/, '');
@@ -31,14 +33,30 @@ export class AiService {
       messages: this.buildMessages(dto.message, dto.history),
     };
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.GROQ_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        this.logger.warn('Groq request timed out', { timeoutMs: this.GROQ_TIMEOUT_MS });
+        throw new ServiceUnavailableException('La respuesta de IA tardó demasiado. Intenta de nuevo.');
+      }
+      this.logger.error('Groq request failed', error as Error);
+      throw new ServiceUnavailableException('No fue posible conectar con el servicio de IA.');
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const data = (await response.json()) as GroqChatCompletionResponse;
 

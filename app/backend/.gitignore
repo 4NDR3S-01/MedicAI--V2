@@ -1,1 +1,4 @@
 .codex
+.env
+.env.local
+*.log

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards, UnauthorizedException, UseInterceptors } from '@nestjs/common';
-import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
+import { CacheKey, CacheTTL } from '@nestjs/cache-manager';
 
+import { UserCacheInterceptor } from '../../infrastructure/cache/user-cache.interceptor';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { MedicationsService } from './medications.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
@@ -11,7 +12,7 @@ import { UpdateMedicationDto } from './dto/update-medication.dto';
 export class MedicationsController {
   constructor(private readonly medicationsService: MedicationsService) {}
 
-  @UseInterceptors(CacheInterceptor)
+  @UseInterceptors(UserCacheInterceptor)
   @CacheKey('medications:all')
   @CacheTTL(30)
   @Get()
@@ -48,7 +49,7 @@ export class MedicationsController {
     return this.medicationsService.delete(medicationId, userId);
   }
 
-  @UseInterceptors(CacheInterceptor)
+  @UseInterceptors(UserCacheInterceptor)
   @CacheKey('medications:logs')
   @CacheTTL(30)
   @Get(':id/logs')

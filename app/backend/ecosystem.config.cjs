@@ -13,6 +13,8 @@ module.exports = {
       max_memory_restart: '384M',
       min_uptime: '10s',
       max_restarts: 5,
+      // Retraso creciente entre reinicios para no saturar CPU/eMMC en bucle.
+      exp_backoff_restart_delay: 1000,
       kill_timeout: 5000,
       wait_ready: true,
       listen_timeout: 30000,
@@ -29,7 +31,7 @@ module.exports = {
         LOG_FORMAT: 'json',
         LOG_STACKS: 'false',
       },
-      // Rotación agresiva de logs para no saturar los 16 GB de eMMC.
+      // Rotación agresiva de logs para no saturar el almacenamiento eMMC.
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       error_file: './logs/err.log',
       out_file: './logs/out.log',
