@@ -19,15 +19,11 @@ export class AppointmentsService {
 
   async findById(appointmentId: string, userId: string) {
     const appointment = await this.prisma.appointment.findUnique({
-      where: { id: appointmentId },
+      where: { id: appointmentId, userId },
     });
 
     if (!appointment) {
       throw new NotFoundException('Cita no encontrada.');
-    }
-
-    if (appointment.userId !== userId) {
-      throw new ForbiddenException('No tienes acceso a esta cita.');
     }
 
     return appointment;
