@@ -21,15 +21,11 @@ export class MedicationsService {
 
   async findById(medicationId: string, userId: string) {
     const medication = await this.prisma.medication.findUnique({
-      where: { id: medicationId },
+      where: { id: medicationId, userId },
     });
 
     if (!medication) {
       throw new NotFoundException('Medicamento no encontrado.');
-    }
-
-    if (medication.userId !== userId) {
-      throw new ForbiddenException('No tienes acceso a este medicamento.');
     }
 
     return medication;
