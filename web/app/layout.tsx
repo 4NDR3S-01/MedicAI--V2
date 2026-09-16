@@ -1,5 +1,19 @@
 import type { Metadata } from "next";
+import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+  weight: ["500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://medicai.lat"),
@@ -29,18 +43,14 @@ export const metadata: Metadata = {
   },
 };
 
-
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="es"
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="es" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+      <body className="min-h-screen flex flex-col antialiased">{children}</body>
     </html>
   );
 }
