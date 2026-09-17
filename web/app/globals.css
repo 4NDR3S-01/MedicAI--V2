@@ -584,8 +584,13 @@ header {
 }
 
 .module-pill-icon {
-  font-size: 0.875rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: currentColor;
 }
 
 /* Hint text */
@@ -842,6 +847,7 @@ section[id] {
 .split-visual {
   display: grid;
   place-items: center;
+  width: 100%;
 }
 
 .split-visual .phone-frame {
@@ -1125,9 +1131,20 @@ footer {
   transition-delay: 0ms;
 }
 
-/* Phone "video load" effect */
+/* Phone wrapper — sizing + reveal animation */
 .phone-wrapper {
   position: relative;
+  width: 100%;
+  max-width: 320px;
+  margin-inline: auto;
+  opacity: 0;
+  transform: translateY(1.5rem);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+
+.phone-wrapper--in-view {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .phone-shimmer {
@@ -1165,16 +1182,6 @@ footer {
   }
 }
 
-.phone-frame {
-  opacity: 0;
-  transform: scale(0.92) translateY(1rem);
-  transition: opacity 0.5s ease, transform 0.5s ease;
-}
-
-.phone-frame--in-view {
-  opacity: 1;
-  transform: scale(1) translateY(0);
-}
 
 .phone-img {
   opacity: 0;
