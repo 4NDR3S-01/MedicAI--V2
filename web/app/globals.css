@@ -158,49 +158,31 @@ a {
   background: var(--surface-2);
 }
 
-.btn-play-store {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.875rem;
-  padding: 0.75rem 1.5rem;
-  background: var(--text);
-  color: var(--bg);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-sans);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: var(--shadow-soft);
+.btn-sm {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
 }
 
-.btn-play-store:hover {
+.play-badge {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  line-height: 0;
+}
+
+.play-badge:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow);
 }
 
-.play-icon svg {
-  width: 2rem;
-  height: 2rem;
-  display: block;
+.play-badge-img {
+  width: auto;
+  height: 3.25rem;
+  max-width: 100%;
 }
 
-.play-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-  text-align: left;
-}
-
-.play-text span:first-child {
-  font-size: 0.6875rem;
-  font-weight: 500;
-  opacity: 0.8;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.play-text span:last-child {
-  font-size: 1.125rem;
-  font-weight: 700;
-  font-family: var(--font-display);
+@media (min-width: 768px) {
+  .play-badge-img {
+    height: 3.75rem;
+  }
 }
 
 header {
