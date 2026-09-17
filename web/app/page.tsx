@@ -1,36 +1,69 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 
 export default function Home() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <>
       <header>
         <div className="container header-inner">
-          <a href="#" className="logo">
+          <a href="#" className="logo" aria-label="MedicAI inicio">
             Medic<span>AI</span>
           </a>
-          <nav className="nav-links">
+          <nav className="nav-links" aria-label="Navegación principal">
             <a href="#funciones">Funciones</a>
             <a href="#como-funciona">Cómo funciona</a>
             <a href="#app">La app</a>
           </nav>
-          <a
+          <GooglePlayBadge
             href="https://play.google.com/apps/internaltest/4701715038985390223"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-primary btn-sm"
+            className="header-play-badge"
+          />
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav"
+            aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
           >
-            Descargar
-          </a>
+            {menuOpen ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 6h16" />
+                <path d="M4 12h16" />
+                <path d="M4 18h16" />
+              </svg>
+            )}
+          </button>
+          <nav
+            id="mobile-nav"
+            className={`mobile-nav ${menuOpen ? "open" : ""}`}
+            aria-label="Menú móvil"
+          >
+            <a href="#funciones" onClick={() => setMenuOpen(false)}>Funciones</a>
+            <a href="#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</a>
+            <a href="#app" onClick={() => setMenuOpen(false)}>La app</a>
+            <GooglePlayBadge
+              href="https://play.google.com/apps/internaltest/4701715038985390223"
+            />
+          </nav>
         </div>
       </header>
 
       <main className="flex-1">
         <section className="hero">
-          <div className="bubble" style={{ width: 120, height: 120, top: '10%', left: '5%' }} />
-          <div className="bubble" style={{ width: 80, height: 80, top: '40%', right: '8%', animationDelay: '1s' }} />
-          <div className="bubble" style={{ width: 180, height: 180, bottom: '5%', left: '20%', animationDelay: '2s' }} />
-          <div className="bubble" style={{ width: 60, height: 60, top: '20%', right: '25%', animationDelay: '0.5s' }} />
-          <div className="bubble" style={{ width: 140, height: 140, bottom: '15%', right: '35%', animationDelay: '3s' }} />
+          <div className="bubble" style={{ width: 120, height: 120, top: "10%", left: "5%" }} />
+          <div className="bubble" style={{ width: 80, height: 80, top: "40%", right: "8%", animationDelay: "1s" }} />
+          <div className="bubble" style={{ width: 180, height: 180, bottom: "5%", left: "20%", animationDelay: "2s" }} />
+          <div className="bubble" style={{ width: 60, height: 60, top: "20%", right: "25%", animationDelay: "0.5s" }} />
+          <div className="bubble" style={{ width: 140, height: 140, bottom: "15%", right: "35%", animationDelay: "3s" }} />
           <div className="container hero-grid">
             <div className="hero-text">
               <div className="eyebrow">App de salud familiar</div>
@@ -38,8 +71,8 @@ export default function Home() {
                 Tu agenda médica, <em>siempre presente</em>
               </h1>
               <p>
-                MedicAI organiza citas, medicamentos y el cuidado de quienes más quieres. Una sola
-                app para que nada importante se te pase.
+                MedicAI organiza citas, medicamentos y el cuidado de quienes más
+                quieres. Una sola app para que nada importante se te pase.
               </p>
               <div className="hero-actions">
                 <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
@@ -49,8 +82,9 @@ export default function Home() {
               </div>
               <div className="hero-meta">
                 <p>
-                  Diseñada para familias y profesionales de la salud que necesitan una herramienta
-                  confiable, segura y siempre a la mano.
+                  Diseñada para familias y profesionales de la salud que
+                  necesitan una herramienta confiable, segura y siempre a la
+                  mano.
                 </p>
               </div>
             </div>
@@ -68,23 +102,14 @@ export default function Home() {
                 Todo lo que necesitas para cuidar la salud del día a día
               </h2>
               <p>
-                Tres funciones conectadas que reducen la fricción entre el médico, la receta y la
-                familia.
+                Tres funciones conectadas que reducen la fricción entre el médico,
+                la receta y la familia.
               </p>
             </div>
             <div className="feature-grid">
               <article className="feature-card">
                 <div className="icon">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M8 2v4" />
                     <path d="M16 2v4" />
                     <rect width="18" height="18" x="3" y="4" rx="2" />
@@ -97,37 +122,17 @@ export default function Home() {
               </article>
               <article className="feature-card">
                 <div className="icon">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="m18.4 11.5-5.7-5.7a1.93 1.93 0 0 0-2.8 0L4 11.8V20h5.5v-6h5v6H20v-8.4Z" />
                     <path d="M10 22V12h4v10" />
                   </svg>
                 </div>
                 <h3>Medicamentos</h3>
-                <p>
-                  Horarios, dosis y duración del tratamiento, con alertas en el momento exacto.
-                </p>
+                <p>Horarios, dosis y duración del tratamiento, con alertas en el momento exacto.</p>
               </article>
               <article className="feature-card">
                 <div className="icon">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                     <circle cx="9" cy="7" r="4" />
                     <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
@@ -176,9 +181,7 @@ export default function Home() {
                 </div>
                 <div className="step-content">
                   <h3>Recibe alertas</h3>
-                  <p>
-                    Notificaciones oportunas para ti y avisos automáticos a tu círculo de cuidado.
-                  </p>
+                  <p>Notificaciones oportunas para ti y avisos automáticos a tu círculo de cuidado.</p>
                 </div>
               </article>
             </div>
@@ -191,8 +194,8 @@ export default function Home() {
               <div className="eyebrow">Dentro de la app</div>
               <h2 className="font-display">Una interfaz pensada para la calma, no para la urgencia</h2>
               <p>
-                Cuando la salud es el tema, el diseño debe reducir la ansiedad. MedicAI usa
-                jerarquía clara, colores tranquilos y gestos simples.
+                Cuando la salud es el tema, el diseño debe reducir la ansiedad. MedicAI
+                usa jerarquía clara, colores tranquilos y gestos simples.
               </p>
               <ul className="check-list">
                 <li>Dashboard con próximas citas y medicamentos del día</li>
@@ -212,8 +215,8 @@ export default function Home() {
             <div className="cta-card">
               <h2 className="font-display">Empieza a cuidar lo importante hoy</h2>
               <p>
-                Descarga MedicAI y deja que la tecnología te ayude a nunca perder de vista la salud
-                de tu familia.
+                Descarga MedicAI y deja que la tecnología te ayude a nunca perder de
+                vista la salud de tu familia.
               </p>
               <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
             </div>
@@ -223,9 +226,9 @@ export default function Home() {
 
       <footer>
         <div className="container footer-inner">
-          <span className="logo">
+          <a href="#" className="logo" aria-label="MedicAI inicio">
             Medic<span>AI</span>
-          </span>
+          </a>
           <span>© 2026 MedicAI. Todos los derechos reservados.</span>
         </div>
       </footer>
@@ -238,14 +241,7 @@ function PhoneScreenshot({ src, alt }: { src: string; alt: string }) {
     <div className="phone-frame">
       <div className="phone-notch" />
       <div className="phone-screen">
-        <Image
-          src={src}
-          alt={alt}
-          fill
-          className="object-cover"
-          sizes="(max-width: 768px) 90vw, 320px"
-          priority
-        />
+        <Image src={src} alt={alt} fill className="object-cover" sizes="(max-width: 768px) 90vw, 320px" priority />
       </div>
     </div>
   );
@@ -254,24 +250,18 @@ function PhoneScreenshot({ src, alt }: { src: string; alt: string }) {
 function MiniScreenshot({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="mini-phone">
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        className="object-cover"
-        sizes="(max-width: 768px) 90vw, 280px"
-      />
+      <Image src={src} alt={alt} fill className="object-cover" sizes="(max-width: 768px) 90vw, 280px" />
     </div>
   );
 }
 
-function GooglePlayBadge({ href }: { href: string }) {
+function GooglePlayBadge({ href, className = "" }: { href: string; className?: string }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="play-badge"
+      className={`play-badge ${className}`}
       aria-label="Disponible en Google Play"
     >
       <Image
