@@ -13,9 +13,30 @@ const MODULES = [
   { label: "Perfil",       icon: "⚙️", src: "/screenshots/perfil.jpeg",       glow: "rgba(52, 211, 153, 0.35)" },
 ];
 
+// ─── Section reveal hook ─────────────────────────────────────────────────────
+function useSectionReveal() {
+  useEffect(() => {
+    const els = document.querySelectorAll<HTMLElement>("[data-section-reveal]");
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("section-reveal--visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.08 }
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
+  useSectionReveal();
 
   return (
     <>
@@ -68,7 +89,7 @@ export default function Home() {
 
       <main className="flex-1">
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
-        <section className="hero" id="inicio" data-section-reveal>
+        <section className="hero" id="inicio">
           <div className="bubble" style={{ width: 120, height: 120, top: "10%", left: "5%" }} />
           <div className="bubble" style={{ width: 80, height: 80, top: "40%", right: "8%", animationDelay: "1s" }} />
           <div className="bubble" style={{ width: 180, height: 180, bottom: "5%", left: "20%", animationDelay: "2s" }} />
