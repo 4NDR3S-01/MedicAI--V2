@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { Home as HomeIcon, Pill, Users, CalendarCheck, User, Menu, X } from "lucide-react";
+import { Home as HomeIcon, Pill, Users, CalendarCheck, User, Menu, X, ShieldCheck, Lock, ChevronDown, Mail } from "lucide-react";
 import { useInView } from "./hooks/useInView";
 
 // ─── Module data ─────────────────────────────────────────────────────────────
@@ -217,6 +217,46 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ── SECURITY BANNER ────────────────────────────────────────────────── */}
+        <section className="security-banner" data-section-reveal>
+          <div className="container">
+            <RevealItem>
+              <div className="security-banner-inner">
+                <ShieldCheck size={32} strokeWidth={1.5} className="security-icon" />
+                <div>
+                  <h3>Tu salud, tus datos, tu privacidad</h3>
+                  <p>Toda la información médica está encriptada y solo es visible para ti y tu círculo familiar autorizado. No compartimos tus datos con terceros.</p>
+                </div>
+                <Lock size={32} strokeWidth={1.5} className="security-icon security-icon--lock" />
+              </div>
+            </RevealItem>
+          </div>
+        </section>
+
+        {/* ── FAQ ───────────────────────────────────────────────────────────── */}
+        <section id="faq" data-section-reveal style={{ background: "var(--surface)" }}>
+          <div className="container faq-container">
+            <div className="section-header">
+              <div className="eyebrow">Dudas comunes</div>
+              <h2 className="font-display">Preguntas Frecuentes</h2>
+            </div>
+            <div className="faq-list">
+              <FAQItem 
+                q="¿Es gratuita la aplicación?" 
+                a="Sí, MedicAI ofrece un plan gratuito que incluye recordatorios de medicamentos y citas para un paciente. Contamos con un plan premium para círculos familiares amplios." 
+              />
+              <FAQItem 
+                q="¿Cómo funciona el círculo familiar?" 
+                a="Puedes invitar a familiares a tu círculo. Ellos recibirán una notificación (si la configuras) en caso de que olvides marcar una pastilla como 'tomada', asegurando que alguien siempre esté pendiente." 
+              />
+              <FAQItem 
+                q="¿Están seguros mis datos médicos?" 
+                a="Totalmente. Utilizamos estándares de seguridad de nivel bancario (AES-256) para encriptar tu información médica tanto en reposo como en tránsito." 
+              />
+            </div>
+          </div>
+        </section>
+
         {/* ── CTA ──────────────────────────────────────────────────────────── */}
         <section className="cta-section" id="descargar" data-section-reveal>
           <div className="container">
@@ -236,10 +276,28 @@ export default function Home() {
 
       <footer>
         <div className="container footer-inner">
-          <a href="#" className="logo" aria-label="MedicAI inicio">
-            Medic<span>AI</span>
-          </a>
-          <span>© 2026 MedicAI. Todos los derechos reservados.</span>
+          <div className="footer-top">
+            <div className="footer-brand">
+              <a href="#" className="logo" aria-label="MedicAI inicio">
+                Medic<span>AI</span>
+              </a>
+              <p>El organizador médico diseñado para la tranquilidad familiar.</p>
+            </div>
+            <div className="footer-links">
+              <h4>Compañía</h4>
+              <a href="#">Términos y Condiciones</a>
+              <a href="#">Política de Privacidad</a>
+            </div>
+            <div className="footer-links">
+              <h4>Soporte</h4>
+              <a href="mailto:soporte@medicai.lat" className="flex items-center gap-2">
+                <Mail size={16} /> soporte@medicai.lat
+              </a>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <span>© {new Date().getFullYear()} MedicAI. Todos los derechos reservados.</span>
+          </div>
         </div>
       </footer>
     </>
@@ -545,6 +603,45 @@ function StepCard({ number, src, alt, title, description }: { number: number; sr
         <p>{description}</p>
       </div>
     </article>
+  );
+}
+
+// ─── FAQ Item (Accordion) ───────────────────────────────────────────────────
+function FAQItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  const [height, setHeight] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (open && contentRef.current) {
+      setHeight(contentRef.current.scrollHeight);
+    } else {
+      setHeight(0);
+    }
+  }, [open]);
+
+  return (
+    <div className={`faq-item ${open ? "faq-item--open" : ""}`}>
+      <button 
+        className="faq-question" 
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span>{q}</span>
+        <ChevronDown size={20} className={`faq-icon ${open ? "faq-icon--open" : ""}`} />
+      </button>
+      <div 
+        className="faq-answer-wrapper"
+        style={{ 
+          maxHeight: `${height}px`,
+          opacity: open ? 1 : 0
+        }}
+      >
+        <div className="faq-answer" ref={contentRef}>
+          <p>{a}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
