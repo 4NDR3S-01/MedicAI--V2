@@ -455,8 +455,8 @@ header {
 }
 
 @keyframes float-showcase {
-  0%, 100% { margin-top: 0; }
-  50%       { margin-top: -10px; }
+  0%, 100% { transform: perspective(1100px) rotateY(-12deg) rotateX(4deg) translateY(0); }
+  50%       { transform: perspective(1100px) rotateY(-12deg) rotateX(4deg) translateY(-10px); }
 }
 
 /* Glass reflection highlight */
@@ -1270,4 +1270,22 @@ footer {
 
 .phone-frame {
   position: relative;
+}
+
+/* --- Mobile Performance Optimizations --- */
+@media (max-width: 768px) {
+  .bubble {
+    display: none; /* Bubbles with blur/backdrop-filter are very heavy on Android */
+  }
+  .showcase-glow {
+    filter: blur(20px); /* Reduce blur radius significantly for mobile GPU */
+    animation: none; /* Disable pulse animation on mobile */
+  }
+  .showcase-phone {
+    transform-style: flat; /* Avoid preserve-3d overhead on mobile */
+    animation: none;
+  }
+  .showcase-wrapper {
+    perspective: none;
+  }
 }
