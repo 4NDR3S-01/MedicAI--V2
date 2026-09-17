@@ -296,13 +296,15 @@ header {
 .hero-meta {
   margin-top: 3rem;
   max-width: 28rem;
-  padding: 1rem 1.25rem;
-  border-left: 3px solid var(--accent);
+  padding: 1.25rem 1.5rem;
   background: var(--surface-glass);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   font-size: 0.9375rem;
   color: var(--text-muted);
   line-height: 1.6;
+  text-align: center;
 }
 
 .phone-frame {
