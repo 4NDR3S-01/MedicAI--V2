@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default function Home() {
   return (
     <>
@@ -50,7 +52,7 @@ export default function Home() {
               </div>
             </div>
             <div className="hero-visual">
-              <PhonePlaceholder label="/web/public/screenshots/Inicio.jpeg" />
+              <PhoneScreenshot src="/screenshots/Inicio.jpeg" alt="Pantalla de inicio de MedicAI" />
             </div>
           </div>
         </section>
@@ -147,7 +149,7 @@ export default function Home() {
               <article className="step">
                 <span className="step-number">1</span>
                 <div className="mini-phone">
-                  <MiniPlaceholder label="/web/public/screenshots/registro.jpeg" />
+                  <MiniScreenshot src="/screenshots/registro.jpeg" alt="Registro en MedicAI" />
                 </div>
                 <div className="step-content">
                   <h3>Crea tu perfil</h3>
@@ -157,7 +159,7 @@ export default function Home() {
               <article className="step">
                 <span className="step-number">2</span>
                 <div className="mini-phone">
-                  <MiniPlaceholder label="/web/public/screenshots/Medicamentos.jpeg" />
+                  <MiniScreenshot src="/screenshots/Medicamentos.jpeg" alt="Recordatorios de medicamentos en MedicAI" />
                 </div>
                 <div className="step-content">
                   <h3>Agrega recordatorios</h3>
@@ -167,7 +169,7 @@ export default function Home() {
               <article className="step">
                 <span className="step-number">3</span>
                 <div className="mini-phone">
-                  <MiniPlaceholder label="/web/public/screenshots/perfil.jpeg" />
+                  <MiniScreenshot src="/screenshots/perfil.jpeg" alt="Perfil y círculo familiar en MedicAI" />
                 </div>
                 <div className="step-content">
                   <h3>Recibe alertas</h3>
@@ -197,7 +199,7 @@ export default function Home() {
               </ul>
             </div>
             <div className="split-visual">
-              <PhonePlaceholder label="/web/public/screenshots/Inicio.jpeg" />
+              <PhoneScreenshot src="/screenshots/Inicio.jpeg" alt="Dashboard de MedicAI" />
             </div>
           </div>
         </section>
@@ -230,42 +232,34 @@ export default function Home() {
   );
 }
 
-function PhonePlaceholder({ label }: { label: string }) {
+function PhoneScreenshot({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="phone-frame">
       <div className="phone-notch" />
       <div className="phone-screen">
-        <div className="placeholder">
-          <ImageIcon />
-          <p>{label}</p>
-        </div>
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          className="object-cover"
+          sizes="(max-width: 768px) 90vw, 320px"
+          priority
+        />
       </div>
     </div>
   );
 }
 
-function MiniPlaceholder({ label }: { label: string }) {
+function MiniScreenshot({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="placeholder">
-      <ImageIcon />
-      <p>{label}</p>
+    <div className="mini-phone">
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        className="object-cover"
+        sizes="(max-width: 768px) 90vw, 280px"
+      />
     </div>
-  );
-}
-
-function ImageIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <polyline points="21 15 16 10 5 21" />
-    </svg>
   );
 }
