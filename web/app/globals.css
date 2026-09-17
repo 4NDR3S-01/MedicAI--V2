@@ -234,6 +234,71 @@ header {
   .nav-links {
     display: flex;
   }
+
+  .header-play-badge {
+    display: inline-flex;
+  }
+}
+
+.mobile-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.mobile-menu-btn:hover {
+  background: var(--surface-2);
+}
+
+@media (min-width: 768px) {
+  .mobile-menu-btn {
+    display: none;
+  }
+}
+
+.mobile-nav {
+  display: none;
+  position: absolute;
+  top: 4rem;
+  left: 0;
+  right: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 50;
+}
+
+.mobile-nav.open {
+  display: flex;
+}
+
+.mobile-nav a {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mobile-nav a:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.mobile-nav .play-badge {
+  margin-top: 0.5rem;
+  align-self: flex-start;
 }
 
 .hero {
@@ -268,6 +333,10 @@ header {
     grid-template-columns: 1.1fr 0.9fr;
     gap: 4rem;
   }
+}
+
+.hero-visual {
+  position: relative;
 }
 
 .hero h1 {
@@ -396,6 +465,10 @@ header {
 
 section {
   padding-block: 5rem;
+}
+
+section[id] {
+  scroll-margin-top: 5rem;
 }
 
 .section-header {
