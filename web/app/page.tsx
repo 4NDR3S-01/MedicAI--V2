@@ -13,7 +13,14 @@ export default function Home() {
             <a href="#como-funciona">Cómo funciona</a>
             <a href="#app">La app</a>
           </nav>
-          <GooglePlayButton href="https://play.google.com/apps/internaltest/4701715038985390223" />
+          <a
+            href="https://play.google.com/apps/internaltest/4701715038985390223"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary btn-sm"
+          >
+            Descargar
+          </a>
         </div>
       </header>
 
@@ -30,7 +37,7 @@ export default function Home() {
                 app para que nada importante se te pase.
               </p>
               <div className="hero-actions">
-                <GooglePlayButton href="https://play.google.com/apps/internaltest/4701715038985390223" />
+                <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
                 <a href="#como-funciona" className="btn btn-ghost">
                   Ver cómo funciona
                 </a>
@@ -203,7 +210,7 @@ export default function Home() {
                 Descarga MedicAI y deja que la tecnología te ayude a nunca perder de vista la salud
                 de tu familia.
               </p>
-              <GooglePlayButton href="https://play.google.com/apps/internaltest/4701715038985390223" />
+              <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
             </div>
           </div>
         </section>
@@ -253,27 +260,22 @@ function MiniScreenshot({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-function GooglePlayButton({ href }: { href: string }) {
+function GooglePlayBadge({ href }: { href: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="btn-play-store">
-      <span className="play-icon">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M3 20.5V3.5C3 2.91 3.34 2.39 3.84 2.15L13.69 12L3.84 21.85C3.34 21.6 3 21.09 3 20.5Z"
-            fill="#EA4335"
-          />
-          <path d="M16.81 15.12L6.94 21.82L15.71 13.05L16.81 15.12Z" fill="#FBBC05" />
-          <path d="M16.81 8.88L15.71 10.95L6.94 2.18L16.81 8.88Z" fill="#34A853" />
-          <path
-            d="M21.05 10.13C21.64 10.46 22 11.08 22 11.76C22 12.44 21.64 13.06 21.05 13.39L18.21 15.03L16.81 12.63L15.41 10.23L18.21 8.97L21.05 10.13Z"
-            fill="#4285F4"
-          />
-        </svg>
-      </span>
-      <span className="play-text">
-        <span>Disponible en</span>
-        <span>Google Play</span>
-      </span>
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="play-badge"
+      aria-label="Disponible en Google Play"
+    >
+      <Image
+        src="/images/google-play-badge.png"
+        alt="Disponible en Google Play"
+        width={161}
+        height={62}
+        className="play-badge-img"
+      />
     </a>
   );
 }
