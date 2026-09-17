@@ -883,3 +883,178 @@ footer {
     animation: none;
   }
 }
+
+/* Scroll reveal */
+[data-section-reveal],
+.reveal-item {
+  opacity: 0;
+  transform: translateY(2rem);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+[data-section-reveal].section-reveal--visible,
+.reveal-item.reveal-item--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-item {
+  transition-delay: 0ms;
+}
+
+/* Phone "video load" effect */
+.phone-wrapper {
+  position: relative;
+}
+
+.phone-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+}
+
+.phone-shimmer-bar {
+  width: 40%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+  position: relative;
+}
+
+.phone-shimmer-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  animation: shimmer-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.phone-frame {
+  opacity: 0;
+  transform: scale(0.92) translateY(1rem);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.phone-frame--in-view {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.phone-img {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.phone-img--loaded {
+  opacity: 1;
+}
+
+.mini-phone {
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.mini-phone--in-view {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Hero phone intensity on scroll */
+.hero-visual {
+  transition: transform 0.3s ease;
+}
+
+.hero-visual--focused {
+  transform: scale(1.02);
+}
+
+.hero-visual--focused .phone-frame {
+  animation: float 6s ease-in-out infinite, hero-focus 0.5s ease forwards;
+}
+
+@keyframes hero-focus {
+  0% {
+    filter: brightness(0.95);
+  }
+  100% {
+    filter: brightness(1.1);
+  }
+}
+
+/* Hover modules */
+.modules-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.module-chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--surface-glass);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  opacity: 0;
+  transform: scale(0.8) translateY(0.5rem);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: auto;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+.module-chip-icon {
+  font-size: 0.875rem;
+}
+
+.modules-overlay--visible .module-chip {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.modules-overlay--visible .module-chip:nth-child(1) { transition-delay: 0ms; }
+.modules-overlay--visible .module-chip:nth-child(2) { transition-delay: 60ms; }
+.modules-overlay--visible .module-chip:nth-child(3) { transition-delay: 120ms; }
+.modules-overlay--visible .module-chip:nth-child(4) { transition-delay: 180ms; }
+
+.phone-hover-ring {
+  position: absolute;
+  inset: -8px;
+  border: 2px solid var(--accent);
+  border-radius: 2.75rem;
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+  box-shadow: 0 0 30px var(--accent-glow);
+}
+
+.phone-hover-ring--visible {
+  opacity: 0.5;
+  transform: scale(1);
+}
+
+.phone-frame {
+  position: relative;
+}
