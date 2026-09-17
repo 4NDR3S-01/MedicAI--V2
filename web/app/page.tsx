@@ -2,15 +2,16 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
+import { Home as HomeIcon, Pill, Users, CalendarCheck, User, Menu, X } from "lucide-react";
 import { useInView } from "./hooks/useInView";
 
 // ─── Module data ─────────────────────────────────────────────────────────────
 const MODULES = [
-  { label: "Inicio",       Icon: IconHome,    src: "/screenshots/Inicio.jpeg",       glow: "rgba(45, 212, 191, 0.35)"  },
-  { label: "Medicamentos", Icon: IconPill,    src: "/screenshots/Medicamentos.jpeg", glow: "rgba(167, 139, 250, 0.35)" },
-  { label: "Círculo",      Icon: IconUsers,   src: "/screenshots/circulo.jpeg",      glow: "rgba(251, 146, 60, 0.35)"  },
-  { label: "Citas",        Icon: IconCalendar,src: "/screenshots/citas.jpeg",        glow: "rgba(96, 165, 250, 0.35)"  },
-  { label: "Perfil",       Icon: IconUser,    src: "/screenshots/perfil.jpeg",       glow: "rgba(52, 211, 153, 0.35)"  },
+  { label: "Inicio",       Icon: HomeIcon,      src: "/screenshots/Inicio.jpeg",       glow: "rgba(45, 212, 191, 0.35)"  },
+  { label: "Medicamentos", Icon: Pill,          src: "/screenshots/Medicamentos.jpeg", glow: "rgba(167, 139, 250, 0.35)" },
+  { label: "Círculo",      Icon: Users,         src: "/screenshots/circulo.jpeg",      glow: "rgba(251, 146, 60, 0.35)"  },
+  { label: "Citas",        Icon: CalendarCheck, src: "/screenshots/citas.jpeg",        glow: "rgba(96, 165, 250, 0.35)"  },
+  { label: "Perfil",       Icon: User,          src: "/screenshots/perfil.jpeg",       glow: "rgba(52, 211, 153, 0.35)"  },
 ];
 
 // ─── Section reveal hook ─────────────────────────────────────────────────────
@@ -61,18 +62,7 @@ export default function Home() {
             aria-controls="mobile-nav"
             aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
           >
-            {menuOpen ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6h16" />
-                <path d="M4 12h16" />
-                <path d="M4 18h16" />
-              </svg>
-            )}
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
           <nav
             id="mobile-nav"
@@ -138,24 +128,24 @@ export default function Home() {
                 la receta y la familia.
               </p>
             </div>
-            <div className="feature-grid">
+          <div className="feature-grid">
               <RevealItem delay={0}>
                 <FeatureCard
-                  icon={<CalendarIcon />}
+                  icon={<CalendarCheck size={20} />}
                   title="Citas médicas"
                   description="Agrega próximas consultas y recibe recordatorios antes de que llegue el día."
                 />
               </RevealItem>
               <RevealItem delay={100}>
                 <FeatureCard
-                  icon={<PillIcon />}
+                  icon={<Pill size={20} />}
                   title="Medicamentos"
                   description="Horarios, dosis y duración del tratamiento, con alertas en el momento exacto."
                 />
               </RevealItem>
               <RevealItem delay={200}>
                 <FeatureCard
-                  icon={<UsersIcon />}
+                  icon={<Users size={20} />}
                   title="Círculo familiar"
                   description="Coordina el cuidado entre familiares para que nadie esté solo en su tratamiento."
                 />
@@ -260,6 +250,8 @@ export default function Home() {
 function InteractivePhoneShowcase() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const frameRef   = useRef<HTMLDivElement>(null);
+  const dimRef     = useRef<HTMLDivElement>(null);
+  const flashRef   = useRef<HTMLDivElement>(null);
 
   // Which module is active
   const [activeIdx, setActiveIdx]   = useState(0);
@@ -268,10 +260,6 @@ function InteractivePhoneShowcase() {
 
   // Hover state
   const [hovered, setHovered]   = useState(false);
-  const [mouseXY, setMouseXY]   = useState({ x: 0, y: 0 });
-
-  // Scroll-driven screen dim
-  const [screenBrightness, setScreenBrightness] = useState(1);
 
   // Auto-cycle modules every 3 s when not hovered
   useEffect(() => {
@@ -282,45 +270,85 @@ function InteractivePhoneShowcase() {
     return () => clearInterval(id);
   }, [hovered]);
 
-  // Scroll dim effect
+  // Scroll dim effect (optimized with rAF)
   useEffect(() => {
-    const onScroll = () => {
+    let ticking = false;
+    let prevBrightness = 1;
+    let flashTimeout: NodeJS.Timeout;
+
+    const updateScroll = () => {
       const el = wrapperRef.current;
-      if (!el) return;
+      const dimEl = dimRef.current;
+      const flashEl = flashRef.current;
+      
+      if (!el || !dimEl) {
+        ticking = false;
+        return;
+      }
+      
       const rect = el.getBoundingClientRect();
       const vh   = window.innerHeight;
       // Goes dark as the phone scrolls away (bottom leaves view)
       const raw  = rect.bottom / vh;           // 1 = still fully visible, 0 = gone
       const brightness = Math.min(1, Math.max(0.08, raw * 1.1));
-      setScreenBrightness(brightness);
+      
+      // Update DOM directly to avoid re-renders
+      dimEl.style.opacity = (1 - brightness).toString();
+
+      // Screen wake flash logic
+      if (prevBrightness < 0.5 && brightness >= 0.5 && flashEl) {
+        flashEl.classList.add("screen-wake-flash--on");
+        clearTimeout(flashTimeout);
+        flashTimeout = setTimeout(() => {
+          if (flashEl) flashEl.classList.remove("screen-wake-flash--on");
+        }, 350);
+      }
+      prevBrightness = brightness;
+      ticking = false;
     };
+
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(updateScroll);
+        ticking = true;
+      }
+    };
+    
     window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    updateScroll();
+    
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      clearTimeout(flashTimeout);
+    };
   }, []);
 
-  // Mouse parallax
+  // Mouse parallax (optimized by directly updating transform)
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!frameRef.current || !wrapperRef.current) return;
+    
+    const rect = wrapperRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width  / 2;
     const cy = rect.top  + rect.height / 2;
     const x  = (e.clientX - cx) / (rect.width  / 2);   // -1 … 1
     const y  = (e.clientY - cy) / (rect.height / 2);
-    setMouseXY({ x, y });
+    
+    const rotateY = x * 8;
+    const rotateX = -y * 6;
+    const scale   = 1.06;
+    
+    frameRef.current.style.transform = `perspective(1100px) rotateY(${rotateY}deg) rotateX(${rotateX}deg) scale(${scale})`;
   }, []);
 
+  const onMouseEnter = () => setHovered(true);
+  
   const onMouseLeave = () => {
     setHovered(false);
-    setMouseXY({ x: 0, y: 0 });
+    if (frameRef.current) {
+      // Revert to CSS default animation transform
+      frameRef.current.style.transform = '';
+    }
   };
-
-  // 3-D transform string
-  const rotateY = hovered ? mouseXY.x * 8   : -12;
-  const rotateX = hovered ? -mouseXY.y * 6  : 4;
-  const scale   = hovered ? 1.06 : 1;
-  const transform3d = `perspective(1100px) rotateY(${rotateY}deg) rotateX(${rotateX}deg) scale(${scale})`;
-
   // Glow color
   const glowColor = MODULES[activeIdx].glow;
 
@@ -340,7 +368,7 @@ function InteractivePhoneShowcase() {
     <div
       className="hero-visual showcase-wrapper"
       ref={wrapperRef}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={onMouseEnter}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
       aria-label="Vista previa interactiva de MedicAI"
@@ -355,7 +383,6 @@ function InteractivePhoneShowcase() {
       <div
         ref={frameRef}
         className="showcase-phone"
-        style={{ transform: transform3d }}
       >
         {/* Glass reflection layer */}
         <div className="showcase-glass-reflect" />
@@ -368,7 +395,8 @@ function InteractivePhoneShowcase() {
           {/* Screen-off overlay */}
           <div
             className="showcase-dim"
-            style={{ opacity: 1 - screenBrightness }}
+            ref={dimRef}
+            style={{ opacity: 0 }}
           />
 
           {/* Slides */}
@@ -394,8 +422,8 @@ function InteractivePhoneShowcase() {
             </div>
           ))}
 
-          {/* Screen-wake flash when brightness goes from low → high */}
-          <ScreenWakeFlash brightness={screenBrightness} />
+          {/* Screen-wake flash */}
+          <div ref={flashRef} className="screen-wake-flash" />
         </div>
       </div>
 
@@ -425,22 +453,6 @@ function InteractivePhoneShowcase() {
   );
 }
 
-/** Flashes the screen white briefly when it "wakes up" (brightness crosses 0.5 going up) */
-function ScreenWakeFlash({ brightness }: { brightness: number }) {
-  const prev = useRef(brightness);
-  const [flashing, setFlashing] = useState(false);
-
-  useEffect(() => {
-    if (prev.current < 0.5 && brightness >= 0.5) {
-      setFlashing(true);
-      const id = setTimeout(() => setFlashing(false), 350);
-      return () => clearTimeout(id);
-    }
-    prev.current = brightness;
-  }, [brightness]);
-
-  return <div className={`screen-wake-flash ${flashing ? "screen-wake-flash--on" : ""}`} />;
-}
 
 // ─── Reveal wrapper ───────────────────────────────────────────────────────────
 function RevealItem({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
@@ -536,85 +548,4 @@ function StepCard({ number, src, alt, title, description }: { number: number; sr
   );
 }
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
 
-// Module nav icons (16×16, used in pills)
-function IconHome() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
-      <polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-  );
-}
-
-function IconPill() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z" />
-      <path d="M8.5 8.5 16 16" />
-    </svg>
-  );
-}
-
-function IconUsers() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
-
-function IconCalendar() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M8 2v4" /><path d="M16 2v4" />
-      <rect width="18" height="18" x="3" y="4" rx="2" />
-      <path d="M3 10h18" />
-      <path d="m9 16 2 2 4-4" />
-    </svg>
-  );
-}
-
-function IconUser() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M20 21a8 8 0 1 0-16 0" />
-    </svg>
-  );
-}
-
-// Feature section icons (20×20)
-function CalendarIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 2v4" /><path d="M16 2v4" />
-      <rect width="18" height="18" x="3" y="4" rx="2" />
-      <path d="M3 10h18" /><path d="m9 16 2 2 4-4" />
-    </svg>
-  );
-}
-
-function PillIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z" />
-      <path d="M8.5 8.5 16 16" />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
