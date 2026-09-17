@@ -1,33 +1,21 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useInView } from "./hooks/useInView";
 
+// ─── Module data ─────────────────────────────────────────────────────────────
 const MODULES = [
-  { label: "Citas", icon: "📅", top: "-15%", left: "-20%" },
-  { label: "Medicamentos", icon: "💊", top: "5%", right: "-25%" },
-  { label: "Familiar", icon: "👥", bottom: "10%", left: "-18%" },
-  { label: "Perfil", icon: "⚙️", bottom: "-12%", right: "-15%" },
+  { label: "Inicio",       icon: "🏠", src: "/screenshots/Inicio.jpeg",       glow: "rgba(45, 212, 191, 0.35)" },
+  { label: "Citas",        icon: "📅", src: "/screenshots/citas.jpeg",        glow: "rgba(96, 165, 250, 0.35)" },
+  { label: "Medicamentos", icon: "💊", src: "/screenshots/Medicamentos.jpeg", glow: "rgba(167, 139, 250, 0.35)" },
+  { label: "Círculo",      icon: "👥", src: "/screenshots/circulo.jpeg",      glow: "rgba(251, 146, 60, 0.35)"  },
+  { label: "Perfil",       icon: "⚙️", src: "/screenshots/perfil.jpeg",       glow: "rgba(52, 211, 153, 0.35)" },
 ];
 
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const heroPhoneRef = useRef<HTMLDivElement>(null);
-  const [heroPhoneFocused, setHeroPhoneFocused] = useState(false);
-
-  useEffect(() => {
-    const el = heroPhoneRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const rect = el.getBoundingClientRect();
-      const heroHeight = window.innerHeight;
-      setHeroPhoneFocused(rect.top < heroHeight * 0.8 && rect.bottom > 0);
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   return (
     <>
@@ -73,20 +61,20 @@ export default function Home() {
             <a href="#funciones" onClick={() => setMenuOpen(false)}>Funciones</a>
             <a href="#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</a>
             <a href="#app" onClick={() => setMenuOpen(false)}>La app</a>
-            <GooglePlayBadge
-              href="https://play.google.com/apps/internaltest/4701715038985390223"
-            />
+            <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
           </nav>
         </div>
       </header>
 
       <main className="flex-1">
+        {/* ── HERO ─────────────────────────────────────────────────────────── */}
         <section className="hero" id="inicio" data-section-reveal>
           <div className="bubble" style={{ width: 120, height: 120, top: "10%", left: "5%" }} />
           <div className="bubble" style={{ width: 80, height: 80, top: "40%", right: "8%", animationDelay: "1s" }} />
           <div className="bubble" style={{ width: 180, height: 180, bottom: "5%", left: "20%", animationDelay: "2s" }} />
           <div className="bubble" style={{ width: 60, height: 60, top: "20%", right: "25%", animationDelay: "0.5s" }} />
           <div className="bubble" style={{ width: 140, height: 140, bottom: "15%", right: "35%", animationDelay: "3s" }} />
+
           <div className="container hero-grid">
             <div className="hero-text">
               <div className="eyebrow">App de salud familiar</div>
@@ -106,18 +94,17 @@ export default function Home() {
               <div className="hero-meta">
                 <p>
                   Diseñada para familias y profesionales de la salud que
-                  necesitan una herramienta confiable, segura y siempre a la
-                  mano.
+                  necesitan una herramienta confiable, segura y siempre a la mano.
                 </p>
               </div>
             </div>
-            <div className={`hero-visual ${heroPhoneFocused ? "hero-visual--focused" : ""}`} ref={heroPhoneRef}>
-              <PhoneScreenshot src="/screenshots/Inicio.jpeg" alt="Pantalla de inicio de MedicAI" />
-              <HoverModules />
-            </div>
+
+            {/* ── Interactive phone showcase ──────────────────────────────── */}
+            <InteractivePhoneShowcase />
           </div>
         </section>
 
+        {/* ── FEATURES ─────────────────────────────────────────────────────── */}
         <section id="funciones" data-section-reveal>
           <div className="container">
             <div className="section-header">
@@ -156,6 +143,7 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
         <section id="como-funciona" style={{ background: "var(--surface)" }} data-section-reveal>
           <div className="container">
             <div className="section-header">
@@ -195,6 +183,7 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ── APP SECTION ──────────────────────────────────────────────────── */}
         <section id="app" data-section-reveal>
           <div className="container split">
             <div className="split-text">
@@ -213,11 +202,11 @@ export default function Home() {
             </div>
             <div className="split-visual">
               <PhoneScreenshot src="/screenshots/Inicio.jpeg" alt="Dashboard de MedicAI" />
-              <HoverModules />
             </div>
           </div>
         </section>
 
+        {/* ── CTA ──────────────────────────────────────────────────────────── */}
         <section className="cta-section" id="descargar" data-section-reveal>
           <div className="container">
             <RevealItem>
@@ -246,13 +235,194 @@ export default function Home() {
   );
 }
 
-function RevealItem({
-  children,
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  delay?: number;
-}) {
+// ─── Interactive Phone Showcase (Hero) ───────────────────────────────────────
+function InteractivePhoneShowcase() {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const frameRef   = useRef<HTMLDivElement>(null);
+
+  // Which module is active
+  const [activeIdx, setActiveIdx]   = useState(0);
+  const [prevIdx, setPrevIdx]       = useState<number | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+
+  // Hover state
+  const [hovered, setHovered]   = useState(false);
+  const [mouseXY, setMouseXY]   = useState({ x: 0, y: 0 });
+
+  // Scroll-driven screen dim
+  const [screenBrightness, setScreenBrightness] = useState(1);
+
+  // Auto-cycle modules every 3 s when not hovered
+  useEffect(() => {
+    if (hovered) return;
+    const id = setInterval(() => {
+      setActiveIdx(i => (i + 1) % MODULES.length);
+    }, 3000);
+    return () => clearInterval(id);
+  }, [hovered]);
+
+  // Scroll dim effect
+  useEffect(() => {
+    const onScroll = () => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const vh   = window.innerHeight;
+      // Goes dark as the phone scrolls away (bottom leaves view)
+      const raw  = rect.bottom / vh;           // 1 = still fully visible, 0 = gone
+      const brightness = Math.min(1, Math.max(0.08, raw * 1.1));
+      setScreenBrightness(brightness);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Mouse parallax
+  const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cx = rect.left + rect.width  / 2;
+    const cy = rect.top  + rect.height / 2;
+    const x  = (e.clientX - cx) / (rect.width  / 2);   // -1 … 1
+    const y  = (e.clientY - cy) / (rect.height / 2);
+    setMouseXY({ x, y });
+  }, []);
+
+  const onMouseLeave = () => {
+    setHovered(false);
+    setMouseXY({ x: 0, y: 0 });
+  };
+
+  // 3-D transform string
+  const rotateY = hovered ? mouseXY.x * 8   : -12;
+  const rotateX = hovered ? -mouseXY.y * 6  : 4;
+  const scale   = hovered ? 1.06 : 1;
+  const transform3d = `perspective(1100px) rotateY(${rotateY}deg) rotateX(${rotateX}deg) scale(${scale})`;
+
+  // Glow color
+  const glowColor = MODULES[activeIdx].glow;
+
+  // Module switch with fade transition
+  const switchModule = (idx: number) => {
+    if (idx === activeIdx || transitioning) return;
+    setPrevIdx(activeIdx);
+    setTransitioning(true);
+    setTimeout(() => {
+      setActiveIdx(idx);
+      setTransitioning(false);
+      setPrevIdx(null);
+    }, 280);
+  };
+
+  return (
+    <div
+      className="hero-visual showcase-wrapper"
+      ref={wrapperRef}
+      onMouseEnter={() => setHovered(true)}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      aria-label="Vista previa interactiva de MedicAI"
+    >
+      {/* Ambient glow — changes colour per module */}
+      <div
+        className="showcase-glow"
+        style={{ background: `radial-gradient(ellipse at center, ${glowColor}, transparent 65%)` }}
+      />
+
+      {/* Phone frame */}
+      <div
+        ref={frameRef}
+        className="showcase-phone"
+        style={{ transform: transform3d }}
+      >
+        {/* Glass reflection layer */}
+        <div className="showcase-glass-reflect" />
+
+        {/* Notch */}
+        <div className="phone-notch" />
+
+        {/* Screen area with dimming overlay */}
+        <div className="phone-screen showcase-screen">
+          {/* Screen-off overlay */}
+          <div
+            className="showcase-dim"
+            style={{ opacity: 1 - screenBrightness }}
+          />
+
+          {/* Slides */}
+          {MODULES.map((m, i) => (
+            <div
+              key={m.label}
+              className={`showcase-slide ${
+                i === activeIdx && !transitioning
+                  ? "showcase-slide--active"
+                  : i === prevIdx
+                  ? "showcase-slide--leaving"
+                  : ""
+              }`}
+            >
+              <Image
+                src={m.src}
+                alt={`Módulo ${m.label} de MedicAI`}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 90vw, 320px"
+                priority={i === 0}
+              />
+            </div>
+          ))}
+
+          {/* Screen-wake flash when brightness goes from low → high */}
+          <ScreenWakeFlash brightness={screenBrightness} />
+        </div>
+      </div>
+
+      {/* Module selector pills */}
+      <div className={`module-selector ${hovered ? "module-selector--visible" : ""}`} role="tablist" aria-label="Módulos de la app">
+        {MODULES.map((m, i) => (
+          <button
+            key={m.label}
+            role="tab"
+            aria-selected={i === activeIdx}
+            aria-label={`Ver módulo ${m.label}`}
+            className={`module-pill ${i === activeIdx ? "module-pill--active" : ""}`}
+            style={i === activeIdx ? { boxShadow: `0 0 16px ${glowColor}` } : {}}
+            onClick={() => switchModule(i)}
+          >
+            <span className="module-pill-icon">{m.icon}</span>
+            <span className="module-pill-label">{m.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Hint label at bottom */}
+      <p className={`showcase-hint ${hovered ? "showcase-hint--visible" : ""}`}>
+        Pasa el cursor o toca para explorar
+      </p>
+    </div>
+  );
+}
+
+/** Flashes the screen white briefly when it "wakes up" (brightness crosses 0.5 going up) */
+function ScreenWakeFlash({ brightness }: { brightness: number }) {
+  const prev = useRef(brightness);
+  const [flashing, setFlashing] = useState(false);
+
+  useEffect(() => {
+    if (prev.current < 0.5 && brightness >= 0.5) {
+      setFlashing(true);
+      const id = setTimeout(() => setFlashing(false), 350);
+      return () => clearTimeout(id);
+    }
+    prev.current = brightness;
+  }, [brightness]);
+
+  return <div className={`screen-wake-flash ${flashing ? "screen-wake-flash--on" : ""}`} />;
+}
+
+// ─── Reveal wrapper ───────────────────────────────────────────────────────────
+function RevealItem({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const [ref, inView] = useInView({ threshold: 0.12 });
   return (
     <div
@@ -265,36 +435,7 @@ function RevealItem({
   );
 }
 
-function HoverModules() {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <>
-      <div
-        className={`modules-overlay ${hovered ? "modules-overlay--visible" : ""}`}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        {MODULES.map((m) => (
-          <span
-            key={m.label}
-            className="module-chip"
-            style={{
-              ...(m.top ? { top: m.top } : {}),
-              ...(m.bottom ? { bottom: m.bottom } : {}),
-              ...(m.left ? { left: m.left } : {}),
-              ...(m.right ? { right: m.right } : {}),
-            }}
-          >
-            <span className="module-chip-icon">{m.icon}</span>
-            <span className="module-chip-label">{m.label}</span>
-          </span>
-        ))}
-      </div>
-      <div className={`phone-hover-ring ${hovered ? "phone-hover-ring--visible" : ""}`} />
-    </>
-  );
-}
-
+// ─── PhoneScreenshot (used in split / steps) ─────────────────────────────────
 function PhoneScreenshot({ src, alt }: { src: string; alt: string }) {
   const [ref, inView] = useInView({ threshold: 0.15 });
   const [loaded, setLoaded] = useState(false);
@@ -325,9 +466,8 @@ function PhoneScreenshot({ src, alt }: { src: string; alt: string }) {
 
 function MiniScreenshot({ src, alt }: { src: string; alt: string }) {
   const [ref, inView] = useInView({ threshold: 0.15 });
-
   return (
-    <div ref={ref} className={`mini-phone ${inView ? "mini-phone--in-view" : ""}`}>
+    <div ref={ref} className={`mini-phone-inner ${inView ? "mini-phone--in-view" : ""}`}>
       <Image
         src={src}
         alt={alt}
@@ -339,35 +479,17 @@ function MiniScreenshot({ src, alt }: { src: string; alt: string }) {
   );
 }
 
+// ─── Google Play badge ────────────────────────────────────────────────────────
 function GooglePlayBadge({ href, className = "" }: { href: string; className?: string }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`play-badge ${className}`}
-      aria-label="Disponible en Google Play"
-    >
-      <Image
-        src="/images/google-play-badge.png"
-        alt="Disponible en Google Play"
-        width={161}
-        height={62}
-        className="play-badge-img"
-      />
+    <a href={href} target="_blank" rel="noopener noreferrer" className={`play-badge ${className}`} aria-label="Disponible en Google Play">
+      <Image src="/images/google-play-badge.png" alt="Disponible en Google Play" width={161} height={62} className="play-badge-img" />
     </a>
   );
 }
 
-function FeatureCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
+// ─── Feature card ─────────────────────────────────────────────────────────────
+function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
     <article className="feature-card">
       <div className="icon">{icon}</div>
@@ -377,23 +499,12 @@ function FeatureCard({
   );
 }
 
-function StepCard({
-  number,
-  src,
-  alt,
-  title,
-  description,
-}: {
-  number: number;
-  src: string;
-  alt: string;
-  title: string;
-  description: string;
-}) {
+// ─── Step card ────────────────────────────────────────────────────────────────
+function StepCard({ number, src, alt, title, description }: { number: number; src: string; alt: string; title: string; description: string }) {
   return (
     <article className="step">
       <span className="step-number">{number}</span>
-      <div className="mini-phone">
+      <div className="step-mini-phone">
         <MiniScreenshot src={src} alt={alt} />
       </div>
       <div className="step-content">
@@ -404,14 +515,13 @@ function StepCard({
   );
 }
 
+// ─── Icons ────────────────────────────────────────────────────────────────────
 function CalendarIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 2v4" />
-      <path d="M16 2v4" />
+      <path d="M8 2v4" /><path d="M16 2v4" />
       <rect width="18" height="18" x="3" y="4" rx="2" />
-      <path d="M3 10h18" />
-      <path d="m9 16 2 2 4-4" />
+      <path d="M3 10h18" /><path d="m9 16 2 2 4-4" />
     </svg>
   );
 }
@@ -419,8 +529,8 @@ function CalendarIcon() {
 function PillIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m18.4 11.5-5.7-5.7a1.93 1.93 0 0 0-2.8 0L4 11.8V20h5.5v-6h5v6H20v-8.4Z" />
-      <path d="M10 22V12h4v10" />
+      <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z" />
+      <path d="M8.5 8.5 16 16" />
     </svg>
   );
 }
