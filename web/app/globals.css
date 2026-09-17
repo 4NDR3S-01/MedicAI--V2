@@ -167,6 +167,9 @@ a {
   display: inline-block;
   transition: transform 0.2s ease;
   line-height: 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 0;
 }
 
 .play-badge:hover {
@@ -177,6 +180,8 @@ a {
   width: auto;
   height: 3.25rem;
   max-width: 100%;
+  border-radius: inherit;
+  display: block;
 }
 
 @media (min-width: 768px) {
