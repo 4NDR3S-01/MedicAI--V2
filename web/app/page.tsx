@@ -26,6 +26,11 @@ export default function Home() {
 
       <main className="flex-1">
         <section className="hero">
+          <div className="bubble" style={{ width: 120, height: 120, top: '10%', left: '5%' }} />
+          <div className="bubble" style={{ width: 80, height: 80, top: '40%', right: '8%', animationDelay: '1s' }} />
+          <div className="bubble" style={{ width: 180, height: 180, bottom: '5%', left: '20%', animationDelay: '2s' }} />
+          <div className="bubble" style={{ width: 60, height: 60, top: '20%', right: '25%', animationDelay: '0.5s' }} />
+          <div className="bubble" style={{ width: 140, height: 140, bottom: '15%', right: '35%', animationDelay: '3s' }} />
           <div className="container hero-grid">
             <div className="hero-text">
               <div className="eyebrow">App de salud familiar</div>
