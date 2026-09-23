@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 import Image from "next/image";
 import { Home as HomeIcon, Pill, Users, CalendarCheck, User, Menu, X, ShieldCheck, Lock, ChevronDown, Mail } from "lucide-react";
 import { useInView } from "./hooks/useInView";
@@ -90,7 +90,7 @@ export default function Home() {
             <div className="hero-text">
               <div className="eyebrow">App de salud familiar</div>
               <h1 className="font-display">
-                Tu agenda médica, <em>siempre presente</em>
+                Tu agenda médica, <span className="gradient-text">siempre presente</span>
               </h1>
               <p>
                 MedicAI organiza citas, medicamentos y el cuidado de quienes más
@@ -398,7 +398,15 @@ function InteractivePhoneShowcase() {
     frameRef.current.style.transform = `perspective(1100px) rotateY(${rotateY}deg) rotateX(${rotateX}deg) scale(${scale})`;
   }, []);
 
-  const onMouseEnter = () => setHovered(true);
+  const onMouseEnter = () => {
+    setHovered(true);
+    if (frameRef.current) {
+      // Smoothly face front (and settle the scale) before the mouse-parallax
+      // takes over on the next mousemove.
+      frameRef.current.style.transform =
+        "perspective(1100px) rotateY(0deg) rotateX(0deg) scale(1.06)";
+    }
+  };
   
   const onMouseLeave = () => {
     setHovered(false);
@@ -440,7 +448,7 @@ function InteractivePhoneShowcase() {
       {/* Phone frame */}
       <div
         ref={frameRef}
-        className="showcase-phone"
+        className={`showcase-phone ${hovered ? "showcase-phone--hovered" : ""}`}
       >
         {/* Glass reflection layer */}
         <div className="showcase-glass-reflect" />
@@ -486,12 +494,11 @@ function InteractivePhoneShowcase() {
       </div>
 
       {/* Module selector pills */}
-      <div className={`module-selector ${hovered ? "module-selector--visible" : ""}`} role="tablist" aria-label="Módulos de la app">
+      <div className={`module-selector ${hovered ? "module-selector--visible" : ""}`} aria-label="Módulos de la app">
         {MODULES.map((m, i) => (
           <button
             key={m.label}
-            role="tab"
-            aria-selected={i === activeIdx}
+            aria-pressed={i === activeIdx}
             aria-label={`Ver módulo ${m.label}`}
             className={`module-pill ${i === activeIdx ? "module-pill--active" : ""}`}
             style={i === activeIdx ? { boxShadow: `0 0 16px ${glowColor}` } : {}}
@@ -503,9 +510,14 @@ function InteractivePhoneShowcase() {
         ))}
       </div>
 
-      {/* Hint label at bottom */}
-      <p className={`showcase-hint ${hovered ? "showcase-hint--visible" : ""}`}>
-        Pasa el cursor o toca para explorar
+      {/* Hint label at bottom — crossfades text depending on interaction */}
+      <p className="showcase-hint">
+        <span className={`showcase-hint-line ${hovered ? "" : "showcase-hint-line--active"}`}>
+          Pasa el cursor o toca el telefono para explorar
+        </span>
+        <span className={`showcase-hint-line ${hovered ? "showcase-hint-line--active" : ""}`}>
+          Navega entre pantallas
+        </span>
       </p>
     </div>
   );
@@ -611,7 +623,8 @@ function FAQItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
   const [height, setHeight] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
-  
+  const panelId = useId();
+
   useEffect(() => {
     if (open && contentRef.current) {
       setHeight(contentRef.current.scrollHeight);
@@ -622,17 +635,21 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 
   return (
     <div className={`faq-item ${open ? "faq-item--open" : ""}`}>
-      <button 
-        className="faq-question" 
+      <button
+        className="faq-question"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
+        aria-controls={panelId}
       >
         <span>{q}</span>
         <ChevronDown size={20} className={`faq-icon ${open ? "faq-icon--open" : ""}`} />
       </button>
-      <div 
+      <div
+        id={panelId}
+        role="region"
+        aria-hidden={!open}
         className="faq-answer-wrapper"
-        style={{ 
+        style={{
           maxHeight: `${height}px`,
           opacity: open ? 1 : 0
         }}
