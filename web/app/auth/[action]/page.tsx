@@ -65,7 +65,7 @@ export default async function AuthBridgePage({
             <div>
               <strong className="block text-xl font-extrabold">MedicAI</strong>
               <span className="text-sm text-[#607b95]">
-                Asistencia medica y seguimiento de salud
+                Asistencia médica y seguimiento de salud
               </span>
             </div>
           </div>

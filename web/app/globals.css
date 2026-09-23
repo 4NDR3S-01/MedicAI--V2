@@ -91,6 +91,11 @@ a {
   text-decoration: none;
 }
 
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .font-display {
   font-family: var(--font-display);
 }
@@ -138,16 +143,6 @@ a {
   transform: translateY(-2px);
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: white;
-  box-shadow: 0 12px 32px var(--accent-glow);
-}
-
-.btn-primary:hover {
-  box-shadow: 0 16px 40px var(--accent-glow);
-}
-
 .btn-ghost {
   background: transparent;
   color: var(--text);
@@ -156,11 +151,6 @@ a {
 
 .btn-ghost:hover {
   background: var(--surface-2);
-}
-
-.btn-sm {
-  padding: 0.625rem 1.25rem;
-  font-size: 0.875rem;
 }
 
 .play-badge {
@@ -228,6 +218,10 @@ header {
 
 .nav-links a:hover {
   color: var(--text);
+}
+
+.header-play-badge {
+  display: none;
 }
 
 @media (min-width: 768px) {
@@ -350,8 +344,7 @@ header {
   text-wrap: balance;
 }
 
-.hero h1 em {
-  font-style: normal;
+.hero h1 .gradient-text {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -448,15 +441,26 @@ header {
     inset 0 1px 0 rgba(255,255,255,0.14),
     0 0 0 1px rgba(255,255,255,0.07) inset;
   border: 1px solid var(--border);
-  transition: transform 0.12s ease, box-shadow 0.4s ease;
+  /* The rest tilt lives here as a static transform (not inside the bob
+     keyframes). On hover it hands off to the inline parallax via a normal
+     inline-style change, which CSS transitions animate reliably — if the tilt
+     were part of the animation, removing it would snap the frame to front. */
+  transform: perspective(1100px) rotateY(-12deg) rotateX(4deg);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
   will-change: transform;
   transform-style: preserve-3d;
+  /* Bob only (translate). Pausing it no longer touches the tilt above. */
   animation: float-showcase 7s ease-in-out infinite;
 }
 
+/* Stop the idle bob while interacting. */
+.showcase-phone--hovered {
+  animation: none;
+}
+
 @keyframes float-showcase {
-  0%, 100% { transform: perspective(1100px) rotateY(-12deg) rotateX(4deg) translateY(0); }
-  50%       { transform: perspective(1100px) rotateY(-12deg) rotateX(4deg) translateY(-10px); }
+  0%, 100% { translate: 0 0; }
+  50%       { translate: 0 -10px; }
 }
 
 /* Glass reflection highlight */
@@ -593,18 +597,26 @@ header {
   color: currentColor;
 }
 
-/* Hint text */
+/* Hint text — two stacked lines that crossfade on interaction */
 .showcase-hint {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-top: -0.5rem;
   font-size: 0.75rem;
   color: var(--text-subtle);
-  opacity: 0;
-  transform: translateY(0.5rem);
-  transition: opacity 0.4s ease 0.1s, transform 0.4s ease 0.1s;
   pointer-events: none;
   text-align: center;
 }
 
-.showcase-hint--visible {
+.showcase-hint-line {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.showcase-hint-line--active {
   opacity: 1;
   transform: translateY(0);
 }
@@ -647,34 +659,6 @@ header {
 .phone-screen img,
 .mini-phone img {
   object-fit: cover;
-}
-
-.placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 1.5rem;
-  text-align: center;
-  color: var(--text-subtle);
-  border: 2px dashed var(--border);
-  border-radius: inherit;
-}
-
-.placeholder svg {
-  width: 2.5rem;
-  height: 2.5rem;
-  opacity: 0.5;
-}
-
-.placeholder p {
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-muted);
 }
 
 section {
@@ -783,16 +767,6 @@ section[id] {
   z-index: 5;
 }
 
-.step .mini-phone {
-  position: relative;
-  aspect-ratio: 9 / 16;
-  margin: 1.5rem 1.5rem 0;
-  border-radius: 1.5rem;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-}
-
 .step-mini-phone {
   position: relative;
   aspect-ratio: 9 / 16;
@@ -801,11 +775,6 @@ section[id] {
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--surface-2);
-}
-
-.step .mini-phone .placeholder {
-  border: none;
-  border-radius: 0;
 }
 
 .step-content {
@@ -926,39 +895,10 @@ section[id] {
   margin-inline: auto;
 }
 
-.cta-card .btn {
-  position: relative;
-  margin-top: 2rem;
-}
-
 footer {
-  padding-block: 3rem;
   border-top: 1px solid var(--border);
   color: var(--text-subtle);
   font-size: 0.875rem;
-}
-
-.footer-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  align-items: center;
-  justify-content: space-between;
-}
-
-@media (min-width: 768px) {
-  .footer-inner {
-    flex-direction: row;
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: perspective(1000px) rotateY(-8deg) rotateX(4deg) translateY(0);
-  }
-  50% {
-    transform: perspective(1000px) rotateY(-8deg) rotateX(4deg) translateY(-12px);
-  }
 }
 
 @keyframes float-soft {
@@ -1026,24 +966,17 @@ footer {
   animation: glow-pulse 5s ease-in-out infinite;
 }
 
-/* Hero showcase phone uses JS transform — no CSS animation needed */
-.hero-visual .phone-frame {
-  animation: none;
-}
-
 .split-visual .phone-frame {
   animation: float-soft 5s ease-in-out infinite;
 }
 
 
 
-.btn-primary,
 .play-badge {
   position: relative;
   overflow: hidden;
 }
 
-.btn-primary::after,
 .play-badge::after {
   content: "";
   position: absolute;
@@ -1192,86 +1125,6 @@ footer {
   opacity: 1;
 }
 
-.mini-phone {
-  opacity: 0;
-  transform: scale(0.95);
-  transition: opacity 0.4s ease, transform 0.4s ease;
-}
-
-.mini-phone--in-view {
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* Hero visual wrapper */
-.hero-visual {
-  transition: transform 0.3s ease;
-}
-
-/* Hover modules */
-.modules-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 15;
-}
-
-.module-chip {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  background: var(--surface-glass);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text);
-  opacity: 0;
-  transform: scale(0.8) translateY(0.5rem);
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  pointer-events: auto;
-  white-space: nowrap;
-  z-index: 20;
-}
-
-.module-chip-icon {
-  font-size: 0.875rem;
-}
-
-.modules-overlay--visible .module-chip {
-  opacity: 1;
-  transform: scale(1) translateY(0);
-}
-
-.modules-overlay--visible .module-chip:nth-child(1) { transition-delay: 0ms; }
-.modules-overlay--visible .module-chip:nth-child(2) { transition-delay: 60ms; }
-.modules-overlay--visible .module-chip:nth-child(3) { transition-delay: 120ms; }
-.modules-overlay--visible .module-chip:nth-child(4) { transition-delay: 180ms; }
-
-.phone-hover-ring {
-  position: absolute;
-  inset: -8px;
-  border: 2px solid var(--accent);
-  border-radius: 2.75rem;
-  opacity: 0;
-  transform: scale(0.96);
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  pointer-events: none;
-  box-shadow: 0 0 30px var(--accent-glow);
-}
-
-.phone-hover-ring--visible {
-  opacity: 0.5;
-  transform: scale(1);
-}
-
-.phone-frame {
-  position: relative;
-}
-
 /* --- Mobile Performance Optimizations --- */
 @media (max-width: 768px) {
   .bubble {
@@ -1301,7 +1154,7 @@ footer {
   display: flex;
   align-items: center;
   gap: 2rem;
-  background: var(--background);
+  background: var(--bg);
   padding: 2rem 3rem;
   border-radius: 1.5rem;
   border: 1px solid var(--border);
@@ -1314,7 +1167,7 @@ footer {
 }
 
 .security-icon--lock {
-  color: var(--muted);
+  color: var(--text-muted);
   opacity: 0.5;
 }
 
@@ -1325,7 +1178,7 @@ footer {
 }
 
 .security-banner-inner p {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.95rem;
   line-height: 1.5;
 }
@@ -1355,7 +1208,7 @@ footer {
 }
 
 .faq-item {
-  background: var(--background);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 1rem;
   overflow: hidden;
@@ -1377,7 +1230,7 @@ footer {
   align-items: center;
   font-size: 1.05rem;
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -1397,7 +1250,7 @@ footer {
 
 .faq-answer {
   padding: 0 1.5rem 1.5rem 1.5rem;
-  color: var(--muted);
+  color: var(--text-muted);
   line-height: 1.6;
 }
 
@@ -1407,7 +1260,6 @@ footer {
   flex-direction: column;
   gap: 3rem;
   padding-block: 4rem;
-  border-top: 1px solid var(--border);
 }
 
 .footer-top {
@@ -1417,7 +1269,7 @@ footer {
 }
 
 .footer-brand p {
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 1rem;
   max-width: 250px;
 }
@@ -1434,7 +1286,7 @@ footer {
 }
 
 .footer-links a {
-  color: var(--muted);
+  color: var(--text-muted);
   transition: color 0.2s ease;
 }
 
@@ -1444,7 +1296,7 @@ footer {
 
 .footer-bottom {
   text-align: center;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.875rem;
   padding-top: 2rem;
   border-top: 1px solid rgba(255,255,255,0.05);
