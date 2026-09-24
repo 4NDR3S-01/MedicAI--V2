@@ -34,7 +34,6 @@ module.exports = {
       out_file: './logs/out.log',
       combine_logs: true,
       merge_logs: true,
-      log_type: 'json',
       max_size: '10M',
       rotateInterval: '0 0 * * *',
     },
