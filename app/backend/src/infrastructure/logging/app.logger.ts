@@ -5,6 +5,26 @@ type StructuredLogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'verbo
 type StructuredLogFormat = 'pretty' | 'json';
 type LogMetadata = Record<string, unknown>;
 
+const ANSI = {
+  reset: '\x1b[0m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  gray: '\x1b[90m',
+} as const;
+
+const LEVEL_COLOR: Record<StructuredLogLevel, string> = {
+  fatal: ANSI.red,
+  error: ANSI.red,
+  warn: ANSI.yellow,
+  info: ANSI.green,
+  debug: ANSI.blue,
+  verbose: ANSI.gray,
+};
+
 const LEVEL_WEIGHT: Record<StructuredLogLevel, number> = {
   fatal: 0,
   error: 1,
@@ -23,6 +43,7 @@ export class AppLogger implements LoggerService {
   private readonly format = this.resolveFormat(process.env.LOG_FORMAT);
   private readonly includeStacks = this.isEnabled(process.env.LOG_STACKS)
     || this.environment !== 'production';
+  private readonly useColors = this.resolveColors(process.env.LOG_COLORS);
 
   log(message: unknown, ...optionalParams: unknown[]) {
     this.write('info', message, this.parseParams(optionalParams));
@@ -57,8 +78,10 @@ export class AppLogger implements LoggerService {
       return;
     }
 
+    const ts = new Date().toISOString();
+
     const entry = {
-      ts: new Date().toISOString(),
+      ts,
       level,
       service: this.serviceName,
       env: this.environment,
@@ -71,7 +94,7 @@ export class AppLogger implements LoggerService {
 
     const line = this.format === 'json'
       ? this.stringify(entry)
-      : this.formatPretty(level, message, parsed);
+      : this.formatPretty(level, message, parsed, ts);
 
     if (level === 'error' || level === 'fatal') {
       process.stderr.write(`${line}\n`);
@@ -142,16 +165,41 @@ export class AppLogger implements LoggerService {
     return value?.toLowerCase() === 'json' ? 'json' : 'pretty';
   }
 
+  private resolveColors(value?: string) {
+    if (value !== undefined && value !== '') {
+      return this.isEnabled(value);
+    }
+
+    // Color por defecto solo en formato pretty; el JSON debe quedar limpio.
+    return this.format === 'pretty';
+  }
+
   private formatPretty(
     level: StructuredLogLevel,
     message: unknown,
     parsed: { context?: string; metadata: LogMetadata },
+    ts: string,
   ) {
     const label = level.toUpperCase().padEnd(5);
-    const context = parsed.context ? ` [${parsed.context}]` : '';
     const details = this.formatMetadata(parsed.metadata);
 
-    return `${label}${context} ${this.formatMessage(message)}${details ? ` ${details}` : ''}`;
+    const parts = [
+      this.color(ANSI.dim, ts),
+      this.color(LEVEL_COLOR[level], label),
+      parsed.context ? this.color(ANSI.cyan, `[${parsed.context}]`) : '',
+      this.formatMessage(message),
+      details ? this.color(ANSI.dim, details) : '',
+    ].filter(Boolean);
+
+    return parts.join(' ');
+  }
+
+  private color(code: string, value: string) {
+    if (!this.useColors) {
+      return value;
+    }
+
+    return `${code}${value}${ANSI.reset}`;
   }
 
   private formatMetadata(metadata: LogMetadata) {
