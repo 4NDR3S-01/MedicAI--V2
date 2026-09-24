@@ -184,7 +184,9 @@ export class AppLogger implements LoggerService {
     const details = this.formatMetadata(parsed.metadata);
 
     const parts = [
-      this.color(ANSI.dim, ts),
+      // PM2 ya antepone su timestamp (hora local); el de la app (UTC) solo se
+      // muestra fuera de PM2 (dev / archivo crudo) para no duplicar fechas.
+      process.env.pm_id ? '' : this.color(ANSI.dim, ts),
       this.color(LEVEL_COLOR[level], label),
       parsed.context ? this.color(ANSI.cyan, `[${parsed.context}]`) : '',
       this.formatMessage(message),
