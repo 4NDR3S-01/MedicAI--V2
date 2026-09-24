@@ -94,7 +94,7 @@ export class AppLogger implements LoggerService {
 
     const line = this.format === 'json'
       ? this.stringify(entry)
-      : this.formatPretty(level, message, parsed, ts);
+      : this.formatPretty(level, message, parsed);
 
     if (level === 'error' || level === 'fatal') {
       process.stderr.write(`${line}\n`);
@@ -178,15 +178,11 @@ export class AppLogger implements LoggerService {
     level: StructuredLogLevel,
     message: unknown,
     parsed: { context?: string; metadata: LogMetadata },
-    ts: string,
   ) {
     const label = level.toUpperCase().padEnd(5);
     const details = this.formatMetadata(parsed.metadata);
 
     const parts = [
-      // PM2 ya antepone su timestamp (hora local); el de la app (UTC) solo se
-      // muestra fuera de PM2 (dev / archivo crudo) para no duplicar fechas.
-      process.env.pm_id ? '' : this.color(ANSI.dim, ts),
       this.color(LEVEL_COLOR[level], label),
       parsed.context ? this.color(ANSI.cyan, `[${parsed.context}]`) : '',
       this.formatMessage(message),
