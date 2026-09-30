@@ -91,9 +91,10 @@ model MedicationLog {
   takenAt      DateTime @default(now())
   scheduledFor DateTime? // The originally scheduled time for this dose
   medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
-  @@index([medicationId])
-  @@index([takenAt])
-  @@index([scheduledFor])
+  // Compuestos: cubren "logs de estos medicamentos desde X" (GET /medications/logs)
+  // y, por prefijo, las búsquedas solo por medicationId.
+  @@index([medicationId, takenAt])
+  @@index([medicationId, scheduledFor])
 }
 
 model Appointment {

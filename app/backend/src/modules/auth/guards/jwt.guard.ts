@@ -4,40 +4,26 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+
+import { AccessTokenService } from '../access-token.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly accessTokenService: AccessTokenService) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
-    const token = this.extractTokenFromHeader(request);
 
-    if (!token) {
+    if (!this.accessTokenService.hasBearerToken(request)) {
       throw new UnauthorizedException('Token requerido.');
     }
 
-    try {
-      const secret = this.configService.getOrThrow<string>('JWT_ACCESS_SECRET');
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret,
-      });
-
-      (request as any).user = payload;
-    } catch {
+    const payload = this.accessTokenService.verifyRequest(request);
+    if (!payload) {
       throw new UnauthorizedException('Token inválido o expirado.');
     }
 
+    (request as any).user = payload;
     return true;
-  }
-
-  private extractTokenFromHeader(request: any): string | undefined {
-    const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    return type === 'Bearer' ? token : undefined;
   }
 }

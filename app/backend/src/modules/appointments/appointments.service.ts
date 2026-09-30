@@ -1,5 +1,6 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
+import { isRecordNotFoundError } from '../../infrastructure/prisma/prisma-errors';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -48,41 +49,56 @@ export class AppointmentsService {
   }
 
   async update(appointmentId: string, userId: string, dto: UpdateAppointmentDto) {
-    const appointment = await this.findById(appointmentId, userId);
-
+    // Un único UPDATE filtrado por dueño: los campos `undefined` no se tocan.
+    // Reprogramar la cita (nuevo scheduledAt) reinicia la asistencia.
     const attendanceStatus = dto.attendanceStatus
-      ?? (dto.scheduledAt ? 'PENDING' : appointment.attendanceStatus);
-    const attendanceMarkedAt = dto.attendanceStatus
-      ? (dto.attendanceStatus === 'PENDING' ? null : new Date())
-      : (dto.scheduledAt ? null : appointment.attendanceMarkedAt);
+      ?? (dto.scheduledAt ? 'PENDING' : undefined);
+    let attendanceMarkedAt: Date | null | undefined;
+    if (dto.attendanceStatus) {
+      attendanceMarkedAt = dto.attendanceStatus === 'PENDING' ? null : new Date();
+    } else if (dto.scheduledAt) {
+      attendanceMarkedAt = null;
+    }
 
-    const updated = await this.prisma.appointment.update({
-      where: { id: appointment.id },
-      data: {
-        title: dto.title !== undefined ? dto.title.trim() : appointment.title,
-        doctorName: dto.doctorName !== undefined ? dto.doctorName.trim() : appointment.doctorName,
-        scheduledAt: dto.scheduledAt || appointment.scheduledAt,
-        location: dto.location !== undefined ? dto.location.trim() || null : appointment.location,
-        notes: dto.notes !== undefined ? dto.notes.trim() || null : appointment.notes,
-        active: dto.active ?? appointment.active,
-        attendanceStatus,
-        attendanceMarkedAt,
-      },
-    });
+    try {
+      const updated = await this.prisma.appointment.update({
+        where: { id: appointmentId, userId },
+        data: {
+          title: dto.title?.trim(),
+          doctorName: dto.doctorName?.trim(),
+          scheduledAt: dto.scheduledAt || undefined,
+          location: dto.location !== undefined ? dto.location.trim() || null : undefined,
+          notes: dto.notes !== undefined ? dto.notes.trim() || null : undefined,
+          active: dto.active,
+          attendanceStatus,
+          attendanceMarkedAt,
+        },
+      });
 
-    this.logger.log('Appointment updated', { userId, appointmentId: updated.id });
-    return updated;
+      this.logger.log('Appointment updated', { userId, appointmentId: updated.id });
+      return updated;
+    } catch (error) {
+      throw this.mapNotFound(error);
+    }
   }
 
   async delete(appointmentId: string, userId: string) {
-    const appointment = await this.findById(appointmentId, userId);
-
-    await this.prisma.appointment.update({
-      where: { id: appointment.id },
-      data: { active: false },
-    });
+    try {
+      await this.prisma.appointment.update({
+        where: { id: appointmentId, userId },
+        data: { active: false },
+      });
+    } catch (error) {
+      throw this.mapNotFound(error);
+    }
 
     this.logger.log('Appointment deleted', { userId, appointmentId });
     return { message: 'Cita eliminada correctamente.' };
+  }
+
+  private mapNotFound(error: unknown) {
+    return isRecordNotFoundError(error)
+      ? new NotFoundException('Cita no encontrada.')
+      : error;
   }
 }

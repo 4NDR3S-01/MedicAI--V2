@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { SignOptions } from 'jsonwebtoken';
 
 import { MailService } from '../../infrastructure/mail/mail.service';
@@ -19,6 +19,31 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const EMAIL_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
 const PASSWORD_RESET_TOKEN_TTL_MS = 1000 * 60 * 30;
+// Si varias peticiones de la misma app renuevan la sesión a la vez con el mismo
+// refresh token, la primera lo rota y las demás reciben el mismo par nuevo
+// durante esta ventana en lugar de un 401 que cerraría la sesión.
+const REFRESH_REUSE_GRACE_MS = 15_000;
+
+const PROFILE_SELECT = {
+  id: true,
+  email: true,
+  fullName: true,
+  birthDate: true,
+  phone: true,
+  avatar: true,
+  conditions: true,
+  allergies: true,
+  pregnancy: true,
+  lactation: true,
+  recentSurgeries: true,
+  immunosuppression: true,
+  anticoagulantTreatment: true,
+  notificationLeadMinutes: true,
+} satisfies Prisma.UserSelect;
+
+type ProfileUser = Prisma.UserGetPayload<{ select: typeof PROFILE_SELECT }>;
+
+type AuthTokens = { accessToken: string; refreshToken: string };
 
 type AuthTokenValidationStatus = 'valid' | 'used' | 'expired' | 'invalid' | 'already_verified';
 
@@ -38,6 +63,10 @@ type PasswordResetTokenRecord = Prisma.PasswordResetTokenGetPayload<{
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly recentlyRotatedRefreshTokens = new Map<
+    string,
+    { userId: string; tokens: AuthTokens; expiresAt: number }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,7 +77,7 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
 
     if (existing) {
       throw new BadRequestException('Este correo ya está registrado.');
@@ -126,7 +155,10 @@ export class AuthService {
         return newUser;
       });
 
-      await this.issueAndSendEmailVerification(user);
+      // El correo se envía en segundo plano: la cuenta ya existe y, si Resend
+      // falla, el usuario puede pedir otro enlace desde la app. Antes un fallo
+      // aquí devolvía error aunque la cuenta se hubiera creado.
+      this.runInBackground(this.issueAndSendEmailVerification(user), 'register:verification-email', user.id);
       this.logger.log('User registered with profile', {
         userId: user.id,
         emailDomain: this.getEmailDomain(user.email),
@@ -148,7 +180,7 @@ export class AuthService {
 
   async checkEmailAvailability(emailRaw: string) {
     const email = emailRaw.trim().toLowerCase();
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
 
     if (existing) {
       return {
@@ -205,22 +237,28 @@ export class AuthService {
 
   async refresh(refreshToken: string) {
     const payload = await this.verifyRefreshToken(refreshToken);
+    const presentedHash = this.hashToken(refreshToken);
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
+      select: { id: true, email: true, refreshTokenHash: true },
     });
 
     if (!user?.refreshTokenHash) {
       throw new UnauthorizedException('Sesión inválida.');
     }
 
-    const isValidRefresh = await bcrypt.compare(refreshToken, user.refreshTokenHash);
-    if (!isValidRefresh) {
+    if (!(await this.matchesRefreshTokenHash(refreshToken, presentedHash, user.refreshTokenHash))) {
+      const recent = this.takeRecentlyRotated(presentedHash, user.id);
+      if (recent) {
+        return recent;
+      }
       throw new UnauthorizedException('Sesión inválida.');
     }
 
     const tokens = await this.generateAuthTokens(user.id, user.email);
     await this.setRefreshToken(user.id, tokens.refreshToken);
+    this.rememberRotation(presentedHash, user.id, tokens);
 
     return tokens;
   }
@@ -239,7 +277,9 @@ export class AuthService {
     await this.prisma.user.update({
       where: { id: payload.sub },
       data: { refreshTokenHash: null },
+      select: { id: true },
     });
+    this.forgetRotationsForUser(payload.sub);
     this.logger.log('Logout succeeded', { userId: payload.sub });
 
     return { message: 'Sesión cerrada correctamente.' };
@@ -312,7 +352,7 @@ export class AuthService {
       return { message: 'Este correo ya se encuentra verificado.' };
     }
 
-    await this.issueAndSendEmailVerification(user);
+    this.runInBackground(this.issueAndSendEmailVerification(user), 'resend-verification', user.id);
     this.logger.log('Verification email resent', { userId: user.id });
 
     return { message: 'Si el correo existe, se enviará un nuevo enlace.' };
@@ -326,7 +366,9 @@ export class AuthService {
       return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
     }
 
-    await this.issueAndSendPasswordReset(user);
+    // En segundo plano: además de responder antes, evita que el tiempo de
+    // respuesta revele si el correo existe (enumeración de usuarios).
+    this.runInBackground(this.issueAndSendPasswordReset(user), 'forgot-password', user.id);
     this.logger.log('Password reset requested', { userId: user.id });
 
     return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
@@ -368,6 +410,7 @@ export class AuthService {
         data: { consumedAt: new Date() },
       }),
     ]);
+    this.forgetRotationsForUser(passwordReset.userId);
     this.logger.log('Password reset completed', { userId: passwordReset.userId });
 
     return { message: 'Contraseña actualizada correctamente.' };
@@ -541,11 +584,62 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  /**
+   * Los refresh tokens son JWT de alta entropía, así que basta un SHA-256 (como
+   * con los tokens de correo). bcrypt aquí costaba ~100-400 ms de CPU por
+   * operación y además trunca a 72 bytes: todos los refresh tokens de un mismo
+   * usuario compartían esos 72 bytes, por lo que cualquier token antiguo no
+   * expirado seguía siendo válido tras la rotación.
+   */
   private async setRefreshToken(userId: string, refreshToken: string) {
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { refreshTokenHash },
+      data: { refreshTokenHash: this.hashToken(refreshToken) },
+      select: { id: true },
+    });
+  }
+
+  private async matchesRefreshTokenHash(rawToken: string, presentedHash: string, storedHash: string) {
+    // Hashes bcrypt heredados (sesiones iniciadas antes de este cambio): se
+    // aceptan una vez y en la siguiente rotación se guardan como SHA-256.
+    if (storedHash.startsWith('$2')) {
+      return bcrypt.compare(rawToken, storedHash);
+    }
+
+    const presented = Buffer.from(presentedHash, 'hex');
+    const stored = Buffer.from(storedHash, 'hex');
+    return presented.length === stored.length && timingSafeEqual(presented, stored);
+  }
+
+  private rememberRotation(presentedHash: string, userId: string, tokens: AuthTokens) {
+    const now = Date.now();
+    for (const [key, entry] of this.recentlyRotatedRefreshTokens) {
+      if (entry.expiresAt <= now) this.recentlyRotatedRefreshTokens.delete(key);
+    }
+    this.recentlyRotatedRefreshTokens.set(presentedHash, {
+      userId,
+      tokens,
+      expiresAt: now + REFRESH_REUSE_GRACE_MS,
+    });
+  }
+
+  private takeRecentlyRotated(presentedHash: string, userId: string) {
+    const entry = this.recentlyRotatedRefreshTokens.get(presentedHash);
+    if (!entry || entry.userId !== userId || entry.expiresAt <= Date.now()) {
+      return undefined;
+    }
+    return entry.tokens;
+  }
+
+  private forgetRotationsForUser(userId: string) {
+    for (const [key, entry] of this.recentlyRotatedRefreshTokens) {
+      if (entry.userId === userId) this.recentlyRotatedRefreshTokens.delete(key);
+    }
+  }
+
+  private runInBackground(task: Promise<unknown>, operation: string, userId: string) {
+    task.catch((error: unknown) => {
+      this.logger.error('Background auth task failed', error as Error, { operation, userId });
     });
   }
 
@@ -573,7 +667,7 @@ export class AuthService {
       throw new UnauthorizedException('Usuario no autenticado.');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: PROFILE_SELECT });
     if (!user) {
       throw new UnauthorizedException('Usuario no encontrado.');
     }
@@ -602,13 +696,14 @@ export class AuthService {
     }
 
     if (Object.keys(data).length === 0) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: PROFILE_SELECT });
       return { message: 'Sin cambios.', user: user ? this.mapProfileUser(user) : null };
     }
 
     const user = await this.prisma.user.update({
       where: { id: userId },
       data,
+      select: PROFILE_SELECT,
     });
 
     this.logger.log('User profile updated', { userId });
@@ -618,7 +713,7 @@ export class AuthService {
     };
   }
 
-  private mapProfileUser(user: User) {
+  private mapProfileUser(user: ProfileUser) {
     return {
       id: user.id,
       email: user.email,
@@ -656,6 +751,7 @@ export class AuthService {
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: { avatar: avatarData },
+      select: { avatar: true },
     });
 
     return {

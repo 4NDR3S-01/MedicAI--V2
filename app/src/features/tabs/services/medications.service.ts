@@ -1,4 +1,9 @@
-import { refreshStoredSession } from '../../auth';
+import {
+  ensureApiBaseUrl,
+  parseApiErrorMessage,
+  readResponseBody,
+  requestWithAutoRefresh,
+} from './http';
 
 type MedicationData = {
   id: string;
@@ -27,86 +32,8 @@ type CreateMedicationPayload = {
   customEndDate?: string | null;
 };
 
-const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
-
-const readResponseBody = async <T>(response: Response): Promise<T> => {
-  const rawBody = await response.text();
-  if (!rawBody.trim()) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(rawBody) as T;
-  } catch {
-    throw new Error('Respuesta invalida del backend.');
-  }
-};
-
-const parseApiErrorMessage = async (response: Response, fallback: string) => {
-  if (response.status >= 500) {
-    return 'El backend de MedicAI no esta disponible en este momento.';
-  }
-
-  try {
-    const body = await readResponseBody<{ message?: string | string[]; error?: string }>(response);
-    if (Array.isArray(body.message) && body.message.length > 0) {
-      return body.message.join('. ');
-    }
-
-    if (typeof body.message === 'string' && body.message.trim()) {
-      return body.message;
-    }
-
-    if (typeof body.error === 'string' && body.error.trim()) {
-      return body.error;
-    }
-  } catch {
-    // no-op
-  }
-
-  return `${fallback} (HTTP ${response.status})`;
-};
-
-const executeAuthorizedRequest = async (
-  path: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  accessToken: string,
-  body?: unknown,
-) => {
-  try {
-    return await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new Error('No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.');
-  }
-};
-
-const requestWithAutoRefresh = async (
-  path: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  accessToken: string,
-  body?: unknown,
-) => {
-  let response = await executeAuthorizedRequest(path, method, accessToken, body);
-
-  if (response.status === 401) {
-    const refreshedSession = await refreshStoredSession();
-    response = await executeAuthorizedRequest(path, method, refreshedSession.accessToken, body);
-  }
-
-  return response;
-};
-
 export async function fetchMedications(accessToken: string): Promise<MedicationData[]> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh('/medications', 'GET', accessToken);
 
@@ -121,9 +48,7 @@ export async function createMedication(
   accessToken: string,
   payload: CreateMedicationPayload,
 ): Promise<MedicationData> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh('/medications', 'POST', accessToken, payload);
 
@@ -139,9 +64,7 @@ export async function updateMedication(
   accessToken: string,
   payload: Partial<CreateMedicationPayload> & { active?: boolean },
 ): Promise<MedicationData> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh(
     `/medications/${medicationId}`,
@@ -158,9 +81,7 @@ export async function updateMedication(
 }
 
 export async function deleteMedication(medicationId: string, accessToken: string): Promise<void> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh(`/medications/${medicationId}`, 'DELETE', accessToken);
 
@@ -169,15 +90,26 @@ export async function deleteMedication(medicationId: string, accessToken: string
   }
 }
 
-export async function fetchMedicationLogs(
-  medicationId: string,
-  accessToken: string,
-): Promise<MedicationLog[]> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+/**
+ * Logs de hoy de todos los medicamentos del usuario en una sola petición.
+ *
+ * Desde el inicio del día local o del día UTC, el que sea anterior: quienes
+ * consumen estos logs filtran "hoy" en una u otra referencia.
+ */
+export async function fetchTodayMedicationLogs(accessToken: string): Promise<MedicationLog[]> {
+  ensureApiBaseUrl();
 
-  const response = await requestWithAutoRefresh(`/medications/${medicationId}/logs`, 'GET', accessToken);
+  const localStart = new Date();
+  localStart.setHours(0, 0, 0, 0);
+  const utcStart = new Date();
+  utcStart.setUTCHours(0, 0, 0, 0);
+  const since = new Date(Math.min(localStart.getTime(), utcStart.getTime())).toISOString();
+
+  const response = await requestWithAutoRefresh(
+    `/medications/logs?since=${encodeURIComponent(since)}`,
+    'GET',
+    accessToken,
+  );
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudieron cargar los registros'));
@@ -192,9 +124,7 @@ export async function logMedicationAction(
   action: 'TAKEN' | 'SKIPPED' | 'SNOOZED',
   scheduledFor?: string,
 ): Promise<void> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const body: Record<string, unknown> = { action };
   if (scheduledFor) {

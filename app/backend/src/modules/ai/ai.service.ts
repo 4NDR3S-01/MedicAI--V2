@@ -21,15 +21,19 @@ export class AiService {
   constructor(private readonly configService: ConfigService) {}
 
   private readonly GROQ_TIMEOUT_MS = 25_000;
+  // El tiempo de respuesta crece linealmente con los tokens generados; el
+  // prompt pide respuestas breves, así que se acota para evitar colas largas.
+  private readonly GROQ_MAX_TOKENS = 700;
 
   async chat(dto: ChatRequestDto) {
     const apiKey = this.configService.getOrThrow<string>('GROQ_API_KEY');
     const baseUrl = (this.configService.get<string>('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1').replace(/\/$/, '');
-    const model = this.configService.get<string>('GROQ_MODEL') || 'llama-3.1-70b-versatile';
+    const model = this.configService.get<string>('GROQ_MODEL') || 'llama-3.3-70b-versatile';
 
     const payload = {
       model,
       temperature: 0.2,
+      max_tokens: this.GROQ_MAX_TOKENS,
       messages: this.buildMessages(dto.message, dto.history),
     };
 
