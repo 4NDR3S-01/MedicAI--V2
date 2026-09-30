@@ -11,10 +11,8 @@ import {
   Req,
   Res,
   UseGuards,
-  UseInterceptors,
   UnauthorizedException,
 } from '@nestjs/common';
-import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
 import type { Request as ExpressRequest, Response } from 'express';
 
@@ -151,9 +149,6 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(CacheInterceptor)
-  @CacheKey('auth:profile')
-  @CacheTTL(30)
   @Get('profile')
   getProfile(@Request() req: any) {
     const userId = req.user?.sub;

@@ -37,10 +37,8 @@ export const metadata: Metadata = {
     locale: "es_ES",
     type: "website",
   },
-  icons: {
-    icon: "/logo_app.png",
-    apple: "/logo_app.png",
-  },
+  // Iconos: app/favicon.ico, app/icon.png y app/apple-icon.png (convención de
+  // archivos de Next). Antes se servía el logo de 484 KB como favicon.
 };
 
 import SmoothScrollProvider from "./components/SmoothScrollProvider";

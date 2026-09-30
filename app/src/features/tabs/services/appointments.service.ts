@@ -1,4 +1,9 @@
-import { refreshStoredSession } from '../../auth';
+import {
+  ensureApiBaseUrl,
+  parseApiErrorMessage,
+  readResponseBody,
+  requestWithAutoRefresh,
+} from './http';
 
 type AppointmentData = {
   id: string;
@@ -30,86 +35,8 @@ type UpdateAppointmentPayload = Partial<CreateAppointmentPayload> & {
   attendanceStatus?: AppointmentAttendanceStatus;
 };
 
-const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
-
-const readResponseBody = async <T>(response: Response): Promise<T> => {
-  const rawBody = await response.text();
-  if (!rawBody.trim()) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(rawBody) as T;
-  } catch {
-    throw new Error('Respuesta invalida del backend.');
-  }
-};
-
-const parseApiErrorMessage = async (response: Response, fallback: string) => {
-  if (response.status >= 500) {
-    return 'El backend de MedicAI no esta disponible en este momento.';
-  }
-
-  try {
-    const body = await readResponseBody<{ message?: string | string[]; error?: string }>(response);
-    if (Array.isArray(body.message) && body.message.length > 0) {
-      return body.message.join('. ');
-    }
-
-    if (typeof body.message === 'string' && body.message.trim()) {
-      return body.message;
-    }
-
-    if (typeof body.error === 'string' && body.error.trim()) {
-      return body.error;
-    }
-  } catch {
-    // no-op
-  }
-
-  return `${fallback} (HTTP ${response.status})`;
-};
-
-const executeAuthorizedRequest = async (
-  path: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  accessToken: string,
-  body?: unknown,
-) => {
-  try {
-    return await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new Error('No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.');
-  }
-};
-
-const requestWithAutoRefresh = async (
-  path: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  accessToken: string,
-  body?: unknown,
-) => {
-  let response = await executeAuthorizedRequest(path, method, accessToken, body);
-
-  if (response.status === 401) {
-    const refreshedSession = await refreshStoredSession();
-    response = await executeAuthorizedRequest(path, method, refreshedSession.accessToken, body);
-  }
-
-  return response;
-};
-
 export async function fetchAppointments(accessToken: string): Promise<AppointmentData[]> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh('/appointments', 'GET', accessToken);
 
@@ -124,9 +51,7 @@ export async function createAppointment(
   accessToken: string,
   payload: CreateAppointmentPayload,
 ): Promise<AppointmentData> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh('/appointments', 'POST', accessToken, payload);
 
@@ -138,9 +63,7 @@ export async function createAppointment(
 }
 
 export async function deleteAppointment(appointmentId: string, accessToken: string): Promise<void> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh(`/appointments/${appointmentId}`, 'DELETE', accessToken);
 
@@ -154,9 +77,7 @@ export async function updateAppointment(
   accessToken: string,
   payload: UpdateAppointmentPayload,
 ): Promise<AppointmentData> {
-  if (!API_BASE_URL) {
-    throw new Error('Falta configurar EXPO_PUBLIC_API_BASE_URL.');
-  }
+  ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh(
     `/appointments/${appointmentId}`,

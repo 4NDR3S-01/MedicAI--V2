@@ -1,8 +1,13 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
+import { isRecordNotFoundError } from '../../infrastructure/prisma/prisma-errors';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
 import { UpdateMedicationDto } from './dto/update-medication.dto';
+
+// Cota de seguridad para /medications/logs: un día normal son pocas decenas
+// de filas; esto solo evita respuestas enormes si `since` es muy antiguo.
+const MAX_LOGS_PER_QUERY = 1000;
 
 @Injectable()
 export class MedicationsService {
@@ -52,55 +57,54 @@ export class MedicationsService {
   }
 
   async update(medicationId: string, userId: string, dto: UpdateMedicationDto) {
-    const medication = await this.findById(medicationId, userId);
-
-    let nextCustomEndDate = medication.customEndDate;
+    // Un único UPDATE filtrado por dueño: los campos `undefined` no se tocan,
+    // así que no hace falta leer antes el registro.
+    let nextCustomEndDate: Date | null | undefined;
     if (dto.customEndDate === null) {
       nextCustomEndDate = null;
     } else if (typeof dto.customEndDate === 'string') {
       nextCustomEndDate = new Date(dto.customEndDate);
     }
 
-    const shouldUpdateCustomInterval =
-      dto.customIntervalHours === null || typeof dto.customIntervalHours === 'number';
-
-    const nextCustomIntervalHours = shouldUpdateCustomInterval
-      ? dto.customIntervalHours
-      : medication.customIntervalHours;
-
-    let nextNotes = medication.notes;
+    let nextNotes: string | null | undefined;
     if (typeof dto.notes === 'string') {
       nextNotes = dto.notes.trim() || null;
     } else if (dto.notes === null) {
       nextNotes = null;
     }
 
-    const updated = await this.prisma.medication.update({
-      where: { id: medication.id },
-      data: {
-        name: dto.name?.trim() ?? medication.name,
-        dosage: dto.dosage?.trim() ?? medication.dosage,
-        frequency: dto.frequency?.trim() ?? medication.frequency,
-        firstDoseTime: dto.firstDoseTime ?? medication.firstDoseTime,
-        times: dto.times ?? medication.times,
-        notes: nextNotes,
-        active: dto.active ?? medication.active,
-        customIntervalHours: nextCustomIntervalHours,
-        customEndDate: nextCustomEndDate,
-      },
-    });
+    try {
+      const updated = await this.prisma.medication.update({
+        where: { id: medicationId, userId },
+        data: {
+          name: dto.name?.trim(),
+          dosage: dto.dosage?.trim(),
+          frequency: dto.frequency?.trim(),
+          firstDoseTime: dto.firstDoseTime,
+          times: dto.times,
+          notes: nextNotes,
+          active: dto.active,
+          customIntervalHours: dto.customIntervalHours,
+          customEndDate: nextCustomEndDate,
+        },
+      });
 
-    this.logger.log('Medication updated', { userId, medicationId: updated.id });
+      this.logger.log('Medication updated', { userId, medicationId: updated.id });
 
-    return updated;
+      return updated;
+    } catch (error) {
+      throw this.mapNotFound(error);
+    }
   }
 
   async delete(medicationId: string, userId: string) {
-    const medication = await this.findById(medicationId, userId);
-
-    await this.prisma.medication.delete({
-      where: { id: medication.id },
-    });
+    try {
+      await this.prisma.medication.delete({
+        where: { id: medicationId, userId },
+      });
+    } catch (error) {
+      throw this.mapNotFound(error);
+    }
 
     this.logger.log('Medication deleted', { userId, medicationId });
 
@@ -108,7 +112,7 @@ export class MedicationsService {
   }
 
   async getLogs(medicationId: string, userId: string) {
-    await this.findById(medicationId, userId);
+    await this.assertOwnership(medicationId, userId);
     return this.prisma.medicationLog.findMany({
       where: { medicationId },
       orderBy: { takenAt: 'desc' },
@@ -116,16 +120,44 @@ export class MedicationsService {
     });
   }
 
+  async findLogsSince(userId: string, since: Date) {
+    return this.prisma.medicationLog.findMany({
+      where: {
+        medication: { userId },
+        OR: [{ takenAt: { gte: since } }, { scheduledFor: { gte: since } }],
+      },
+      orderBy: { takenAt: 'desc' },
+      take: MAX_LOGS_PER_QUERY,
+    });
+  }
+
   async logAction(medicationId: string, userId: string, action: string, scheduledFor?: string) {
-    const medication = await this.findById(medicationId, userId);
+    await this.assertOwnership(medicationId, userId);
     const log = await this.prisma.medicationLog.create({
       data: {
-        medicationId: medication.id,
-        action: action.toUpperCase(),
+        medicationId,
+        action,
         scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
       },
     });
     this.logger.log('Medication action logged', { userId, medicationId, action });
     return log;
+  }
+
+  private async assertOwnership(medicationId: string, userId: string) {
+    const medication = await this.prisma.medication.findUnique({
+      where: { id: medicationId, userId },
+      select: { id: true },
+    });
+
+    if (!medication) {
+      throw new NotFoundException('Medicamento no encontrado.');
+    }
+  }
+
+  private mapNotFound(error: unknown) {
+    return isRecordNotFoundError(error)
+      ? new NotFoundException('Medicamento no encontrado.')
+      : error;
   }
 }

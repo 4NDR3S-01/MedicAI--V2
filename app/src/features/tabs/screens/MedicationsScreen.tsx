@@ -227,6 +227,23 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     let taken = 0;
     let total = 0;
 
+    // Una sola petición para todos los medicamentos (antes: una por
+    // medicamento, en serie). Si falla, se conserva el estado actual en vez
+    // de marcar todo como pendiente y sobrescribir la caché.
+    let todayLogsByMedication: Map<string, medicationsAPI.MedicationLog[]>;
+    try {
+      const logs = await medicationsAPI.fetchTodayMedicationLogs(accessToken);
+      todayLogsByMedication = new Map();
+      for (const log of logs) {
+        if (!isToday(new Date(log.takenAt))) continue;
+        const list = todayLogsByMedication.get(log.medicationId);
+        if (list) list.push(log);
+        else todayLogsByMedication.set(log.medicationId, [log]);
+      }
+    } catch {
+      return;
+    }
+
     for (const med of meds) {
       statusMap[med.id] = {};
       if (!med.active) continue;
@@ -234,31 +251,24 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       const doses = getTodayDoses(med.times, med);
       total += doses.length;
 
-      try {
-        const logs = await medicationsAPI.fetchMedicationLogs(med.id, accessToken);
-        const todayLogs = logs.filter((l) => isToday(new Date(l.takenAt)));
+      const todayLogs = todayLogsByMedication.get(med.id) ?? [];
 
-        for (const doseTime of doses) {
-          const [h, m] = doseTime.split(':').map(Number);
-          const matchingLog = todayLogs.find((l) => {
-            if (l.scheduledFor) {
-              const logTime = new Date(l.scheduledFor);
-              return logTime.getHours() === h && logTime.getMinutes() === m;
-            }
-            return false;
-          });
-
-          if (matchingLog?.action === 'TAKEN') {
-            statusMap[med.id][doseTime] = 'taken';
-            taken++;
-          } else if (matchingLog?.action === 'SKIPPED') {
-            statusMap[med.id][doseTime] = 'skipped';
-          } else {
-            statusMap[med.id][doseTime] = 'pending';
+      for (const doseTime of doses) {
+        const [h, m] = doseTime.split(':').map(Number);
+        const matchingLog = todayLogs.find((l) => {
+          if (l.scheduledFor) {
+            const logTime = new Date(l.scheduledFor);
+            return logTime.getHours() === h && logTime.getMinutes() === m;
           }
-        }
-      } catch {
-        for (const doseTime of doses) {
+          return false;
+        });
+
+        if (matchingLog?.action === 'TAKEN') {
+          statusMap[med.id][doseTime] = 'taken';
+          taken++;
+        } else if (matchingLog?.action === 'SKIPPED') {
+          statusMap[med.id][doseTime] = 'skipped';
+        } else {
           statusMap[med.id][doseTime] = 'pending';
         }
       }
@@ -319,10 +329,15 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   useEffect(() => {
     let lastDate = new Date().toISOString().slice(0, 10);
 
-    const refreshAll = () => {
+    // Las tomas solo cambian por acciones del usuario (emitDoseAction) o por
+    // la alarma nativa, que se procesa al volver a primer plano. El intervalo
+    // solo detecta el cambio de día: antes consultaba al servidor cada minuto
+    // aunque no hubiera cambios.
+    const refreshAll = (onlyOnDateChange = false) => {
       const today = new Date().toISOString().slice(0, 10);
       const dateChanged = today !== lastDate;
       if (dateChanged) lastDate = today;
+      if (onlyOnDateChange && !dateChanged) return;
 
       doseRefreshVersionRef.current += 1;
       const sessionPromise = getStoredSession();
@@ -340,7 +355,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') refreshAll();
     });
-    const interval = setInterval(refreshAll, 60000);
+    const interval = setInterval(() => refreshAll(true), 60000);
     return () => {
       sub.remove();
       clearInterval(interval);

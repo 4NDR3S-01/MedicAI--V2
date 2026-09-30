@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards, UnauthorizedException, UseInterceptors } from '@nestjs/common';
-import { CacheKey, CacheTTL } from '@nestjs/cache-manager';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Request, UseGuards, UnauthorizedException } from '@nestjs/common';
 
-import { UserCacheInterceptor } from '../../infrastructure/cache/user-cache.interceptor';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { MedicationsService } from './medications.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
+import { LogMedicationActionDto } from './dto/log-medication-action.dto';
+import { MedicationLogsQueryDto } from './dto/medication-logs-query.dto';
 import { UpdateMedicationDto } from './dto/update-medication.dto';
 
 @Controller('medications')
@@ -12,13 +12,22 @@ import { UpdateMedicationDto } from './dto/update-medication.dto';
 export class MedicationsController {
   constructor(private readonly medicationsService: MedicationsService) {}
 
-  @UseInterceptors(UserCacheInterceptor)
-  @CacheKey('medications:all')
-  @CacheTTL(30)
   @Get()
   findAll(@Request() req: any) {
     const userId = req.user?.sub;
     return this.medicationsService.findAll(userId);
+  }
+
+  /**
+   * Logs de todos los medicamentos del usuario desde `since` en una sola
+   * consulta. Sustituye el patrón de pedir /:id/logs por cada medicamento.
+   * Debe declararse antes de `:id` para que Express no lo capture como id.
+   */
+  @Get('logs')
+  findLogsSince(@Query() query: MedicationLogsQueryDto, @Request() req: any) {
+    const userId = req.user?.sub;
+    if (!userId) throw new UnauthorizedException();
+    return this.medicationsService.findLogsSince(userId, new Date(query.since));
   }
 
   @Get(':id')
@@ -49,9 +58,6 @@ export class MedicationsController {
     return this.medicationsService.delete(medicationId, userId);
   }
 
-  @UseInterceptors(UserCacheInterceptor)
-  @CacheKey('medications:logs')
-  @CacheTTL(30)
   @Get(':id/logs')
   getLogs(
     @Param('id') medicationId: string,
@@ -65,7 +71,7 @@ export class MedicationsController {
   @Post(':id/logs')
   logAction(
     @Param('id') medicationId: string,
-    @Body() dto: { action: string; scheduledFor?: string },
+    @Body() dto: LogMedicationActionDto,
     @Request() req: any,
   ) {
     const userId = req.user?.sub;

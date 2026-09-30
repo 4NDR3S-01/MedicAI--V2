@@ -30,7 +30,7 @@ import AlarmNative from '../native/AlarmNative';
 import {
   type MedicationLog,
   logMedicationAction,
-  fetchMedicationLogs,
+  fetchTodayMedicationLogs,
 } from '../../features/tabs/services/medications.service';
 
 // ─── Public constants ─────────────────────────────────────────────────────────
@@ -845,20 +845,21 @@ export async function reconcileMissedDoses(
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
 
-  for (const med of medications) {
-    if (!med.active) continue;
-    if (!med.times || med.times.length === 0) continue;
+  const pending = medications.filter(med => med.active && med.times?.length);
+  if (!pending.length) return;
 
-    let logs: MedicationLog[] = [];
-    try {
-      logs = await fetchMedicationLogs(med.id, accessToken);
-    } catch {
-      continue;
-    }
+  // Una sola petición para todos los medicamentos (antes: una por medicamento).
+  let allLogs: MedicationLog[];
+  try {
+    allLogs = await fetchTodayMedicationLogs(accessToken);
+  } catch {
+    return;
+  }
 
-    const todayLogs = logs.filter(l => l.scheduledFor
+  for (const med of pending) {
+    const todayLogs = allLogs.filter(l => l.medicationId === med.id && (l.scheduledFor
       ? new Date(l.scheduledFor).toISOString().slice(0, 10) === todayStr
-      : false);
+      : false));
 
     for (const timeStr of med.times) {
       const parsed = parseTime(timeStr);

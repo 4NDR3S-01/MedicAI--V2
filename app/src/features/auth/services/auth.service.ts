@@ -227,7 +227,21 @@ export const signOut = async () => {
   await appStorage.removeItem(AUTH_SESSION_KEY);
 };
 
-export const refreshStoredSession = async (): Promise<AppAuthSession> => {
+// Varias pantallas pueden recibir 401 a la vez cuando expira el access token.
+// Compartimos una única renovación en curso: evita N llamadas a /auth/refresh
+// y que una rotación invalide el refresh token que usan las demás.
+let refreshInFlight: Promise<AppAuthSession> | null = null;
+
+export const refreshStoredSession = (): Promise<AppAuthSession> => {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshStoredSessionOnce().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+};
+
+const refreshStoredSessionOnce = async (): Promise<AppAuthSession> => {
   const currentSession = await getStoredSession();
 
   if (!currentSession?.refreshToken) {
