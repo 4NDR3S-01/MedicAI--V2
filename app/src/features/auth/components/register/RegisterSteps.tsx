@@ -34,7 +34,11 @@ import {
   formatBirthDateLong,
   getPhoneCountry,
 } from "../../utils/register.utils";
-import type { PersonalErrors, PersonalField } from "../../utils/register.validation";
+import type {
+  MedicalErrors,
+  PersonalErrors,
+  PersonalField,
+} from "../../utils/register.validation";
 import { FieldShell, TextField, useFieldColors } from "./FormField";
 import { MedicalMultiSelect } from "./MedicalMultiSelect";
 
@@ -83,16 +87,22 @@ export function PersonalStep({
   const setRef = (field: PersonalField) => (ref: TextInput | null) => {
     inputRefs.current[field] = ref;
   };
-  const passwordLongEnough = data.password.length >= PASSWORD_MIN_LENGTH;
 
   let emailTrailing: ReactNode = null;
   if (emailStatus === "checking") {
     emailTrailing = <ActivityIndicator style={styles.trailingIcon} size="small" color={theme.colors.textMuted} />;
   } else if (emailStatus === "available" && !errors.email) {
     emailTrailing = (
-      <Ionicons style={styles.trailingIcon} name="checkmark-circle" size={20} color={theme.colors.success} />
+      <Ionicons
+        style={styles.trailingIcon}
+        name="checkmark-circle"
+        size={20}
+        color={theme.colors.success}
+        accessibilityLabel="Correo disponible"
+      />
     );
   }
+  const passwordLongEnough = data.password.length >= PASSWORD_MIN_LENGTH;
 
   return (
     <View style={styles.stack}>
@@ -212,16 +222,17 @@ export function PersonalStep({
         value={data.password}
         error={errors.password}
         helper={
-          <View style={styles.ruleRow}>
-            <Ionicons
-              name={passwordLongEnough ? "checkmark-circle" : "ellipse-outline"}
-              size={14}
-              color={passwordLongEnough ? theme.colors.success : theme.colors.textMuted}
-            />
-            <Text style={[styles.ruleText, { color: theme.colors.textMuted }]}>
-              Al menos {PASSWORD_MIN_LENGTH} caracteres
-            </Text>
-          </View>
+          <Text
+            style={[
+              styles.passwordRule,
+              passwordLongEnough
+                ? { color: theme.colors.success, fontWeight: "700" }
+                : { color: theme.colors.textMuted },
+            ]}
+            accessibilityLiveRegion="polite"
+          >
+            Mínimo {PASSWORD_MIN_LENGTH} caracteres.
+          </Text>
         }
         inputRef={setRef("password")}
         onLayout={onFieldLayout("password")}
@@ -229,7 +240,7 @@ export function PersonalStep({
         onFocus={() => onFocusField("password")}
         onBlur={() => onBlurField("password")}
         onSubmitEditing={() => onSubmitField("password")}
-        placeholder={`Mínimo ${PASSWORD_MIN_LENGTH} caracteres`}
+        placeholder="Crea una contraseña"
         secureToggle
         autoCapitalize="none"
         autoCorrect={false}
@@ -259,11 +270,6 @@ export function PersonalStep({
         textContentType="newPassword"
         maxLength={PASSWORD_MAX_LENGTH}
         returnKeyType="done"
-        trailing={
-          data.confirmPassword && data.confirmPassword === data.password ? (
-            <Ionicons style={styles.trailingIcon} name="checkmark-circle" size={20} color={theme.colors.success} />
-          ) : null
-        }
       />
     </View>
   );
@@ -307,39 +313,57 @@ function PhoneInput({ theme, hasError, inputRef, onFocus, onBlur, ...props }: Re
 type MedicalStepProps = {
   theme: AppTheme;
   data: MedicalInfo;
+  errors: MedicalErrors;
   onChange: (patch: Partial<MedicalInfo>) => void;
+  onSectionLayout: (section: "conditions" | "allergies") => (event: LayoutChangeEvent) => void;
+  onCustomInputFocus: (section: "conditions" | "allergies") => void;
 };
 
-export function MedicalStep({ theme, data, onChange }: Readonly<MedicalStepProps>) {
+export function MedicalStep({
+  theme,
+  data,
+  errors,
+  onChange,
+  onSectionLayout,
+  onCustomInputFocus,
+}: Readonly<MedicalStepProps>) {
   return (
     <View style={styles.stack}>
       <InfoNote
         theme={theme}
         icon="lock-closed-outline"
-        text="Es opcional y solo lo ves tú. Nos ayuda a advertirte sobre medicamentos que podrían no convenirte."
+        text="Solo lo ves tú. Nos ayuda a advertirte sobre medicamentos que podrían no convenirte. Si no tienes ninguna, elige «Ninguna»."
       />
-      <MedicalMultiSelect
-        theme={theme}
-        title="Condiciones de salud"
-        description="Enfermedades que te hayan diagnosticado."
-        icon="medkit-outline"
-        noneLabel="Ninguna"
-        groups={[{ items: HEALTH_CONDITIONS }]}
-        customPlaceholder="Agregar otra condición"
-        value={data.conditions}
-        onChange={(conditions: MedicalSelection) => onChange({ conditions })}
-      />
-      <MedicalMultiSelect
-        theme={theme}
-        title="Alergias"
-        description="Sobre todo a medicamentos."
-        icon="alert-circle-outline"
-        noneLabel="Ninguna conocida"
-        groups={ALLERGY_GROUPS}
-        customPlaceholder="Agregar otra alergia"
-        value={data.allergies}
-        onChange={(allergies: MedicalSelection) => onChange({ allergies })}
-      />
+      <View onLayout={onSectionLayout("conditions")}>
+        <MedicalMultiSelect
+          theme={theme}
+          onCustomInputFocus={() => onCustomInputFocus("conditions")}
+          title="Condiciones de salud"
+          description="Enfermedades que te hayan diagnosticado."
+          icon="medkit-outline"
+          noneLabel="Ninguna"
+          groups={[{ items: HEALTH_CONDITIONS }]}
+          customPlaceholder="Agregar otra condición"
+          error={errors.conditions}
+          value={data.conditions}
+          onChange={(conditions: MedicalSelection) => onChange({ conditions })}
+        />
+      </View>
+      <View onLayout={onSectionLayout("allergies")}>
+        <MedicalMultiSelect
+          theme={theme}
+          onCustomInputFocus={() => onCustomInputFocus("allergies")}
+          title="Alergias"
+          description="Sobre todo a medicamentos."
+          icon="alert-circle-outline"
+          noneLabel="Ninguna conocida"
+          groups={ALLERGY_GROUPS}
+          customPlaceholder="Agregar otra alergia"
+          error={errors.allergies}
+          value={data.allergies}
+          onChange={(allergies: MedicalSelection) => onChange({ allergies })}
+        />
+      </View>
     </View>
   );
 }
@@ -621,6 +645,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   stack: { gap: 16 },
   trailingIcon: { marginRight: 14 },
+  passwordRule: { fontSize: 12.5, lineHeight: 17 },
   selector: {
     flexDirection: "row",
     alignItems: "center",
@@ -643,8 +668,6 @@ const styles = StyleSheet.create({
   },
   flag: { fontSize: 20 },
   countryCode: { fontSize: 16, fontWeight: "700" },
-  ruleRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  ruleText: { fontSize: 12.5 },
   note: { flexDirection: "row", gap: 10, padding: 12, borderRadius: 14, alignItems: "flex-start" },
   noteText: { flex: 1, fontSize: 13, lineHeight: 19 },
   toggleCard: {

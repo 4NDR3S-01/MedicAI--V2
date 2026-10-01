@@ -15,6 +15,8 @@ type AppButtonProps = {
   iconPosition?: 'left' | 'right';
   style?: StyleProp<ViewStyle>;
   accessibilityHint?: string;
+  /** Solo muestra el icono; `label` se usa como etiqueta accesible. */
+  iconOnly?: boolean;
 };
 
 export function AppButton({
@@ -28,6 +30,7 @@ export function AppButton({
   iconPosition = 'right',
   style,
   accessibilityHint,
+  iconOnly = false,
 }: Readonly<AppButtonProps>) {
   const isDisabled = disabled || loading;
   const palette = {
@@ -36,7 +39,7 @@ export function AppButton({
     ghost: { bg: 'transparent', fg: theme.colors.accentSecondary, border: 'transparent' },
   }[variant];
 
-  const iconNode = icon ? <Ionicons name={icon} size={18} color={palette.fg} /> : null;
+  const iconNode = icon ? <Ionicons name={icon} size={iconOnly ? 22 : 18} color={palette.fg} /> : null;
 
   return (
     <PressableScale
@@ -48,6 +51,7 @@ export function AppButton({
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={[
         styles.base,
+        iconOnly ? styles.iconOnly : null,
         { backgroundColor: palette.bg, borderColor: palette.border, opacity: disabled && !loading ? 0.5 : 1 },
         style,
       ]}
@@ -55,10 +59,18 @@ export function AppButton({
       <View style={styles.content}>
         {loading ? (
           <ActivityIndicator size="small" color={palette.fg} />
+        ) : iconOnly ? (
+          iconNode
         ) : (
           <>
             {iconPosition === 'left' ? iconNode : null}
-            <Text style={[styles.label, { color: palette.fg }]} numberOfLines={1}>
+            <Text
+              style={[styles.label, { color: palette.fg }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+              maxFontSizeMultiplier={1.3}
+            >
               {label}
             </Text>
             {iconPosition === 'right' ? iconNode : null}
@@ -77,6 +89,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     justifyContent: 'center',
   },
+  iconOnly: { width: 52, paddingHorizontal: 0, alignItems: 'center' },
   content: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  label: { fontSize: 16, fontWeight: '800' },
+  label: { fontSize: 16, fontWeight: '800', flexShrink: 1 },
 });

@@ -3,18 +3,26 @@ import {
   Animated,
   BackHandler,
   Easing,
-  KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type LayoutChangeEvent,
   type TextInput,
 } from "react-native";
 
 import type { AppTheme } from "../../../shared/theme";
-import { AppButton, BackgroundDecor, BrandLogo, MOTION, useReducedMotion } from "../../../shared/ui";
+import {
+  AppButton,
+  BackgroundDecor,
+  BrandLogo,
+  MOTION,
+  useKeyboardInset,
+  useReducedMotion,
+} from "../../../shared/ui";
 import { BirthDatePickerSheet } from "../components/register/BirthDatePickerSheet";
 import { CountryPickerSheet } from "../components/register/CountryPickerSheet";
 import {
@@ -32,6 +40,7 @@ import { createInitialForm, getPhoneCountry, normalizeNationalPhone } from "../u
 import {
   firstErrorField,
   isValidEmail,
+  validateMedicalInfo,
   validatePersonalData,
   type PersonalField,
 } from "../utils/register.validation";
@@ -46,6 +55,10 @@ type RegisterScreenProps = {
 };
 
 const DRAFT_SAVE_DELAY_MS = 400;
+/** Ancho máximo del contenido en tablets y pantallas grandes. */
+const CONTENT_MAX_WIDTH = 560;
+/** Por debajo de esta altura la cabecera se compacta (móviles pequeños). */
+const SHORT_SCREEN_HEIGHT = 700;
 const LAST_STEP = REGISTER_STEPS.length - 1;
 const NEXT_FIELD: Partial<Record<PersonalField, PersonalField>> = {
   fullName: "birthDate",
@@ -61,11 +74,14 @@ export function RegisterScreen({
   onNavigateToLogin,
 }: Readonly<RegisterScreenProps>) {
   const reducedMotion = useReducedMotion();
+  const { width, height } = useWindowDimensions();
+  const { keyboardVisible, bottomInset } = useKeyboardInset();
 
   const [form, setForm] = useState<RegisterWizardPayload>(createInitialForm);
   const [stepIndex, setStepIndex] = useState(0);
   const [touched, setTouched] = useState<Partial<Record<PersonalField, boolean>>>({});
   const [showAllErrors, setShowAllErrors] = useState(false);
+  const [showMedicalErrors, setShowMedicalErrors] = useState(false);
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
   const [emailStatusMessage, setEmailStatusMessage] = useState<string | null>(null);
   const [isBirthDateOpen, setIsBirthDateOpen] = useState(false);
@@ -75,15 +91,22 @@ export function RegisterScreen({
 
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRefs = useRef<Partial<Record<PersonalField, TextInput | null>>>({});
-  const fieldOffsets = useRef<Partial<Record<PersonalField, number>>>({});
+  // Regiones (y, alto) dentro del contenido del ScrollView, para mostrar lo
+  // enfocado cuando el teclado reduce el área visible.
+  const regions = useRef<Record<string, { y: number; height: number }>>({});
+  const viewportHeight = useRef(0);
+  /** Posición del contenedor del paso dentro del contenido del ScrollView. */
+  const stepOffsetY = useRef(0);
   const checkedEmailRef = useRef<{ email: string; available: boolean } | null>(null);
   const continueAfterBirthDate = useRef(false);
+  const focusedRegion = useRef<{ key: string; align: "top" | "bottom" } | null>(null);
 
   const stepAnim = useRef(new Animated.Value(1)).current;
   const stepDirection = useRef(1);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   const personalErrors = validatePersonalData(form.personalData);
+  const medicalErrors = validateMedicalInfo(form.medicalInfo);
   const visibleErrors = Object.fromEntries(
     Object.entries(personalErrors).filter(
       ([field]) => showAllErrors || touched[field as PersonalField],
@@ -121,6 +144,8 @@ export function RegisterScreen({
   // ── Animaciones de paso y progreso ──────────────────────────────────────
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
+    focusedRegion.current = null;
+    regions.current = {};
     if (reducedMotion) {
       stepAnim.setValue(1);
       progressAnim.setValue(stepIndex + 1);
@@ -220,9 +245,28 @@ export function RegisterScreen({
     }
   };
 
-  const scrollToField = (field: PersonalField) => {
-    const y = fieldOffsets.current[field];
-    if (y !== undefined) scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: !reducedMotion });
+  /**
+   * "top": deja la región arriba (campos). "bottom": asegura que se vea su
+   * final (tarjetas altas cuyo campo de texto está abajo).
+   */
+  const revealRegion = (key: string, align: "top" | "bottom" = "top") => {
+    const region = regions.current[key];
+    if (!region) return;
+    const top = stepOffsetY.current + region.y;
+    const y = align === "top" ? top - 16 : top + region.height - viewportHeight.current + 16;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: !reducedMotion });
+  };
+
+  const trackFocus = (key: string, align: "top" | "bottom" = "top") => {
+    focusedRegion.current = { key, align };
+    revealRegion(key, align);
+  };
+
+  const scrollToField = (field: PersonalField) => revealRegion(field);
+
+  const registerRegion = (key: string) => (event: LayoutChangeEvent) => {
+    const { y, height: regionHeight } = event.nativeEvent.layout;
+    regions.current[key] = { y, height: regionHeight };
   };
 
   const focusField = (field: PersonalField) => {
@@ -234,12 +278,9 @@ export function RegisterScreen({
     setTimeout(() => inputRefs.current[field]?.focus(), 250);
   };
 
-  const handleFieldLayout = (field: PersonalField) => (event: LayoutChangeEvent) => {
-    fieldOffsets.current[field] = event.nativeEvent.layout.y;
-  };
-
   const handleBlur = (field: PersonalField) => {
     setTouched((current) => (current[field] ? current : { ...current, [field]: true }));
+    if (focusedRegion.current?.key === field) focusedRegion.current = null;
     if (field === "email" && !personalErrors.email) void verifyEmail();
   };
 
@@ -286,6 +327,16 @@ export function RegisterScreen({
       return;
     }
 
+    if (stepIndex === 1 || stepIndex === LAST_STEP) {
+      if (Object.keys(medicalErrors).length) {
+        setShowMedicalErrors(true);
+        if (stepIndex !== 1) goToStep(1);
+        else if (medicalErrors.conditions) scrollRef.current?.scrollTo({ y: 0, animated: !reducedMotion });
+        else scrollRef.current?.scrollToEnd({ animated: !reducedMotion });
+        return;
+      }
+    }
+
     if (stepIndex === LAST_STEP) {
       // Revalidar todo antes de enviar: el formulario pudo editarse hacia atrás.
       if (!(await validatePersonalStep())) return;
@@ -321,15 +372,24 @@ export function RegisterScreen({
             inputRefs={inputRefs}
             onChange={updatePersonal}
             onBlurField={handleBlur}
-            onFieldLayout={handleFieldLayout}
+            onFieldLayout={registerRegion}
             onSubmitField={handleSubmitField}
             onOpenBirthDate={() => setIsBirthDateOpen(true)}
             onOpenCountry={() => setIsCountryOpen(true)}
-            onFocusField={scrollToField}
+            onFocusField={(field) => trackFocus(field)}
           />
         );
       case "medical":
-        return <MedicalStep theme={theme} data={form.medicalInfo} onChange={updateMedical} />;
+        return (
+          <MedicalStep
+            theme={theme}
+            data={form.medicalInfo}
+            errors={showMedicalErrors ? medicalErrors : {}}
+            onChange={updateMedical}
+            onSectionLayout={registerRegion}
+            onCustomInputFocus={(section) => trackFocus(section, "bottom")}
+          />
+        );
       case "special":
         return <SpecialStep theme={theme} data={form.medicalInfo} onToggle={toggleSpecial} />;
       default:
@@ -344,29 +404,52 @@ export function RegisterScreen({
     }
   })();
 
+  const isShortScreen = height < SHORT_SCREEN_HEIGHT;
+  // Con el teclado abierto se oculta la cabecera para dejar sitio al formulario.
+  const showHeader = !keyboardVisible;
+  const horizontalPadding = width < 360 ? 12 : 16;
+
   return (
-    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[
+        styles.screen,
+        {
+          backgroundColor: theme.colors.background,
+          paddingHorizontal: horizontalPadding,
+          // Separación de la barra de navegación y espacio para el teclado.
+          paddingBottom: 12 + bottomInset,
+        },
+      ]}
+    >
       <BackgroundDecor theme={theme} />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.flex}
-      >
-        <View style={styles.header}>
-          <BrandLogo theme={theme} size={52} showName={false} />
-          <View style={styles.flex}>
-            <Text style={[styles.title, { color: theme.colors.textPrimary }]} accessibilityRole="header">
-              Crea tu cuenta
-            </Text>
-            <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-              Paso {stepIndex + 1} de {REGISTER_STEPS.length} · {step.title}
-            </Text>
+      <View style={styles.content}>
+        {showHeader ? (
+          <View style={[styles.header, isShortScreen ? styles.headerCompact : null]}>
+            {isShortScreen ? null : <BrandLogo theme={theme} size={48} showName={false} />}
+            <View style={styles.flex}>
+              <Text
+                style={[styles.title, isShortScreen ? styles.titleCompact : null, { color: theme.colors.textPrimary }]}
+                accessibilityRole="header"
+                maxFontSizeMultiplier={1.3}
+              >
+                Crea tu cuenta
+              </Text>
+              <Text
+                style={[styles.subtitle, { color: theme.colors.textMuted }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.3}
+              >
+                Paso {stepIndex + 1} de {REGISTER_STEPS.length} · {step.title}
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : null}
 
         <View
           style={styles.progress}
           accessibilityRole="progressbar"
+          accessibilityLabel={`Paso ${stepIndex + 1} de ${REGISTER_STEPS.length}: ${step.title}`}
           accessibilityValue={{ min: 1, max: REGISTER_STEPS.length, now: stepIndex + 1 }}
         >
           {REGISTER_STEPS.map((item, index) => (
@@ -396,10 +479,16 @@ export function RegisterScreen({
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, isShortScreen ? styles.scrollContentCompact : null]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             showsVerticalScrollIndicator={false}
+            onLayout={(event) => {
+              viewportHeight.current = event.nativeEvent.layout.height;
+              // El teclado cambió el alto visible: volver a mostrar lo enfocado.
+              const focused = focusedRegion.current;
+              if (focused) revealRegion(focused.key, focused.align);
+            }}
           >
             {restoredDraft && stepIndex === 0 ? (
               <View style={[styles.restoredBanner, { backgroundColor: `${theme.colors.accentSecondary}14` }]}>
@@ -410,6 +499,9 @@ export function RegisterScreen({
             ) : null}
 
             <Animated.View
+              onLayout={(event) => {
+                stepOffsetY.current = event.nativeEvent.layout.y;
+              }}
               style={{
                 opacity: stepAnim,
                 transform: [
@@ -426,34 +518,46 @@ export function RegisterScreen({
             </Animated.View>
           </ScrollView>
 
-          <View
-            style={[
-              styles.footer,
-              // AppRoot ya aplica el área segura inferior (SafeAreaView).
-              { borderTopColor: theme.colors.surfaceBorder },
-            ]}
-          >
-            <AppButton
-              theme={theme}
-              variant="secondary"
-              label={stepIndex === 0 ? "Ya tengo cuenta" : "Atrás"}
-              icon={stepIndex === 0 ? undefined : "chevron-back"}
-              iconPosition="left"
-              onPress={handleBack}
-              disabled={isSubmitting}
-              style={styles.secondaryButton}
-            />
-            <AppButton
-              theme={theme}
-              label={primaryLabel}
-              icon={stepIndex === LAST_STEP ? "checkmark" : "chevron-forward"}
-              onPress={() => void handleNext()}
-              loading={isSubmitting || (stepIndex === 0 && isChecking)}
-              style={styles.primaryButton}
-            />
+          <View style={[styles.footer, { borderTopColor: theme.colors.surfaceBorder }]}>
+            <View style={styles.footerRow}>
+              {stepIndex > 0 ? (
+                <AppButton
+                  theme={theme}
+                  variant="secondary"
+                  label="Paso anterior"
+                  icon="chevron-back"
+                  iconOnly
+                  onPress={handleBack}
+                  disabled={isSubmitting}
+                />
+              ) : null}
+              <AppButton
+                theme={theme}
+                label={primaryLabel}
+                icon={stepIndex === LAST_STEP ? "checkmark" : "chevron-forward"}
+                onPress={() => void handleNext()}
+                loading={isSubmitting || (stepIndex === 0 && isChecking)}
+                style={styles.flex}
+              />
+            </View>
+            {stepIndex === 0 && !keyboardVisible ? (
+              <Pressable
+                onPress={onNavigateToLogin}
+                disabled={isSubmitting}
+                hitSlop={8}
+                accessibilityRole="link"
+                accessibilityLabel="Ya tengo cuenta, iniciar sesión"
+                style={styles.loginLink}
+              >
+                <Text style={[styles.loginLinkText, { color: theme.colors.textMuted }]} maxFontSizeMultiplier={1.4}>
+                  ¿Ya tienes cuenta?{" "}
+                  <Text style={{ color: theme.colors.accentSecondary, fontWeight: "800" }}>Inicia sesión</Text>
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       <BirthDatePickerSheet
         theme={theme}
@@ -489,37 +593,30 @@ export function RegisterScreen({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  screen: { flex: 1, paddingTop: 12 },
   flex: { flex: 1 },
+  content: { flex: 1, width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" },
   header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 4, marginBottom: 14 },
+  headerCompact: { marginBottom: 10 },
   title: { fontSize: 26, fontWeight: "800" },
+  titleCompact: { fontSize: 22 },
   subtitle: { fontSize: 14, marginTop: 2, fontWeight: "600" },
-  progress: { flexDirection: "row", gap: 6, paddingHorizontal: 4, marginBottom: 14 },
+  progress: { flexDirection: "row", gap: 6, paddingHorizontal: 4, marginBottom: 12 },
   progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
   progressFill: { flex: 1, borderRadius: 3, transformOrigin: "left" },
-  card: {
-    flex: 1,
-    borderWidth: 1,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    marginHorizontal: -16,
-    width: undefined,
-    overflow: "hidden",
-  },
-  scrollContent: { padding: 18, paddingBottom: 28, maxWidth: 640, width: "100%", alignSelf: "center" },
+  card: { flex: 1, borderWidth: 1, borderRadius: 24, overflow: "hidden" },
+  scrollContent: { padding: 18, paddingBottom: 24 },
+  scrollContentCompact: { padding: 14, paddingBottom: 20 },
   restoredBanner: { borderRadius: 14, padding: 12, marginBottom: 16 },
   restoredText: { fontSize: 13, lineHeight: 19 },
   footer: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 12,
+    gap: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
-    maxWidth: 640,
-    width: "100%",
-    alignSelf: "center",
   },
-  secondaryButton: { flex: 1 },
-  primaryButton: { flex: 1.4 },
+  footerRow: { flexDirection: "row", gap: 10 },
+  loginLink: { alignSelf: "center", minHeight: 36, justifyContent: "center", paddingHorizontal: 8 },
+  loginLinkText: { fontSize: 14, textAlign: "center" },
 });

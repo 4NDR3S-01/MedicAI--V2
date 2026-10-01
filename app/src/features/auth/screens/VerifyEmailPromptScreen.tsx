@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
 import type { AppTheme } from '../../../shared/theme';
@@ -31,7 +30,8 @@ export function VerifyEmailPromptScreen({
   onBackToLogin,
 }: Readonly<VerifyEmailPromptScreenProps>) {
   const [isEmailSent, setIsEmailSent] = useState(false);
-  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const logoSize = height < 700 ? 88 : 130;
 
   const handleResend = async () => {
     const wasSent = await onResendEmail();
@@ -72,244 +72,240 @@ export function VerifyEmailPromptScreen({
       : 'Reenviar correo de verificación';
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[
-        styles.screen,
-        {
-          backgroundColor: theme.colors.background,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    // AppRoot ya aplica el área segura; el scroll evita que el contenido se
+    // corte en móviles bajos.
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <BackgroundDecor theme={theme} />
-
-      <View
-        style={[
-          styles.content,
-          { paddingBottom: Math.max(insets.bottom + 34, 44) },
-        ]}
+      <ScrollView
+        contentContainerStyle={styles.screen}
+        showsVerticalScrollIndicator={false}
+        alwaysBounceVertical={false}
       >
-        <View style={styles.header}>
-          <BrandLogo theme={theme} size={130} showName={false} />
-        </View>
-
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.surfaceBorder,
-            },
-          ]}
-        >
-          {/* Icono de alerta */}
-          <View style={styles.iconContainer}>
-            <View
-              style={[
-                styles.iconBox,
-                { backgroundColor: `${theme.colors.accentPrimary}15` },
-              ]}
-            >
-              <Ionicons
-                name="alert-circle-outline"
-                size={42}
-                color={theme.colors.accentPrimary}
-              />
-            </View>
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <BrandLogo theme={theme} size={logoSize} showName={false} />
           </View>
 
-          {/* Título */}
-          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
-            ¿Tienes problemas?
-          </Text>
-
-          {/* Subtítulo */}
-          <Text
-            style={[
-              styles.subtitle,
-              { color: theme.colors.textMuted },
-            ]}
-          >
-            No hemos podido iniciar tu sesión porque tu correo electrónico aún no ha sido verificado.
-          </Text>
-
-          {/* Email display */}
           <View
             style={[
-              styles.emailBox,
+              styles.card,
               {
-                backgroundColor: theme.colors.inputBackground,
-                borderColor: theme.colors.inputBorder,
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.surfaceBorder,
               },
             ]}
           >
-            <Ionicons
-              name="mail-outline"
-              size={18}
-              color={theme.colors.textMuted}
-            />
-            <Text style={[styles.emailText, { color: theme.colors.textSecondary }]}>
-              {maskedEmail}
+            {/* Icono de alerta */}
+            <View style={styles.iconContainer}>
+              <View
+                style={[
+                  styles.iconBox,
+                  { backgroundColor: `${theme.colors.accentPrimary}15` },
+                ]}
+              >
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={42}
+                  color={theme.colors.accentPrimary}
+                />
+              </View>
+            </View>
+
+            {/* Título */}
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
+              ¿Tienes problemas?
             </Text>
-          </View>
 
-          {/* Instrucciones */}
-          <View style={styles.instructionsContainer}>
-            <View style={styles.instructionItem}>
-              <View
-                style={[
-                  styles.stepNumber,
-                  { backgroundColor: theme.colors.accentPrimary },
-                ]}
-              >
-                <Text style={[styles.stepText, { color: theme.colors.buttonText }]}>
-                  1
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.instructionText,
-                  { color: theme.colors.textSecondary },
-                ]}
-              >
-                Solicita que reenviemos un nuevo correo de verificación
-              </Text>
-            </View>
-
-            <View style={styles.instructionItem}>
-              <View
-                style={[
-                  styles.stepNumber,
-                  { backgroundColor: theme.colors.accentPrimary },
-                ]}
-              >
-                <Text style={[styles.stepText, { color: theme.colors.buttonText }]}>
-                  2
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.instructionText,
-                  { color: theme.colors.textSecondary },
-                ]}
-              >
-                Busca en tu bandeja de entrada o spam
-              </Text>
-            </View>
-
-            <View style={styles.instructionItem}>
-              <View
-                style={[
-                  styles.stepNumber,
-                  { backgroundColor: theme.colors.accentPrimary },
-                ]}
-              >
-                <Text style={[styles.stepText, { color: theme.colors.buttonText }]}>
-                  3
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.instructionText,
-                  { color: theme.colors.textSecondary },
-                ]}
-              >
-                Haz clic en el enlace para verificar tu correo
-              </Text>
-            </View>
-          </View>
-
-          {/* Success message */}
-          {isEmailSent && (
-            <View
-              style={[
-                styles.successBox,
-                { backgroundColor: `${theme.colors.success}15` },
-              ]}
-            >
-              <Ionicons
-                name="checkmark-circle"
-                size={20}
-                color={theme.colors.success}
-              />
-              <Text
-                style={[
-                  styles.successText,
-                  { color: theme.colors.success },
-                ]}
-              >
-                Correo reenviado correctamente
-              </Text>
-            </View>
-          )}
-
-          {/* Resend button */}
-          <Pressable
-            style={[
-              styles.primaryButton,
-              { backgroundColor: theme.colors.accentPrimary },
-              isButtonDisabled && styles.buttonDisabled,
-            ]}
-            onPress={handleResend}
-            disabled={isButtonDisabled}
-            accessibilityState={{ disabled: isButtonDisabled }}
-          >
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={theme.colors.buttonText}
-            />
+            {/* Subtítulo */}
             <Text
               style={[
-                styles.primaryButtonText,
-                { color: theme.colors.buttonText },
-              ]}
-            >
-              {buttonText}
-            </Text>
-          </Pressable>
-
-          {/* Back to login */}
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={onBackToLogin}
-            disabled={isSubmitting}
-            accessibilityState={{ disabled: isSubmitting }}
-          >
-            <Text
-              style={[
-                styles.secondaryButtonText,
+                styles.subtitle,
                 { color: theme.colors.textMuted },
               ]}
             >
-              Volver a inicio de sesión
+              No hemos podido iniciar tu sesión porque tu correo electrónico aún no ha sido verificado.
             </Text>
-          </Pressable>
-        </View>
 
-        <Text
-          style={[
-            styles.helpText,
-            { color: theme.colors.textMuted },
-          ]}
-        >
-          ¿Necesitas ayuda? Contacta con soporte
-        </Text>
-      </View>
-    </KeyboardAvoidingView>
+            {/* Email display */}
+            <View
+              style={[
+                styles.emailBox,
+                {
+                  backgroundColor: theme.colors.inputBackground,
+                  borderColor: theme.colors.inputBorder,
+                },
+              ]}
+            >
+              <Ionicons
+                name="mail-outline"
+                size={18}
+                color={theme.colors.textMuted}
+              />
+              <Text style={[styles.emailText, { color: theme.colors.textSecondary }]}>
+                {maskedEmail}
+              </Text>
+            </View>
+
+            {/* Instrucciones */}
+            <View style={styles.instructionsContainer}>
+              <View style={styles.instructionItem}>
+                <View
+                  style={[
+                    styles.stepNumber,
+                    { backgroundColor: theme.colors.accentPrimary },
+                  ]}
+                >
+                  <Text style={[styles.stepText, { color: theme.colors.buttonText }]}>
+                    1
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.instructionText,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
+                  Solicita que reenviemos un nuevo correo de verificación
+                </Text>
+              </View>
+
+              <View style={styles.instructionItem}>
+                <View
+                  style={[
+                    styles.stepNumber,
+                    { backgroundColor: theme.colors.accentPrimary },
+                  ]}
+                >
+                  <Text style={[styles.stepText, { color: theme.colors.buttonText }]}>
+                    2
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.instructionText,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
+                  Busca en tu bandeja de entrada o spam
+                </Text>
+              </View>
+
+              <View style={styles.instructionItem}>
+                <View
+                  style={[
+                    styles.stepNumber,
+                    { backgroundColor: theme.colors.accentPrimary },
+                  ]}
+                >
+                  <Text style={[styles.stepText, { color: theme.colors.buttonText }]}>
+                    3
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.instructionText,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
+                  Haz clic en el enlace para verificar tu correo
+                </Text>
+              </View>
+            </View>
+
+            {/* Success message */}
+            {isEmailSent && (
+              <View
+                style={[
+                  styles.successBox,
+                  { backgroundColor: `${theme.colors.success}15` },
+                ]}
+              >
+                <Ionicons
+                  name="checkmark-circle"
+                  size={20}
+                  color={theme.colors.success}
+                />
+                <Text
+                  style={[
+                    styles.successText,
+                    { color: theme.colors.success },
+                  ]}
+                >
+                  Correo reenviado correctamente
+                </Text>
+              </View>
+            )}
+
+            {/* Resend button */}
+            <Pressable
+              style={[
+                styles.primaryButton,
+                { backgroundColor: theme.colors.accentPrimary },
+                isButtonDisabled && styles.buttonDisabled,
+              ]}
+              onPress={handleResend}
+              disabled={isButtonDisabled}
+              accessibilityState={{ disabled: isButtonDisabled }}
+            >
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color={theme.colors.buttonText}
+              />
+              <Text
+                style={[
+                  styles.primaryButtonText,
+                  { color: theme.colors.buttonText },
+                ]}
+              >
+                {buttonText}
+              </Text>
+            </Pressable>
+
+            {/* Back to login */}
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={onBackToLogin}
+              disabled={isSubmitting}
+              accessibilityState={{ disabled: isSubmitting }}
+            >
+              <Text
+                style={[
+                  styles.secondaryButtonText,
+                  { color: theme.colors.textMuted },
+                ]}
+              >
+                Volver a inicio de sesión
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text
+            style={[
+              styles.helpText,
+              { color: theme.colors.textMuted },
+            ]}
+          >
+            ¿Necesitas ayuda? Contacta con soporte
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
+  },
+  screen: {
+    flexGrow: 1,
     paddingHorizontal: 22,
     paddingTop: 24,
     paddingBottom: 24,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'space-between',
   },
   header: {

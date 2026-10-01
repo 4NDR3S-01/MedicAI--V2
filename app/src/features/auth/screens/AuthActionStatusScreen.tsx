@@ -1,6 +1,13 @@
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
 import type { AppTheme } from '../../../shared/theme';
@@ -59,82 +66,85 @@ export function AuthActionStatusScreen({
   primaryAction,
   secondaryAction,
 }: Readonly<AuthActionStatusScreenProps>) {
-  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const logoSize = height < 700 ? 88 : 124;
   const accentColor = getStatusAccent(theme, variant);
   const isLoading = variant === 'loading';
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[
-        styles.screen,
-        {
-          backgroundColor: theme.colors.background,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    // AppRoot ya aplica el área segura; el scroll evita que el contenido se
+    // corte en móviles bajos.
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <BackgroundDecor theme={theme} />
-
-      <View style={[styles.content, { paddingBottom: Math.max(insets.bottom + 30, 40) }]}>
-        <View style={styles.header}>
-          <BrandLogo theme={theme} size={124} showName={false} />
-        </View>
-
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.surfaceBorder,
-            },
-          ]}
-        >
-          <View style={styles.iconContainer}>
-            <View style={[styles.iconBox, { backgroundColor: `${accentColor}16` }]}>
-              {isLoading ? (
-                <ActivityIndicator size="large" color={accentColor} />
-              ) : (
-                <Ionicons name={getStatusIcon(variant)} size={42} color={accentColor} />
-              )}
-            </View>
+      <ScrollView
+        contentContainerStyle={styles.screen}
+        showsVerticalScrollIndicator={false}
+        alwaysBounceVertical={false}
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <BrandLogo theme={theme} size={logoSize} showName={false} />
           </View>
 
-          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{title}</Text>
-          <Text style={[styles.message, { color: theme.colors.textMuted }]}>{message}</Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.surfaceBorder,
+              },
+            ]}
+          >
+            <View style={styles.iconContainer}>
+              <View style={[styles.iconBox, { backgroundColor: `${accentColor}16` }]}>
+                {isLoading ? (
+                  <ActivityIndicator size="large" color={accentColor} />
+                ) : (
+                  <Ionicons name={getStatusIcon(variant)} size={42} color={accentColor} />
+                )}
+              </View>
+            </View>
 
-          {primaryAction ? (
-            <Pressable
-              style={[styles.primaryButton, { backgroundColor: theme.colors.accentPrimary }]}
-              onPress={primaryAction.onPress}
-            >
-              <Text style={[styles.primaryButtonText, { color: theme.colors.buttonText }]}>
-                {primaryAction.label}
-              </Text>
-            </Pressable>
-          ) : null}
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{title}</Text>
+            <Text style={[styles.message, { color: theme.colors.textMuted }]}>{message}</Text>
 
-          {secondaryAction ? (
-            <Pressable style={styles.secondaryButton} onPress={secondaryAction.onPress}>
-              <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
-                {secondaryAction.label}
-              </Text>
-            </Pressable>
-          ) : null}
+            {primaryAction ? (
+              <Pressable
+                style={[styles.primaryButton, { backgroundColor: theme.colors.accentPrimary }]}
+                onPress={primaryAction.onPress}
+              >
+                <Text style={[styles.primaryButtonText, { color: theme.colors.buttonText }]}>
+                  {primaryAction.label}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {secondaryAction ? (
+              <Pressable style={styles.secondaryButton} onPress={secondaryAction.onPress}>
+                <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
+                  {secondaryAction.label}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
+  },
+  screen: {
+    flexGrow: 1,
     paddingHorizontal: 22,
     paddingTop: 24,
+    paddingBottom: 24,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
   },
   header: {

@@ -3,7 +3,7 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "../config/register.constants";
-import type { RegisterWizardPayload } from "../models/register.types";
+import type { MedicalSelection, RegisterWizardPayload } from "../models/register.types";
 import { getBirthDateIssue, getPhoneCountry } from "./register.utils";
 
 export type PersonalField =
@@ -65,6 +65,22 @@ export function validatePersonalData(
     errors.confirmPassword = "Las contraseñas no coinciden.";
   }
 
+  return errors;
+}
+
+export type MedicalErrors = Partial<Record<"conditions" | "allergies", string>>;
+
+const isAnswered = (selection: MedicalSelection) => selection.none || selection.items.length > 0;
+
+/**
+ * Cada sección exige una respuesta explícita: opciones o «Ninguna». No se
+ * preselecciona «Ninguna» para no registrar por omisión que alguien no tiene
+ * alergias cuando en realidad no respondió.
+ */
+export function validateMedicalInfo(medical: RegisterWizardPayload["medicalInfo"]): MedicalErrors {
+  const errors: MedicalErrors = {};
+  if (!isAnswered(medical.conditions)) errors.conditions = "Elige al menos una opción o marca «Ninguna».";
+  if (!isAnswered(medical.allergies)) errors.allergies = "Elige al menos una opción o marca «Ninguna conocida».";
   return errors;
 }
 

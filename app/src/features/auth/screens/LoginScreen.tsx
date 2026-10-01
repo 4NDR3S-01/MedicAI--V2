@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  KeyboardAvoidingView,
-  Platform,
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
-import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import {
+  BackgroundDecor,
+  BrandLogo,
+  KeyboardAwareScrollView,
+  KeyboardAwareTextInput,
+} from '../../../shared/ui';
 import type { AppTheme } from '../../../shared/theme';
 
 export type LoginFormState = {
@@ -40,160 +45,187 @@ export function LoginScreen({
   onNavigateToRegister,
 }: Readonly<LoginScreenProps>) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const passwordRef = useRef<TextInput | null>(null);
+  const { height } = useWindowDimensions();
+  // Logo más pequeño en móviles bajos para que el formulario quepa sin scroll.
+  const logoSize = height < 700 ? 96 : 130;
 
   const togglePasswordVisibility = () => {
     setIsPasswordVisible(prev => !prev);
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.screen, { backgroundColor: theme.colors.background }]}
-    >
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <BackgroundDecor theme={theme} />
+      <KeyboardAwareScrollView contentContainerStyle={styles.screen}>
+        <View style={styles.header}>
+          <BrandLogo theme={theme} size={logoSize} showName={false} />
+          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
+            Inicio de sesión
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
+            Gestiona medicamentos, citas médicas y asistencia de IA en un solo lugar.
+          </Text>
+        </View>
 
-      <View style={styles.header}>
-        <BrandLogo theme={theme} size={130} showName={false} />
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
-          Inicio de sesión
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Gestiona medicamentos, citas médicas y asistencia de IA en un solo lugar.
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.surfaceBorder,
-          },
-        ]}
-      >
-        {/* Correo */}
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Correo electrónico
-        </Text>
-        <TextInput
-          value={form.email}
-          onChangeText={onEmailChange}
+        <View
           style={[
-            styles.input,
+            styles.card,
             {
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.surfaceBorder,
             },
           ]}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="tu@dominio.com"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-        />
-
-        {/* Contraseña */}
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Contraseña
-        </Text>
-        <View style={styles.passwordWrap}>
-          <TextInput
-            value={form.password}
-            onChangeText={onPasswordChange}
-            secureTextEntry={!isPasswordVisible}
+        >
+          {/* Correo */}
+          <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+            Correo electrónico
+          </Text>
+          <KeyboardAwareTextInput
+            value={form.email}
+            onChangeText={onEmailChange}
             style={[
               styles.input,
-              styles.passwordInput,
               {
                 backgroundColor: theme.colors.inputBackground,
                 borderColor: theme.colors.inputBorder,
                 color: theme.colors.textPrimary,
               },
             ]}
-            placeholder="********"
-            placeholderTextColor={theme.colors.inputPlaceholder}
-            autoCorrect={false}
             autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="username"
+            placeholder="tu@dominio.com"
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            accessibilityLabel="Correo electrónico"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => passwordRef.current?.focus()}
           />
 
-          <Pressable
-            onPress={togglePasswordVisibility}
-            style={styles.passwordToggle}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-          >
-            <Ionicons
-              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
-              size={20}
-              color={theme.colors.accentSecondary}
+          {/* Contraseña */}
+          <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+            Contraseña
+          </Text>
+          <View style={styles.passwordWrap}>
+            <KeyboardAwareTextInput
+              inputRef={passwordRef}
+              value={form.password}
+              onChangeText={onPasswordChange}
+              secureTextEntry={!isPasswordVisible}
+              style={[
+                styles.input,
+                styles.passwordInput,
+                {
+                  backgroundColor: theme.colors.inputBackground,
+                  borderColor: theme.colors.inputBorder,
+                  color: theme.colors.textPrimary,
+                },
+              ]}
+              placeholder="Tu contraseña"
+              placeholderTextColor={theme.colors.inputPlaceholder}
+              autoCorrect={false}
+              autoCapitalize="none"
+              autoComplete="current-password"
+              textContentType="password"
+              accessibilityLabel="Contraseña"
+              returnKeyType="go"
+              onSubmitEditing={() => {
+                if (!isSubmitting) onSubmit();
+              }}
             />
+
+            <Pressable
+              onPress={togglePasswordVisibility}
+              style={styles.passwordToggle}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+            >
+              <Ionicons
+                name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={theme.colors.accentSecondary}
+              />
+            </Pressable>
+          </View>
+
+          {/* BOTÓN */}
+          <Pressable
+            style={[
+              styles.primaryButton,
+              { backgroundColor: theme.colors.accentPrimary },
+              isSubmitting && styles.buttonDisabled,
+            ]}
+            onPress={onSubmit}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel="Entrar"
+            accessibilityState={{ disabled: isSubmitting, busy: isSubmitting }}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color={theme.colors.buttonText} />
+            ) : (
+              <Text
+                style={[
+                  styles.primaryButtonText,
+                  { color: theme.colors.buttonText },
+                ]}
+              >
+                Entrar
+              </Text>
+            )}
           </Pressable>
+
+          <Pressable
+            style={styles.forgotButton}
+            onPress={onForgotPassword}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isSubmitting }}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonText,
+                { color: theme.colors.textMuted },
+              ]}
+            >
+              Recuperar contraseña
+            </Text>
+          </Pressable>
+
+          <View style={[styles.divider, { backgroundColor: theme.colors.surfaceBorder }]} />
+
+          <Pressable
+            style={styles.registerButton}
+            onPress={onNavigateToRegister}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isSubmitting }}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonText,
+                { color: theme.colors.accentSecondary },
+              ]}
+            >
+              Crear cuenta nueva
+            </Text>
+          </Pressable>
+
         </View>
-
-        {/* BOTÓN */}
-        <Pressable
-          style={[
-            styles.primaryButton,
-            { backgroundColor: theme.colors.accentPrimary },
-            isSubmitting && styles.buttonDisabled,
-          ]}
-          onPress={onSubmit}
-          disabled={isSubmitting}
-          accessibilityState={{ disabled: isSubmitting }}
-        >
-          <Text
-            style={[
-              styles.primaryButtonText,
-              { color: theme.colors.buttonText },
-            ]}
-          >
-            {isSubmitting ? 'Entrando…' : 'Entrar'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.forgotButton}
-          onPress={onForgotPassword}
-          disabled={isSubmitting}
-          accessibilityState={{ disabled: isSubmitting }}
-        >
-          <Text
-            style={[
-              styles.secondaryButtonText,
-              { color: theme.colors.textMuted },
-            ]}
-          >
-            Recuperar contrasena
-          </Text>
-        </Pressable>
-
-        <View style={[styles.divider, { backgroundColor: theme.colors.surfaceBorder }]} />
-
-        <Pressable
-          style={styles.registerButton}
-          onPress={onNavigateToRegister}
-          disabled={isSubmitting}
-          accessibilityState={{ disabled: isSubmitting }}
-        >
-          <Text
-            style={[
-              styles.secondaryButtonText,
-              { color: theme.colors.accentSecondary },
-            ]}
-          >
-            Crear cuenta nueva
-          </Text>
-        </Pressable>
-
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
+  },
+  screen: {
     paddingHorizontal: 22,
     paddingTop: 24,
     paddingBottom: 22,
@@ -246,6 +278,8 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   primaryButton: {
+    minHeight: 50,
+    justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 14,
     marginTop: 8,
