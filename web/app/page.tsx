@@ -225,7 +225,7 @@ export default function Home() {
                 <ShieldCheck size={32} strokeWidth={1.5} className="security-icon" />
                 <div>
                   <h3>Tu salud, tus datos, tu privacidad</h3>
-                  <p>Toda la información médica está encriptada y solo es visible para ti y tu círculo familiar autorizado. No compartimos tus datos con terceros.</p>
+                  <p>Tu información viaja cifrada y solo tú puedes verla. Nunca vendemos tus datos ni los usamos para publicidad, y tu perfil de salud solo se comparte con el asistente de IA si lo autorizas. <a href="/privacidad" className="underline underline-offset-4">Lee nuestra política de privacidad</a>.</p>
                 </div>
                 <Lock size={32} strokeWidth={1.5} className="security-icon security-icon--lock" />
               </div>
@@ -251,7 +251,7 @@ export default function Home() {
               />
               <FAQItem 
                 q="¿Están seguros mis datos médicos?" 
-                a="Totalmente. Utilizamos estándares de seguridad de nivel bancario (AES-256) para encriptar tu información médica tanto en reposo como en tránsito." 
+                a="Protegemos tu información con conexiones cifradas (HTTPS), contraseñas guardadas con hash y acceso limitado a tus propios datos. Tus datos de salud son opcionales, nunca se venden y puedes pedir que los eliminemos cuando quieras. Más detalles en nuestra política de privacidad." 
               />
             </div>
           </div>
@@ -286,7 +286,7 @@ export default function Home() {
             <div className="footer-links">
               <h4>Compañía</h4>
               <a href="#">Términos y Condiciones</a>
-              <a href="#">Política de Privacidad</a>
+              <a href="/privacidad">Política de Privacidad</a>
             </div>
             <div className="footer-links">
               <h4>Soporte</h4>

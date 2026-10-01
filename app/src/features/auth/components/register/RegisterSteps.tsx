@@ -2,6 +2,7 @@ import type { ReactNode, RefObject } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   StyleSheet,
   Switch,
@@ -11,6 +12,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 
+import { PRIVACY_POLICY_URL } from "../../../../shared/config/links";
 import type { AppTheme } from "../../../../shared/theme";
 import { PressableScale } from "../../../../shared/ui";
 import {
@@ -496,6 +498,13 @@ export function SummaryStep({ theme, form, onEditStep, onToggleAiConsent }: Read
           situaciones especiales (nunca tu nombre, correo ni teléfono) para darte respuestas más seguras.
           Las procesa un proveedor externo de IA. Es opcional y puedes desactivarlo cuando quieras.
         </Text>
+        <Text
+          onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
+          accessibilityRole="link"
+          style={[styles.link, { color: theme.colors.accentSecondary }]}
+        >
+          Leer la política de privacidad
+        </Text>
       </View>
 
       <InfoNote
@@ -663,4 +672,5 @@ const styles = StyleSheet.create({
   consentHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   consentTitle: { flex: 1, fontSize: 15, fontWeight: "800" },
   consentText: { fontSize: 13, lineHeight: 19 },
+  link: { fontSize: 13.5, fontWeight: "700", textDecorationLine: "underline" },
 });
