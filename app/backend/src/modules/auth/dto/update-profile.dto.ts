@@ -51,4 +51,8 @@ export class UpdateProfileDto {
   @Min(0)
   @Max(120)
   notificationLeadMinutes?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  aiHealthContextConsent?: boolean;
 }

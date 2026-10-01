@@ -16,7 +16,7 @@ export class AiController {
    */
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('chat')
-  chat(@Body() dto: ChatRequestDto, @Request() _req: any) {
-    return this.aiService.chat(dto);
+  chat(@Body() dto: ChatRequestDto, @Request() req: any) {
+    return this.aiService.chat(dto, req.user?.sub);
   }
 }

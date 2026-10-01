@@ -8,6 +8,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { LOGO_SOURCE } from '../shared/ui';
 import {
   AuthActionStatusScreen,
+  clearRegisterDraft,
   ForgotPasswordScreen,
   getStoredSession,
   LoginScreen,
@@ -46,25 +47,8 @@ import { logMedicationAction, fetchMedications } from '../features/tabs/services
 
 const SPLASH_DURATION_MS = 1200;
 const AUTH_STATE_STORAGE_KEY = 'medicai_auth_state_v1';
-const REGISTER_WIZARD_DRAFT_STORAGE_KEY = 'medicai_register_wizard_draft_v1';
 const EMAIL_ACTION_COOLDOWN_MS = 60_000;
 const MAX_EMAIL_COOLDOWN_SECONDS = 3_600;
-
-const DEFAULT_SPECIAL_CONDITIONS: RegisterWizardPayload['medicalInfo']['specialConditions'] = {
-  pregnancy: false,
-  lactation: false,
-  recentSurgeries: false,
-  immunosuppression: false,
-  anticoagulantTreatment: false,
-};
-
-const DEFAULT_SPECIAL_CONDITION_VIGENCY: RegisterWizardPayload['medicalInfo']['specialConditionVigency'] = {
-  pregnancy: { isTemporary: false, until: '' },
-  lactation: { isTemporary: false, until: '' },
-  recentSurgeries: { isTemporary: false, until: '' },
-  immunosuppression: { isTemporary: false, until: '' },
-  anticoagulantTreatment: { isTemporary: false, until: '' },
-};
 
 type AuthScreenMode =
   | 'login'
@@ -253,13 +237,6 @@ export function AppRoot() {
     password: '',
   });
   const [authScreen, setAuthScreen] = useState<AuthScreenMode>('login');
-  const [savedSpecialConditions, setSavedSpecialConditions] = useState<RegisterWizardPayload['medicalInfo']['specialConditions']>({
-    ...DEFAULT_SPECIAL_CONDITIONS,
-  });
-  const [savedSpecialConditionVigency, setSavedSpecialConditionVigency] =
-    useState<RegisterWizardPayload['medicalInfo']['specialConditionVigency']>({
-      ...DEFAULT_SPECIAL_CONDITION_VIGENCY,
-    });
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
   const [emailActionBlockedUntil, setEmailActionBlockedUntil] = useState<number | null>(null);
   const [registerRenderKey, setRegisterRenderKey] = useState(0);
@@ -340,8 +317,6 @@ export function AppRoot() {
         const parsed = JSON.parse(rawState) as {
           email?: string;
           authScreen?: AuthScreenMode;
-          specialConditions?: RegisterWizardPayload['medicalInfo']['specialConditions'];
-          specialConditionVigency?: RegisterWizardPayload['medicalInfo']['specialConditionVigency'];
         };
 
         if (!isMounted) {
@@ -359,20 +334,6 @@ export function AppRoot() {
           || parsed.authScreen === 'forgotPassword'
         ) {
           setAuthScreen(parsed.authScreen);
-        }
-
-        if (parsed.specialConditions) {
-          setSavedSpecialConditions({
-            ...DEFAULT_SPECIAL_CONDITIONS,
-            ...parsed.specialConditions,
-          });
-        }
-
-        if (parsed.specialConditionVigency) {
-          setSavedSpecialConditionVigency({
-            ...DEFAULT_SPECIAL_CONDITION_VIGENCY,
-            ...parsed.specialConditionVigency,
-          });
         }
       } catch {
         // Si la hidratacion falla, continuamos con el estado por defecto.
@@ -392,8 +353,6 @@ export function AppRoot() {
         const stateToPersist = {
           email: form.email,
           authScreen,
-          specialConditions: savedSpecialConditions,
-          specialConditionVigency: savedSpecialConditionVigency,
         };
 
         await appStorage.setItem(AUTH_STATE_STORAGE_KEY, JSON.stringify(stateToPersist));
@@ -403,7 +362,7 @@ export function AppRoot() {
     };
 
     void persistAuthState();
-  }, [authScreen, form.email, savedSpecialConditionVigency, savedSpecialConditions]);
+  }, [authScreen, form.email]);
 
   useEffect(() => {
     if (!isLogoReady) {
@@ -934,8 +893,10 @@ export function AppRoot() {
       return;
     }
 
-    if (password.trim().length < 6) {
-      Alert.alert('Contrasena invalida', 'La contrasena debe tener al menos 6 caracteres.');
+    // Ninguna cuenta puede tener menos de 8 caracteres (regla del backend):
+    // se responde igual que unas credenciales incorrectas, sin llamar al API.
+    if (password.length < 8) {
+      Alert.alert('No fue posible iniciar sesión', 'Correo o contraseña incorrectos.');
       return;
     }
 
@@ -968,9 +929,8 @@ export function AppRoot() {
       registerRequestInFlightRef.current = true;
       setIsSubmittingAuth(true);
       await signUpWithProfile(payload);
+      await clearRegisterDraft().catch(() => undefined);
 
-      setSavedSpecialConditions(payload.medicalInfo.specialConditions);
-      setSavedSpecialConditionVigency(payload.medicalInfo.specialConditionVigency);
       setForm((previous) => ({
         ...previous,
         email: payload.personalData.email.trim(),
@@ -1125,7 +1085,7 @@ export function AppRoot() {
       setIsSubmittingAuth(true);
       await signOut();
       setSession(null);
-      await appStorage.removeItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
+      await clearRegisterDraft();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo cerrar sesion.';
       Alert.alert('No fue posible cerrar sesion', message);
@@ -1135,7 +1095,7 @@ export function AppRoot() {
   };
 
   const handleNavigateToRegister = async () => {
-    await appStorage.removeItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
+    await clearRegisterDraft().catch(() => undefined);
     setRegisterRenderKey((previous) => previous + 1);
     setAuthScreen('register');
   };
@@ -1297,8 +1257,6 @@ export function AppRoot() {
         isSubmitting={isSubmittingAuth}
         onSubmit={handleRegisterSubmit}
         onNavigateToLogin={() => setAuthScreen('login')}
-        initialSpecialConditions={savedSpecialConditions}
-        initialSpecialConditionVigency={savedSpecialConditionVigency}
       />
     );
   };

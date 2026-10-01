@@ -25,6 +25,10 @@ model User {
   immunosuppression Boolean                 @default(false)
   anticoagulantTreatment Boolean            @default(false)
   notificationLeadMinutes Int              @default(5)
+  // Consentimiento explícito (opt-in) para enviar el perfil de salud como
+  // contexto al asistente de IA (proveedor externo). Por defecto desactivado.
+  aiHealthContextConsent   Boolean          @default(false)
+  aiHealthContextConsentAt DateTime?
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 

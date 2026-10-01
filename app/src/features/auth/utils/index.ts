@@ -1,7 +1,2 @@
-export {
-  calculateAgeFromBirthDate,
-  createInitialForm,
-  formatBirthDate,
-  getDaysInMonth,
-  parseBirthDate,
-} from "./register.utils";
+export * from "./register.utils";
+export * from "./register.validation";

@@ -1,38 +1,46 @@
 export type CountryOption = {
   iso: string;
   name: string;
+  /** Prefijo internacional, p. ej. "+593". */
   code: string;
-  flag: string;
+  /** Longitud del número nacional sin prefijo ni 0 inicial. */
+  digits: number;
+  example: string;
+};
+
+export type SpecialConditionKey =
+  | "pregnancy"
+  | "lactation"
+  | "recentSurgeries"
+  | "immunosuppression"
+  | "anticoagulantTreatment";
+
+export type SpecialConditions = Record<SpecialConditionKey, boolean>;
+
+/**
+ * Respuesta a una pregunta médica de selección múltiple.
+ * - `none: true`  → el usuario declara explícitamente "ninguna".
+ * - items vacíos y `none: false` → sin responder (se puede completar luego).
+ */
+export type MedicalSelection = {
+  none: boolean;
+  items: string[];
 };
 
 export type RegisterWizardPayload = {
   personalData: {
     fullName: string;
     birthDate: string;
-    age: string;
     phone: string;
-    phoneCountryCode: string;
     phoneCountryIso: string;
     email: string;
     password: string;
     confirmPassword: string;
   };
   medicalInfo: {
-    conditions: string;
-    allergies: string;
-    specialConditions: {
-      pregnancy: boolean;
-      lactation: boolean;
-      recentSurgeries: boolean;
-      immunosuppression: boolean;
-      anticoagulantTreatment: boolean;
-    };
-    specialConditionVigency: {
-      pregnancy: { isTemporary: boolean; until: string };
-      lactation: { isTemporary: boolean; until: string };
-      recentSurgeries: { isTemporary: boolean; until: string };
-      immunosuppression: { isTemporary: boolean; until: string };
-      anticoagulantTreatment: { isTemporary: boolean; until: string };
-    };
+    conditions: MedicalSelection;
+    allergies: MedicalSelection;
+    specialConditions: SpecialConditions;
+    aiHealthContextConsent: boolean;
   };
 };

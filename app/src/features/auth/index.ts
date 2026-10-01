@@ -9,6 +9,7 @@ export type { LoginFormState } from './screens/LoginScreen';
 export type { RegisterWizardPayload } from './models/register.types';
 
 export {
+  clearRegisterDraft,
   flushPendingProfileSync,
   getStoredSession,
   refreshStoredSession,

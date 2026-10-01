@@ -5,10 +5,13 @@ import {
   IsEmail,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+
+import { BIRTH_DATE_PATTERN } from '../../../common/birth-date';
 
 class SpecialConditionsDto {
   @IsBoolean()
@@ -62,12 +65,12 @@ class AppointmentDraftDto {
 }
 
 export class RegisterDto {
-  @IsEmail()
+  @IsEmail({}, { message: 'Ingresa un correo electrónico válido.' })
   email!: string;
 
   @IsString()
-  @MinLength(8)
-  @MaxLength(72)
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
+  @MaxLength(72, { message: 'La contraseña no puede superar los 72 caracteres.' })
   password!: string;
 
   @IsOptional()
@@ -75,12 +78,17 @@ export class RegisterDto {
   @MaxLength(100)
   fullName?: string;
 
+  // La edad mínima se valida en AuthService (depende de la fecha actual).
   @IsOptional()
   @IsString()
+  @Matches(BIRTH_DATE_PATTERN, { message: 'La fecha de nacimiento debe tener el formato AAAA-MM-DD.' })
   birthDate?: string;
 
+  // E.164 (+593987654321). Se acepta sin "+" por compatibilidad con versiones
+  // anteriores de la app, que enviaban solo el número nacional.
   @IsOptional()
   @IsString()
+  @Matches(/^\+?\d{6,15}$/, { message: 'El número de teléfono no es válido.' })
   phone?: string;
 
   @IsOptional()
@@ -97,6 +105,10 @@ export class RegisterDto {
   @ValidateNested()
   @Type(() => SpecialConditionsDto)
   specialConditions?: SpecialConditionsDto;
+
+  @IsOptional()
+  @IsBoolean()
+  aiHealthContextConsent?: boolean;
 
   @IsOptional()
   @IsArray()

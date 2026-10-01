@@ -14,6 +14,10 @@ export const mapAuthError = (message: string) => {
     return 'Demasiadas solicitudes de correo. Espera un momento antes de volver a intentarlo.';
   }
 
+  if (lower.includes('too many requests') || lower.includes('throttlerexception')) {
+    return 'Demasiados intentos seguidos. Espera un minuto e inténtalo de nuevo.';
+  }
+
   if (lower.includes('invalid login credentials')) {
     return 'Las credenciales ingresadas no son validas.';
   }
