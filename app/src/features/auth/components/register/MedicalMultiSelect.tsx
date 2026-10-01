@@ -23,6 +23,9 @@ type MedicalMultiSelectProps = {
   noneLabel: string;
   groups: readonly OptionGroup[];
   customPlaceholder: string;
+  /** Falta responder la sección (ni opciones ni «Ninguna»). */
+  error?: string;
+  onCustomInputFocus?: () => void;
   value: MedicalSelection;
   onChange: (value: MedicalSelection) => void;
 };
@@ -35,6 +38,8 @@ export function MedicalMultiSelect({
   noneLabel,
   groups,
   customPlaceholder,
+  error,
+  onCustomInputFocus,
   value,
   onChange,
 }: Readonly<MedicalMultiSelectProps>) {
@@ -101,7 +106,12 @@ export function MedicalMultiSelect({
   const selectedCount = value.items.length;
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: theme.colors.surface, borderColor: error ? ERROR_COLOR : theme.colors.surfaceBorder },
+      ]}
+    >
       <View style={styles.header}>
         <View style={[styles.iconBadge, { backgroundColor: `${theme.colors.accentSecondary}1F` }]}>
           <Ionicons name={icon} size={20} color={theme.colors.accentSecondary} />
@@ -122,6 +132,12 @@ export function MedicalMultiSelect({
       <View style={styles.chips}>
         <SelectableChip theme={theme} label={noneLabel} selected={value.none} onPress={toggleNone} />
       </View>
+      {error ? (
+        <View style={styles.errorRow} accessibilityLiveRegion="polite">
+          <Ionicons name="alert-circle" size={15} color={ERROR_COLOR} />
+          <Text style={[styles.sectionError, { color: ERROR_COLOR }]}>{error}</Text>
+        </View>
+      ) : null}
 
       {groups.map((group) => (
         <View key={group.title ?? "default"} style={styles.group}>
@@ -167,7 +183,10 @@ export function MedicalMultiSelect({
             setCustomDraft(text);
             if (customError) setCustomError(null);
           }}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            onCustomInputFocus?.();
+          }}
           onBlur={() => setFocused(false)}
           onSubmitEditing={addCustom}
           placeholder={customPlaceholder}
@@ -197,7 +216,9 @@ export function MedicalMultiSelect({
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: 20, padding: 16, gap: 12 },
+  card: { borderWidth: 1.5, borderRadius: 20, padding: 16, gap: 12 },
+  errorRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: -4 },
+  sectionError: { fontSize: 13, fontWeight: "600", flexShrink: 1 },
   header: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   iconBadge: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   headerText: { flex: 1, gap: 2 },

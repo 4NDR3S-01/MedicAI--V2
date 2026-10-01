@@ -9,7 +9,7 @@ export const mapAuthError = (message: string) => {
     || lower.includes('for security purposes, you can only request this after')
   ) {
     if (retryAfterSeconds && Number.isFinite(retryAfterSeconds)) {
-      return `Demasiadas solicitudes de correo. Espera ${retryAfterSeconds} segundos e intentalo de nuevo.`;
+      return `Demasiadas solicitudes de correo. Espera ${retryAfterSeconds} segundos e inténtalo de nuevo.`;
     }
     return 'Demasiadas solicitudes de correo. Espera un momento antes de volver a intentarlo.';
   }
@@ -23,15 +23,15 @@ export const mapAuthError = (message: string) => {
   }
 
   if (lower.includes('email not confirmed')) {
-    return 'Debes confirmar tu correo electronico antes de iniciar sesion.';
+    return 'Debes confirmar tu correo electrónico antes de iniciar sesión.';
   }
 
   if (lower.includes('user already registered')) {
-    return 'Ya existe una cuenta asociada a este correo electronico.';
+    return 'Ya existe una cuenta asociada a este correo electrónico.';
   }
 
   if (lower.includes('password')) {
-    return 'La contrasena no cumple los requisitos de seguridad.';
+    return 'La contraseña no cumple los requisitos de seguridad.';
   }
 
   return message;

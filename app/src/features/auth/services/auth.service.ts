@@ -111,7 +111,7 @@ const parseApiError = async (response: Response) => {
   }
 
   if (response.status >= 500) {
-    return "El backend esta temporalmente no disponible. Intenta nuevamente en unos minutos.";
+    return "El backend está temporalmente no disponible. Intenta nuevamente en unos minutos.";
   }
 
   return fallback;
@@ -153,7 +153,7 @@ const apiRequest = async <T>(
     return JSON.parse(rawBody) as T;
   } catch {
     throw new Error(
-      "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",
+      "Respuesta inválida del backend. Verifica que la API esté funcionando correctamente.",
     );
   }
 };
@@ -254,7 +254,7 @@ const refreshStoredSessionOnce = async (): Promise<AppAuthSession> => {
   const currentSession = await getStoredSession();
 
   if (!currentSession?.refreshToken) {
-    throw new Error("No hay sesion activa para renovar.");
+    throw new Error("No hay sesión activa para renovar.");
   }
 
   const refreshedTokens = await apiRequest<{
@@ -340,7 +340,7 @@ export const fetchProfileFromBackend = async () => {
     return payload;
   } catch {
     throw new Error(
-      "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",
+      "Respuesta inválida del backend. Verifica que la API esté funcionando correctamente.",
     );
   }
 };
@@ -389,7 +389,7 @@ export const updateProfileOnBackend = async (profileData: ProfileUpdatePayload) 
     return payload;
   } catch {
     throw new Error(
-      "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",
+      "Respuesta inválida del backend. Verifica que la API esté funcionando correctamente.",
     );
   }
 };
@@ -438,7 +438,7 @@ export const updateAvatarOnBackend = async (avatarData: string) => {
     return payload;
   } catch {
     throw new Error(
-      "Respuesta invalida del backend. Verifica que la API este funcionando correctamente.",
+      "Respuesta inválida del backend. Verifica que la API esté funcionando correctamente.",
     );
   }
 };

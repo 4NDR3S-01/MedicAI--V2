@@ -845,7 +845,7 @@ export function AppRoot() {
     let errorMessage = 'Error al reenviar correo';
 
     if (response.status >= 500) {
-      return 'El backend no esta disponible en este momento.';
+      return 'El backend no está disponible en este momento.';
     }
 
     if (rawError.trim()) {
@@ -884,12 +884,12 @@ export function AppRoot() {
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert('Correo invalido', 'Verifica el formato de tu correo electrónico.');
+      Alert.alert('Correo inválido', 'Verifica el formato de tu correo electrónico.');
       return;
     }
 
     if (!password.trim()) {
-      Alert.alert('Contrasena requerida', 'Ingresa tu contrasena para continuar.');
+      Alert.alert('Contraseña requerida', 'Ingresa tu contraseña para continuar.');
       return;
     }
 
@@ -905,7 +905,7 @@ export function AppRoot() {
       const nextSession = await signInWithEmail(email, password);
       setSession(nextSession);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo iniciar sesion.';
+      const message = error instanceof Error ? error.message : 'No se pudo iniciar sesión.';
       
       // Detectar si el error es por email no verificado
       if (message.toLowerCase().includes('verificar') || message.toLowerCase().includes('verified')) {
@@ -914,7 +914,7 @@ export function AppRoot() {
         return;
       }
       
-      Alert.alert('No fue posible iniciar sesion', message);
+      Alert.alert('No fue posible iniciar sesión', message);
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -940,7 +940,7 @@ export function AppRoot() {
       setAuthScreen('login');
       Alert.alert(
         'Cuenta creada',
-        `Tu cuenta se creo correctamente, ${payload.personalData.fullName}. Revisa tu correo para validar la cuenta y luego inicia sesion.`,
+        `Tu cuenta se creó correctamente, ${payload.personalData.fullName}. Revisa tu correo para validar la cuenta y luego inicia sesión.`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo completar el registro.';
@@ -958,12 +958,12 @@ export function AppRoot() {
 
     const email = form.email.trim();
     if (!email) {
-      Alert.alert('Correo requerido', 'Ingresa tu correo electronico para recuperar tu contrasena.');
+      Alert.alert('Correo requerido', 'Ingresa tu correo electrónico para recuperar tu contraseña.');
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert('Correo invalido', 'Verifica el formato de tu correo electronico.');
+      Alert.alert('Correo inválido', 'Verifica el formato de tu correo electrónico.');
       return;
     }
 
@@ -980,11 +980,11 @@ export function AppRoot() {
       setDefaultEmailCooldown();
       Alert.alert(
         'Solicitud enviada',
-        'Si el correo pertenece a una cuenta registrada, recibiras instrucciones para restablecer tu contrasena.',
+        'Si el correo pertenece a una cuenta registrada, recibiras instrucciones para restablecer tu contraseña.',
       );
       setAuthScreen('login');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo enviar el correo de recuperacion.';
+      const message = error instanceof Error ? error.message : 'No se pudo enviar el correo de recuperación.';
       if (message.toLowerCase().includes('demasiadas solicitudes de correo')) {
         syncEmailCooldownFromErrorMessage(message);
       }
@@ -1021,7 +1021,7 @@ export function AppRoot() {
       setDefaultEmailCooldown();
       Alert.alert(
         'Correo reenviado',
-        'Hemos enviado un nuevo enlace de verificacion a tu correo. Revisa tu bandeja de entrada y spam.',
+        'Hemos enviado un nuevo enlace de verificación a tu correo. Revisa tu bandeja de entrada y spam.',
       );
       return true;
     } catch (error) {
@@ -1038,25 +1038,25 @@ export function AppRoot() {
     const confirmPassword = resetPasswordForm.confirmPassword.trim();
 
     if (!password) {
-      Alert.alert('Contrasena requerida', 'Ingresa una nueva contrasena.');
+      Alert.alert('Contraseña requerida', 'Ingresa una nueva contraseña.');
       return;
     }
     if (password.length < 8) {
-      Alert.alert('Contrasena invalida', 'La nueva contrasena debe tener al menos 8 caracteres.');
+      Alert.alert('Contraseña inválida', 'La nueva contraseña debe tener al menos 8 caracteres.');
       return;
     }
     if (!confirmPassword) {
-      Alert.alert('Confirmacion requerida', 'Confirma la nueva contrasena.');
+      Alert.alert('Confirmacion requerida', 'Confirma la nueva contraseña.');
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Contrasenas no coinciden', 'Verifica que ambas contrasenas sean iguales.');
+      Alert.alert('Contrasenas no coinciden', 'Verifica que ambas contraseñas sean iguales.');
       return;
     }
 
     try {
       if (!passwordResetToken) {
-        Alert.alert('Token requerido', 'Abre el enlace de recuperacion enviado a tu correo para continuar.');
+        Alert.alert('Token requerido', 'Abre el enlace de recuperación enviado a tu correo para continuar.');
         return;
       }
 
@@ -1065,7 +1065,7 @@ export function AppRoot() {
       clearResetPasswordState();
       presentAuthActionStatus(buildResetPasswordStatusState('success'));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No fue posible actualizar la contrasena.';
+      const message = error instanceof Error ? error.message : 'No fue posible actualizar la contraseña.';
       const tokenStatus = getTokenStatusFromMessage(message);
 
       if (tokenStatus === 'used' || tokenStatus === 'expired' || tokenStatus === 'invalid') {
@@ -1087,8 +1087,8 @@ export function AppRoot() {
       setSession(null);
       await clearRegisterDraft();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo cerrar sesion.';
-      Alert.alert('No fue posible cerrar sesion', message);
+      const message = error instanceof Error ? error.message : 'No se pudo cerrar sesión.';
+      Alert.alert('No fue posible cerrar sesión', message);
     } finally {
       setIsSubmittingAuth(false);
     }

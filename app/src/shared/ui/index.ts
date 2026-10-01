@@ -7,3 +7,5 @@ export { BottomSheet } from './BottomSheet';
 export { PressableScale } from './PressableScale';
 export { MOTION, useReducedMotion } from './motion';
 export { AppButton } from './AppButton';
+export { useKeyboardInset } from './useKeyboardInset';
+export { KeyboardAwareScrollView, KeyboardAwareTextInput } from './KeyboardAwareScrollView';

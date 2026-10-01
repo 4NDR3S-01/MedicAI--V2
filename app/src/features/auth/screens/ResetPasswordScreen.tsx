@@ -1,8 +1,21 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
-import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import {
+  BackgroundDecor,
+  BrandLogo,
+  KeyboardAwareScrollView,
+  KeyboardAwareTextInput,
+} from '../../../shared/ui';
 import type { AppTheme } from '../../../shared/theme';
 
 type ResetPasswordScreenProps = {
@@ -28,142 +41,154 @@ export function ResetPasswordScreen({
 }: Readonly<ResetPasswordScreenProps>) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+  const confirmRef = useRef<TextInput | null>(null);
+  const { height } = useWindowDimensions();
+  const logoSize = height < 700 ? 88 : 110;
 
-  const togglePasswordVisibility = () => {
-    setIsPasswordVisible((prev) => !prev);
-  };
-
-  const toggleConfirmPasswordVisibility = () => {
-    setIsConfirmPasswordVisible((prev) => !prev);
+  const inputColors = {
+    backgroundColor: theme.colors.inputBackground,
+    borderColor: theme.colors.inputBorder,
+    color: theme.colors.textPrimary,
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.screen, { backgroundColor: theme.colors.background }]}
-    >
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <BackgroundDecor theme={theme} />
-
-      <View style={styles.header}>
-        <BrandLogo theme={theme} size={110} showName={false} />
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Nueva contrasena</Text>
-        <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Crea una contrasena segura para proteger tu cuenta.
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.surfaceBorder,
-          },
-        ]}
-      >
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Nueva contrasena</Text>
-        <View style={styles.passwordWrap}>
-          <TextInput
-            value={password}
-            onChangeText={onPasswordChange}
-            style={[
-              styles.input,
-              styles.passwordInput,
-              {
-                backgroundColor: theme.colors.inputBackground,
-                borderColor: theme.colors.inputBorder,
-                color: theme.colors.textPrimary,
-              },
-            ]}
-            secureTextEntry={!isPasswordVisible}
-            autoCapitalize="none"
-            placeholder="Minimo 8 caracteres"
-            placeholderTextColor={theme.colors.inputPlaceholder}
-            editable={!isSubmitting}
-          />
-          <Pressable
-            onPress={togglePasswordVisibility}
-            style={styles.passwordToggle}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={isPasswordVisible ? 'Ocultar contrasena' : 'Mostrar contrasena'}
-          >
-            <Ionicons
-              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
-              size={20}
-              color={theme.colors.accentSecondary}
-            />
-          </Pressable>
+      <KeyboardAwareScrollView contentContainerStyle={styles.screen}>
+        <View style={styles.header}>
+          <BrandLogo theme={theme} size={logoSize} showName={false} />
+          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Nueva contraseña</Text>
+          <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
+            Crea una contraseña segura para proteger tu cuenta.
+          </Text>
         </View>
 
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Confirmar contrasena</Text>
-        <View style={styles.passwordWrap}>
-          <TextInput
-            value={confirmPassword}
-            onChangeText={onConfirmPasswordChange}
-            style={[
-              styles.input,
-              styles.passwordInput,
-              {
-                backgroundColor: theme.colors.inputBackground,
-                borderColor: theme.colors.inputBorder,
-                color: theme.colors.textPrimary,
-              },
-            ]}
-            secureTextEntry={!isConfirmPasswordVisible}
-            autoCapitalize="none"
-            placeholder="Repite tu contrasena"
-            placeholderTextColor={theme.colors.inputPlaceholder}
-            editable={!isSubmitting}
-          />
-          <Pressable
-            onPress={toggleConfirmPasswordVisibility}
-            style={styles.passwordToggle}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={isConfirmPasswordVisible ? 'Ocultar contrasena de confirmacion' : 'Mostrar contrasena de confirmacion'}
-          >
-            <Ionicons
-              name={isConfirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
-              size={20}
-              color={theme.colors.accentSecondary}
-            />
-          </Pressable>
-        </View>
-
-        <Pressable
+        <View
           style={[
-            styles.primaryButton,
-            { backgroundColor: theme.colors.accentPrimary },
-            isSubmitting && styles.buttonDisabled,
+            styles.card,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.surfaceBorder,
+            },
           ]}
-          onPress={onSubmit}
-          disabled={isSubmitting}
-          accessibilityState={{ disabled: isSubmitting }}
         >
-          <Text style={[styles.primaryButtonText, { color: theme.colors.buttonText }]}>
-            {isSubmitting ? 'Actualizando…' : 'Actualizar contrasena'}
-          </Text>
-        </Pressable>
+          <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Nueva contraseña</Text>
+          <View style={styles.passwordWrap}>
+            <KeyboardAwareTextInput
+              value={password}
+              onChangeText={onPasswordChange}
+              style={[styles.input, styles.passwordInput, inputColors]}
+              secureTextEntry={!isPasswordVisible}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              placeholder="Mínimo 8 caracteres"
+              placeholderTextColor={theme.colors.inputPlaceholder}
+              accessibilityLabel="Nueva contraseña"
+              editable={!isSubmitting}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => confirmRef.current?.focus()}
+            />
+            <Pressable
+              onPress={() => setIsPasswordVisible((prev) => !prev)}
+              style={styles.passwordToggle}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+            >
+              <Ionicons
+                name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={theme.colors.accentSecondary}
+              />
+            </Pressable>
+          </View>
 
-        <Pressable
-          style={styles.secondaryButton}
-          onPress={onCancel}
-          disabled={isSubmitting}
-          accessibilityState={{ disabled: isSubmitting }}
-        >
-          <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
-            Cancelar
-          </Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Confirmar contraseña</Text>
+          <View style={styles.passwordWrap}>
+            <KeyboardAwareTextInput
+              inputRef={confirmRef}
+              value={confirmPassword}
+              onChangeText={onConfirmPasswordChange}
+              style={[styles.input, styles.passwordInput, inputColors]}
+              secureTextEntry={!isConfirmPasswordVisible}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              placeholder="Repite tu contraseña"
+              placeholderTextColor={theme.colors.inputPlaceholder}
+              accessibilityLabel="Confirmar contraseña"
+              editable={!isSubmitting}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (!isSubmitting) onSubmit();
+              }}
+            />
+            <Pressable
+              onPress={() => setIsConfirmPasswordVisible((prev) => !prev)}
+              style={styles.passwordToggle}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isConfirmPasswordVisible
+                  ? 'Ocultar confirmación de contraseña'
+                  : 'Mostrar confirmación de contraseña'
+              }
+            >
+              <Ionicons
+                name={isConfirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={theme.colors.accentSecondary}
+              />
+            </Pressable>
+          </View>
+
+          <Pressable
+            style={[
+              styles.primaryButton,
+              { backgroundColor: theme.colors.accentPrimary },
+              isSubmitting && styles.buttonDisabled,
+            ]}
+            onPress={onSubmit}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel="Actualizar contraseña"
+            accessibilityState={{ disabled: isSubmitting, busy: isSubmitting }}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color={theme.colors.buttonText} />
+            ) : (
+              <Text style={[styles.primaryButtonText, { color: theme.colors.buttonText }]}>
+                Actualizar contraseña
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={onCancel}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isSubmitting }}
+          >
+            <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
+              Cancelar
+            </Text>
+          </Pressable>
+        </View>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
+  },
+  screen: {
     paddingHorizontal: 22,
     paddingTop: 24,
     paddingBottom: 22,
@@ -216,6 +241,8 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   primaryButton: {
+    minHeight: 50,
+    justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 14,
     marginTop: 8,

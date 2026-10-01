@@ -1,6 +1,11 @@
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { BackgroundDecor, BrandLogo } from '../../../shared/ui';
+import {
+  BackgroundDecor,
+  BrandLogo,
+  KeyboardAwareScrollView,
+  KeyboardAwareTextInput,
+} from '../../../shared/ui';
 import type { AppTheme } from '../../../shared/theme';
 
 type ForgotPasswordScreenProps = {
@@ -20,82 +25,100 @@ export function ForgotPasswordScreen({
   onSubmit,
   onBackToLogin,
 }: Readonly<ForgotPasswordScreenProps>) {
+  const { height } = useWindowDimensions();
+  const logoSize = height < 700 ? 88 : 110;
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.screen, { backgroundColor: theme.colors.background }]}
-    >
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <BackgroundDecor theme={theme} />
+      <KeyboardAwareScrollView contentContainerStyle={styles.screen}>
+        <View style={styles.header}>
+          <BrandLogo theme={theme} size={logoSize} showName={false} />
+          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Recuperar contraseña</Text>
+          <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
+            Ingresa tu correo electrónico y te enviaremos instrucciones seguras para restablecerla.
+          </Text>
+        </View>
 
-      <View style={styles.header}>
-        <BrandLogo theme={theme} size={110} showName={false} />
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Recuperar contraseña</Text>
-        <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Ingresa tu correo electrónico y te enviaremos instrucciones seguras para restablecerla.
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.surfaceBorder,
-          },
-        ]}
-      >
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Correo</Text>
-        <TextInput
-          value={email}
-          onChangeText={onEmailChange}
+        <View
           style={[
-            styles.input,
+            styles.card,
             {
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.surfaceBorder,
             },
           ]}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="tu@dominio.com"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-          editable={!isSubmitting}
-        />
-
-        <Pressable
-          style={[
-            styles.primaryButton,
-            { backgroundColor: theme.colors.accentPrimary },
-            isSubmitting && styles.buttonDisabled,
-          ]}
-          onPress={onSubmit}
-          disabled={isSubmitting}
-          accessibilityState={{ disabled: isSubmitting }}
         >
-          <Text style={[styles.primaryButtonText, { color: theme.colors.buttonText }]}>
-            {isSubmitting ? 'Enviando…' : 'Enviar enlace'}
-          </Text>
-        </Pressable>
+          <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Correo electrónico</Text>
+          <KeyboardAwareTextInput
+            value={email}
+            onChangeText={onEmailChange}
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.colors.inputBackground,
+                borderColor: theme.colors.inputBorder,
+                color: theme.colors.textPrimary,
+              },
+            ]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="emailAddress"
+            placeholder="tu@dominio.com"
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            accessibilityLabel="Correo electrónico"
+            editable={!isSubmitting}
+            returnKeyType="send"
+            onSubmitEditing={() => {
+              if (!isSubmitting) onSubmit();
+            }}
+          />
 
-        <Pressable
-          style={styles.secondaryButton}
-          onPress={onBackToLogin}
-          disabled={isSubmitting}
-          accessibilityState={{ disabled: isSubmitting }}
-        >
-          <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
-            Volver al inicio de sesion
-          </Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          <Pressable
+            style={[
+              styles.primaryButton,
+              { backgroundColor: theme.colors.accentPrimary },
+              isSubmitting && styles.buttonDisabled,
+            ]}
+            onPress={onSubmit}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel="Enviar enlace"
+            accessibilityState={{ disabled: isSubmitting, busy: isSubmitting }}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color={theme.colors.buttonText} />
+            ) : (
+              <Text style={[styles.primaryButtonText, { color: theme.colors.buttonText }]}>
+                Enviar enlace
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={onBackToLogin}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isSubmitting }}
+          >
+            <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
+              Volver al inicio de sesión
+            </Text>
+          </Pressable>
+        </View>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
+  },
+  screen: {
     paddingHorizontal: 22,
     paddingTop: 24,
     paddingBottom: 22,
@@ -136,6 +159,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   primaryButton: {
+    minHeight: 50,
+    justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 14,
     marginTop: 8,
