@@ -36,6 +36,7 @@ import {
   setMedicationReminderLeadMinutes,
 } from '../../../shared/services/notifications.service';
 import type { AppTheme } from '../../../shared/theme';
+import { PRIVACY_POLICY_URL } from '../../../shared/config/links';
 
 const PREDEFINED_SEEDS = [
   { seed: 'Alexander', bg: 'e0f2fe' },
@@ -989,7 +990,7 @@ export function ProfileScreen({
           <ScrollView contentContainerStyle={styles.helpScroll}>
             {[
               ['Datos de cuenta', 'Guardamos correo, nombre, avatar y datos básicos necesarios para identificar tu sesión.'],
-              ['Datos de salud', 'Medicamentos, citas, alergias y condiciones se usan para recordatorios y contexto dentro de MedicAI.'],
+              ['Datos de salud', 'Medicamentos, citas, alergias y condiciones se usan para tus recordatorios. Solo se comparten con el asistente de IA si lo autorizas.'],
               ['Control del usuario', 'Puedes editar datos personales desde esta pantalla o cerrar sesión para remover la sesión local del dispositivo.'],
               ['Seguridad', 'La autenticación usa JWT y el cambio de contraseña se realiza con enlace temporal enviado al correo.'],
             ].map(([title, body]) => (
@@ -998,6 +999,14 @@ export function ProfileScreen({
                 <Text style={[styles.helpBody, { color: theme.colors.textSecondary }]}>{body}</Text>
               </View>
             ))}
+            <Pressable
+              onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
+              accessibilityRole="link"
+              style={[styles.helpCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+            >
+              <Text style={[styles.helpTitle, { color: theme.colors.accentSecondary }]}>Leer la política de privacidad completa</Text>
+              <Text style={[styles.helpBody, { color: theme.colors.textSecondary }]}>Qué datos tratamos, con quién se comparten y cómo eliminar tu cuenta.</Text>
+            </Pressable>
           </ScrollView>
         </View>
       </Modal>
