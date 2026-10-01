@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { SignOptions } from 'jsonwebtoken';
 
+import { getBirthDateIssue } from '../../common/birth-date';
 import { MailService } from '../../infrastructure/mail/mail.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
@@ -39,6 +40,7 @@ const PROFILE_SELECT = {
   immunosuppression: true,
   anticoagulantTreatment: true,
   notificationLeadMinutes: true,
+  aiHealthContextConsent: true,
 } satisfies Prisma.UserSelect;
 
 type ProfileUser = Prisma.UserGetPayload<{ select: typeof PROFILE_SELECT }>;
@@ -77,6 +79,13 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
+
+    const birthDate = dto.birthDate?.trim() || null;
+    const birthDateIssue = birthDate ? getBirthDateIssue(birthDate) : null;
+    if (birthDateIssue) {
+      throw new BadRequestException(birthDateIssue);
+    }
+
     const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
 
     if (existing) {
@@ -93,15 +102,17 @@ export class AuthService {
             email,
             passwordHash,
             fullName: dto.fullName?.trim() || null,
-            birthDate: dto.birthDate || null,
-            phone: dto.phone || null,
-            conditions: dto.conditions || null,
-            allergies: dto.allergies || null,
+            birthDate,
+            phone: dto.phone?.trim() || null,
+            conditions: dto.conditions?.trim() || null,
+            allergies: dto.allergies?.trim() || null,
             pregnancy: dto.specialConditions?.pregnancy ?? false,
             lactation: dto.specialConditions?.lactation ?? false,
             recentSurgeries: dto.specialConditions?.recentSurgeries ?? false,
             immunosuppression: dto.specialConditions?.immunosuppression ?? false,
             anticoagulantTreatment: dto.specialConditions?.anticoagulantTreatment ?? false,
+            aiHealthContextConsent: dto.aiHealthContextConsent ?? false,
+            aiHealthContextConsentAt: dto.aiHealthContextConsent ? new Date() : null,
           },
         });
 
@@ -694,6 +705,16 @@ export class AuthService {
     if (dto.notificationLeadMinutes !== undefined) {
       data.notificationLeadMinutes = dto.notificationLeadMinutes;
     }
+    if (dto.birthDate?.trim()) {
+      const birthDateIssue = getBirthDateIssue(dto.birthDate.trim());
+      if (birthDateIssue) {
+        throw new BadRequestException(birthDateIssue);
+      }
+    }
+    if (dto.aiHealthContextConsent !== undefined) {
+      data.aiHealthContextConsent = dto.aiHealthContextConsent;
+      data.aiHealthContextConsentAt = dto.aiHealthContextConsent ? new Date() : null;
+    }
 
     if (Object.keys(data).length === 0) {
       const user = await this.prisma.user.findUnique({ where: { id: userId }, select: PROFILE_SELECT });
@@ -729,6 +750,7 @@ export class AuthService {
       immunosuppression: user.immunosuppression,
       anticoagulantTreatment: user.anticoagulantTreatment,
       notificationLeadMinutes: user.notificationLeadMinutes,
+      aiHealthContextConsent: user.aiHealthContextConsent,
     };
   }
 

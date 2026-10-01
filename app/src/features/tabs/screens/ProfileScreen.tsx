@@ -112,7 +112,14 @@ type ProfileForm = {
   recentSurgeries: boolean;
   immunosuppression: boolean;
   anticoagulantTreatment: boolean;
+  aiHealthContextConsent: boolean;
 };
+
+const AI_CONSENT_ITEM = {
+  label: 'Usar en el asistente de IA',
+  description: 'Comparte edad, condiciones, alergias y situaciones especiales (nunca nombre, correo ni teléfono) con el proveedor de IA para personalizar respuestas.',
+  icon: 'robot-outline',
+} as const;
 
 type NotificationTab = 'medications' | 'appointments';
 
@@ -164,8 +171,12 @@ function profileFormFromUser(user?: Partial<ProfileUser> | null): ProfileForm {
     recentSurgeries: Boolean(user?.recentSurgeries),
     immunosuppression: Boolean(user?.immunosuppression),
     anticoagulantTreatment: Boolean(user?.anticoagulantTreatment),
+    aiHealthContextConsent: Boolean(user?.aiHealthContextConsent),
   };
 }
+
+const hasMedicalValue = (value?: string | null) =>
+  Boolean(value && !['ninguna', 'ninguno'].includes(value.trim().toLowerCase()));
 
 function calculateAgeLabel(birthDate: string) {
   const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate.trim());
@@ -318,7 +329,7 @@ function ToggleRow({
   theme,
   onChange,
 }: Readonly<{
-  item: (typeof SPECIAL_CONDITIONS)[number];
+  item: Pick<(typeof SPECIAL_CONDITIONS)[number], 'label' | 'description' | 'icon'>;
   value: boolean;
   theme: AppTheme;
   onChange: (value: boolean) => void;
@@ -332,7 +343,12 @@ function ToggleRow({
         <Text style={[styles.toggleTitle, { color: theme.colors.textPrimary }]}>{item.label}</Text>
         <Text style={[styles.toggleSubtitle, { color: theme.colors.textMuted }]}>{item.description}</Text>
       </View>
-      <Switch value={value} onValueChange={onChange} />
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        accessibilityLabel={item.label}
+        trackColor={{ false: theme.colors.inputBorder, true: theme.colors.accentPrimary }}
+      />
     </View>
   );
 }
@@ -431,7 +447,7 @@ export function ProfileScreen({
   const ageLabel = calculateAgeLabel(profile.birthDate ?? '');
   const activeRiskCount = SPECIAL_CONDITIONS.filter((item) => Boolean(profile[item.key])).length;
   const medicalSummary = profile.conditions || profile.allergies || activeRiskCount > 0
-    ? `${profile.conditions ? 'Antecedentes registrados' : 'Sin antecedentes'} · ${profile.allergies ? 'alergias registradas' : 'sin alergias'} · ${activeRiskCount} alertas`
+    ? `${hasMedicalValue(profile.conditions) ? 'Condiciones registradas' : 'Sin condiciones'} · ${hasMedicalValue(profile.allergies) ? 'alergias registradas' : 'sin alergias'} · ${activeRiskCount} alertas`
     : 'Completa tu contexto médico para consultas más precisas';
 
   const loadProfile = async (openModal: boolean) => {
@@ -479,6 +495,7 @@ export function ProfileScreen({
       recentSurgeries: profileForm.recentSurgeries,
       immunosuppression: profileForm.immunosuppression,
       anticoagulantTreatment: profileForm.anticoagulantTreatment,
+      aiHealthContextConsent: profileForm.aiHealthContextConsent,
     };
 
     setIsSavingProfile(true);
@@ -799,7 +816,7 @@ export function ProfileScreen({
 
             <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
               <Text style={[styles.formSectionTitle, { color: theme.colors.textPrimary }]}>Información médica</Text>
-              <TextField label="Antecedentes o condiciones" value={profileForm.conditions} placeholder="Ej. hipertensión, diabetes, asma" theme={theme} multiline onChangeText={(value) => setProfileForm((current) => ({ ...current, conditions: value }))} />
+              <TextField label="Condiciones de salud" value={profileForm.conditions} placeholder="Ej. hipertensión, diabetes, asma" theme={theme} multiline onChangeText={(value) => setProfileForm((current) => ({ ...current, conditions: value }))} />
               <TextField label="Alergias" value={profileForm.allergies} placeholder="Ej. penicilina, ibuprofeno, alimentos" theme={theme} multiline onChangeText={(value) => setProfileForm((current) => ({ ...current, allergies: value }))} />
             </View>
 
@@ -814,6 +831,16 @@ export function ProfileScreen({
                   onChange={(value) => setProfileForm((current) => ({ ...current, [item.key]: value }))}
                 />
               ))}
+            </View>
+
+            <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
+              <Text style={[styles.formSectionTitle, { color: theme.colors.textPrimary }]}>Privacidad</Text>
+              <ToggleRow
+                item={AI_CONSENT_ITEM}
+                value={profileForm.aiHealthContextConsent}
+                theme={theme}
+                onChange={(value) => setProfileForm((current) => ({ ...current, aiHealthContextConsent: value }))}
+              />
             </View>
 
             <View style={styles.modalActionRow}>

@@ -13,4 +13,6 @@ export {
   verifyEmailToken,
 } from './auth.service';
 
+export { clearRegisterDraft } from './registerDraft';
+
 export type { AppAuthSession, AuthTokenValidationResponse, AuthTokenValidationStatus } from './auth.service';

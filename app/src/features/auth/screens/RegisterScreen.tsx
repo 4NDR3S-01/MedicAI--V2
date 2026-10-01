@@ -1,2501 +1,525 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Ionicons } from "@expo/vector-icons";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Keyboard,
+  Animated,
+  BackHandler,
+  Easing,
   KeyboardAvoidingView,
-  LayoutChangeEvent,
-  Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   View,
-  useWindowDimensions,
+  type LayoutChangeEvent,
+  type TextInput,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { appStorage } from "../../../shared/storage";
-import { BackgroundDecor, BrandLogo } from "../../../shared/ui";
 import type { AppTheme } from "../../../shared/theme";
+import { AppButton, BackgroundDecor, BrandLogo, MOTION, useReducedMotion } from "../../../shared/ui";
+import { BirthDatePickerSheet } from "../components/register/BirthDatePickerSheet";
+import { CountryPickerSheet } from "../components/register/CountryPickerSheet";
+import {
+  MedicalStep,
+  PersonalStep,
+  SpecialStep,
+  SummaryStep,
+  type EmailStatus,
+} from "../components/register/RegisterSteps";
+import { REGISTER_STEPS } from "../config/register.constants";
+import type { RegisterWizardPayload, SpecialConditionKey } from "../models/register.types";
 import { checkEmailAvailability } from "../services";
+import { loadRegisterDraft, saveRegisterDraft } from "../services/registerDraft";
+import { createInitialForm, getPhoneCountry, normalizeNationalPhone } from "../utils/register.utils";
 import {
-  COMMON_ALLERGIES,
-  HEREDITARY_CONDITIONS,
-  MONTH_OPTIONS,
-  PHONE_COUNTRIES,
-  REGISTER_STEPS,
-  STEP_TITLE,
-} from "../config/register.constants";
-import type { RegisterWizardPayload } from "../models/register.types";
-import {
-  calculateAgeFromBirthDate,
-  createInitialForm,
-  formatBirthDate,
-  getDaysInMonth,
-  parseBirthDate,
-} from "../utils/register.utils";
+  firstErrorField,
+  isValidEmail,
+  validatePersonalData,
+  type PersonalField,
+} from "../utils/register.validation";
 
 export type { RegisterWizardPayload } from "../models/register.types";
-
-type PersonalFieldKey =
-  | "fullName"
-  | "birthDate"
-  | "phone"
-  | "email"
-  | "password"
-  | "confirmPassword";
-
-type FocusablePersonalFieldKey = Exclude<PersonalFieldKey, "birthDate">;
 
 type RegisterScreenProps = {
   theme: AppTheme;
   isSubmitting?: boolean;
   onSubmit: (payload: RegisterWizardPayload) => void | Promise<void>;
   onNavigateToLogin: () => void;
-  initialSpecialConditions?: RegisterWizardPayload["medicalInfo"]["specialConditions"];
-  initialSpecialConditionVigency?: RegisterWizardPayload["medicalInfo"]["specialConditionVigency"];
 };
 
-type SpecialConditionKey =
-  keyof RegisterWizardPayload["medicalInfo"]["specialConditions"];
-
-const SPECIAL_CONDITION_LABELS: Record<SpecialConditionKey, string> = {
-  pregnancy: "Embarazo",
-  lactation: "Lactancia",
-  recentSurgeries: "Cirugias recientes",
-  immunosuppression: "Inmunosupresion",
-  anticoagulantTreatment: "Tratamiento anticoagulante",
-};
-
-const REGISTER_WIZARD_DRAFT_STORAGE_KEY = "medicai_register_wizard_draft_v2";
-
-type RegisterWizardDraft = {
-  form: RegisterWizardPayload;
-  stepIndex: number;
-  selectedConditions: string[];
-  selectedAllergies: string[];
-  otherConditionItems: string[];
-  otherAllergyItems: string[];
-};
-
-type RegisterDraftHydrationSetters = {
-  setForm: React.Dispatch<React.SetStateAction<RegisterWizardPayload>>;
-  setStepIndex: React.Dispatch<React.SetStateAction<number>>;
-  setSelectedConditions: React.Dispatch<React.SetStateAction<string[]>>;
-  setSelectedAllergies: React.Dispatch<React.SetStateAction<string[]>>;
-  setOtherConditionItems: React.Dispatch<React.SetStateAction<string[]>>;
-  setOtherAllergyItems: React.Dispatch<React.SetStateAction<string[]>>;
-  setIsWizardHydrated: React.Dispatch<React.SetStateAction<boolean>>;
-};
-
-const createRegisterInitialForm = (
-  initialSpecialConditions?: RegisterWizardPayload["medicalInfo"]["specialConditions"],
-  initialSpecialConditionVigency?: RegisterWizardPayload["medicalInfo"]["specialConditionVigency"],
-) => {
-  const initialForm = createInitialForm();
-
-  if (initialSpecialConditions) {
-    initialForm.medicalInfo.specialConditions = {
-      ...initialForm.medicalInfo.specialConditions,
-      ...initialSpecialConditions,
-    };
-  }
-
-  if (initialSpecialConditionVigency) {
-    initialForm.medicalInfo.specialConditionVigency = {
-      ...initialForm.medicalInfo.specialConditionVigency,
-      ...initialSpecialConditionVigency,
-    };
-  }
-
-  return initialForm;
-};
-
-const applyRegisterDraft = (
-  parsedDraft: Partial<RegisterWizardDraft>,
-  setters: Omit<RegisterDraftHydrationSetters, "setIsWizardHydrated">,
-) => {
-  if (parsedDraft.form) {
-    setters.setForm(parsedDraft.form);
-  }
-
-  if (typeof parsedDraft.stepIndex === "number") {
-    const safeStepIndex = Math.max(
-      0,
-      Math.min(REGISTER_STEPS.length - 1, parsedDraft.stepIndex),
-    );
-    setters.setStepIndex(safeStepIndex);
-  }
-
-  if (Array.isArray(parsedDraft.selectedConditions)) {
-    setters.setSelectedConditions(parsedDraft.selectedConditions);
-  }
-
-  if (Array.isArray(parsedDraft.selectedAllergies)) {
-    setters.setSelectedAllergies(parsedDraft.selectedAllergies);
-  }
-
-  if (Array.isArray(parsedDraft.otherConditionItems)) {
-    setters.setOtherConditionItems(parsedDraft.otherConditionItems);
-  }
-
-  if (Array.isArray(parsedDraft.otherAllergyItems)) {
-    setters.setOtherAllergyItems(parsedDraft.otherAllergyItems);
-  }
-};
-
-const useRegisterWizardHydration = ({
-  setForm,
-  setStepIndex,
-  setSelectedConditions,
-  setSelectedAllergies,
-  setOtherConditionItems,
-  setOtherAllergyItems,
-  setIsWizardHydrated,
-}: RegisterDraftHydrationSetters) => {
-  useEffect(() => {
-    let isMounted = true;
-
-    const hydrateWizardDraft = async () => {
-      try {
-        const rawDraft = await appStorage.getItem(
-          REGISTER_WIZARD_DRAFT_STORAGE_KEY,
-        );
-        if (!rawDraft || !isMounted) {
-          return;
-        }
-
-        const parsedDraft = JSON.parse(
-          rawDraft,
-        ) as Partial<RegisterWizardDraft>;
-        applyRegisterDraft(parsedDraft, {
-          setForm,
-          setStepIndex,
-          setSelectedConditions,
-          setSelectedAllergies,
-          setOtherConditionItems,
-          setOtherAllergyItems,
-        });
-      } catch {
-        // Si falla la hidratacion, mantenemos el estado inicial.
-      } finally {
-        if (isMounted) {
-          setIsWizardHydrated(true);
-        }
-      }
-    };
-
-    void hydrateWizardDraft();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [
-    setForm,
-    setStepIndex,
-    setSelectedConditions,
-    setSelectedAllergies,
-    setOtherConditionItems,
-    setOtherAllergyItems,
-    setIsWizardHydrated,
-  ]);
-};
-
-const useRegisterWizardPersistence = (
-  isWizardHydrated: boolean,
-  draft: RegisterWizardDraft,
-) => {
-  useEffect(() => {
-    if (!isWizardHydrated) {
-      return;
-    }
-
-    const persistWizardDraft = async () => {
-      try {
-        await appStorage.setItem(
-          REGISTER_WIZARD_DRAFT_STORAGE_KEY,
-          JSON.stringify(draft),
-        );
-      } catch {
-        // Si falla la persistencia local, no bloqueamos la experiencia.
-      }
-    };
-
-    void persistWizardDraft();
-  }, [draft, isWizardHydrated]);
-};
-
-const isValidAppointmentDate = (value: string) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
-  if (!match) {
-    return false;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-
-  const date = new Date(year, month - 1, day);
-  return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day
-  );
-};
-
-const isValidAppointmentTime = (value: string) =>
-  /^([01]\d|2[0-3]):([0-5]\d)$/.test(value.trim());
-
-// Paso 2 – solo identidad (nombre, fecha, teléfono)
-const getIdentityValidationIssue = (
-  personalData: RegisterWizardPayload["personalData"],
-  calculatedAge: number | null,
-): { field: PersonalFieldKey; message: string } | null => {
-  if (!personalData.fullName.trim()) {
-    return { field: "fullName", message: "El nombre completo es obligatorio." };
-  }
-  if (!personalData.birthDate.trim() || calculatedAge === null) {
-    return {
-      field: "birthDate",
-      message: "Selecciona una fecha de nacimiento valida.",
-    };
-  }
-  if (personalData.phone && !/^\d{9}$/.test(personalData.phone)) {
-    return {
-      field: "phone",
-      message: "El numero telefonico debe tener exactamente 9 digitos.",
-    };
-  }
-  return null;
-};
-
-// Paso 3 – solo cuenta (correo, contraseña)
-const getAccountValidationIssue = (
-  personalData: RegisterWizardPayload["personalData"],
-): { field: PersonalFieldKey; message: string } | null => {
-  const password = personalData.password ?? "";
-  const confirmPassword = personalData.confirmPassword ?? "";
-
-  if (!personalData.email.trim()) {
-    return { field: "email", message: "El correo es obligatorio." };
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personalData.email.trim())) {
-    return { field: "email", message: "Ingresa un correo valido." };
-  }
-  if (!password.trim()) {
-    return { field: "password", message: "La contrasena es obligatoria." };
-  }
-  if (password.trim().length < 6) {
-    return {
-      field: "password",
-      message: "La contrasena debe tener al menos 6 caracteres.",
-    };
-  }
-  if (!confirmPassword.trim()) {
-    return { field: "confirmPassword", message: "Confirma tu contrasena." };
-  }
-  if (password !== confirmPassword) {
-    return {
-      field: "confirmPassword",
-      message: "Las contrasenas no coinciden.",
-    };
-  }
-  return null;
-};
-
-const validateMedicalInfoStep = (
-  medicalInfo: RegisterWizardPayload["medicalInfo"],
-): string | null => {
-  // Solo valida antecedentes y alergias (el paso 5 de condiciones especiales es opcional)
-  if (!medicalInfo.conditions.trim() && !medicalInfo.allergies.trim()) {
-    return 'Selecciona al menos una opcion en antecedentes o alergias. Puedes elegir "Ninguno".';
-  }
-  return null;
-};
-
-// Paso 2 unificado: identidad + cuenta
-const getPersonalValidationIssue = (
-  personalData: RegisterWizardPayload["personalData"],
-  calculatedAge: number | null,
-): { field: PersonalFieldKey; message: string } | null =>
-  getIdentityValidationIssue(personalData, calculatedAge) ??
-  getAccountValidationIssue(personalData);
-
-const validateCurrentStep = (
-  step: number,
-  form: RegisterWizardPayload,
-  calculatedAge: number | null,
-) => {
-  const stepValidators: Record<number, () => string | null> = {
-    2: () =>
-      getPersonalValidationIssue(form.personalData, calculatedAge)?.message ??
-      null,
-    3: () => validateMedicalInfoStep(form.medicalInfo),
-  };
-
-  return stepValidators[step]?.() ?? null;
+const DRAFT_SAVE_DELAY_MS = 400;
+const LAST_STEP = REGISTER_STEPS.length - 1;
+const NEXT_FIELD: Partial<Record<PersonalField, PersonalField>> = {
+  fullName: "birthDate",
+  phone: "email",
+  email: "password",
+  password: "confirmPassword",
 };
 
 export function RegisterScreen({
-  // NOSONAR
   theme,
   isSubmitting = false,
   onSubmit,
   onNavigateToLogin,
-  initialSpecialConditions,
-  initialSpecialConditionVigency,
 }: Readonly<RegisterScreenProps>) {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
 
-  const currentYear = new Date().getFullYear();
-  const yearOptions = useMemo(
-    () => Array.from({ length: 121 }, (_, index) => currentYear - index),
-    [currentYear],
-  );
+  const [form, setForm] = useState<RegisterWizardPayload>(createInitialForm);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [touched, setTouched] = useState<Partial<Record<PersonalField, boolean>>>({});
+  const [showAllErrors, setShowAllErrors] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
+  const [emailStatusMessage, setEmailStatusMessage] = useState<string | null>(null);
+  const [isBirthDateOpen, setIsBirthDateOpen] = useState(false);
+  const [isCountryOpen, setIsCountryOpen] = useState(false);
+  const [restoredDraft, setRestoredDraft] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  const [form, setForm] = useState<RegisterWizardPayload>(() =>
-    createRegisterInitialForm(
-      initialSpecialConditions,
-      initialSpecialConditionVigency,
+  const scrollRef = useRef<ScrollView | null>(null);
+  const inputRefs = useRef<Partial<Record<PersonalField, TextInput | null>>>({});
+  const fieldOffsets = useRef<Partial<Record<PersonalField, number>>>({});
+  const checkedEmailRef = useRef<{ email: string; available: boolean } | null>(null);
+  const continueAfterBirthDate = useRef(false);
+
+  const stepAnim = useRef(new Animated.Value(1)).current;
+  const stepDirection = useRef(1);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  const personalErrors = validatePersonalData(form.personalData);
+  const visibleErrors = Object.fromEntries(
+    Object.entries(personalErrors).filter(
+      ([field]) => showAllErrors || touched[field as PersonalField],
     ),
   );
-  const [stepIndex, setStepIndex] = useState(0);
-  const [stepError, setStepError] = useState<string | null>(null);
-  const [isBirthDateModalVisible, setIsBirthDateModalVisible] = useState(false);
-  const [isCountryModalVisible, setIsCountryModalVisible] = useState(false);
-  const [isVigencyModalVisible, setIsVigencyModalVisible] = useState(false);
-  const [draftBirthYear, setDraftBirthYear] = useState(currentYear - 18);
-  const [draftBirthMonth, setDraftBirthMonth] = useState(1);
-  const [draftBirthDay, setDraftBirthDay] = useState(1);
-  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
-  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
-  const [otherConditionDraft, setOtherConditionDraft] = useState("");
-  const [otherAllergyDraft, setOtherAllergyDraft] = useState("");
-  const [otherConditionItems, setOtherConditionItems] = useState<string[]>([]);
-  const [otherAllergyItems, setOtherAllergyItems] = useState<string[]>([]);
-  const [otherConditionError, setOtherConditionError] = useState<string | null>(
-    null,
-  );
-  const [otherAllergyError, setOtherAllergyError] = useState<string | null>(
-    null,
-  );
-  const [isWizardHydrated, setIsWizardHydrated] = useState(false);
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
-    useState(false);
-  const [emailAvailabilityMessage, setEmailAvailabilityMessage] = useState<
-    string | null
-  >(null);
-  const [isCheckingEmailAvailability, setIsCheckingEmailAvailability] =
-    useState(false);
-  const stepScrollRef = useRef<ScrollView | null>(null);
-  const lastEmailAvailabilityRef = useRef<{
-    email: string;
-    available: boolean;
-  } | null>(null);
-  const fieldOffsetsRef = useRef<Record<PersonalFieldKey, number>>({
-    fullName: 0,
-    birthDate: 0,
-    phone: 0,
-    email: 0,
-    password: 0,
-    confirmPassword: 0,
-  });
-  const personalFieldRefs = useRef<
-    Record<FocusablePersonalFieldKey, TextInput | null>
-  >({
-    fullName: null,
-    phone: null,
-    email: null,
-    password: null,
-    confirmPassword: null,
-  });
-  const pendingBirthDateFollowUpRef = useRef<FocusablePersonalFieldKey | null>(
-    null,
-  );
-  const NONE_OPTION = "Ninguno";
-  const OTHER_OPTION = "Otros";
 
-  const currentStep = REGISTER_STEPS[stepIndex];
-  const isLastStep = stepIndex === REGISTER_STEPS.length - 1;
-
-  let primaryActionLabel = "Siguiente";
-  if (currentStep === 2 && isCheckingEmailAvailability) {
-    primaryActionLabel = "Validando correo…";
-  }
-  if (isLastStep) {
-    primaryActionLabel = isSubmitting ? "Guardando…" : "Guardar perfil";
-  }
-
-  const isCompact = width < 390;
-  const isShortScreen = height < 760;
-  const isVeryShortScreen = height < 700;
-  const modalSolidBackground = theme.mode === "dark" ? "#1A202C" : "#FFFFFF";
-  let iosBottomExtra = 0;
-  if (Platform.OS === "ios") {
-    iosBottomExtra = isShortScreen ? 12 : 18;
-  }
-  const iosFooterPadding = Platform.OS === "ios" ? 8 : 0;
-
-  let horizontalPadding = 28;
-  if (width < 390) {
-    horizontalPadding = 14;
-  } else if (width < 768) {
-    horizontalPadding = 22;
-  }
-  let logoSize = 108;
-  if (isShortScreen) {
-    logoSize = 84;
-  } else if (width < 390) {
-    logoSize = 88;
-  }
-  const topPadding = isShortScreen ? 10 : 24;
-  const iosScreenBottomPadding = Math.max(
-    14,
-    insets.bottom + (isShortScreen ? 8 : 14) + iosBottomExtra,
-  );
-  const androidScreenBottomPadding = Math.max(
-    8,
-    insets.bottom + (isShortScreen ? 2 : 6),
-  );
-  const bottomPadding =
-    Platform.OS === "ios" ? iosScreenBottomPadding : androidScreenBottomPadding;
-  const cardPadding = isShortScreen ? 14 : 18;
-  const keyboardOffset = Platform.OS === "ios" ? 0 : 20;
-  const cardBottomGap = Platform.OS === "ios" ? Math.max(12, insets.bottom) : 0;
-
-  const selectedCountry =
-    PHONE_COUNTRIES.find(
-      (country) => country.iso === form.personalData.phoneCountryIso,
-    ) ?? PHONE_COUNTRIES[0];
-
-  const calculatedAge = calculateAgeFromBirthDate(form.personalData.birthDate);
-  const dayOptions = Array.from(
-    { length: getDaysInMonth(draftBirthYear, draftBirthMonth) },
-    (_, index) => index + 1,
-  );
-  const specialConditionKeys = Object.keys(
-    SPECIAL_CONDITION_LABELS,
-  ) as SpecialConditionKey[];
-  const activeSpecialConditionKeys = specialConditionKeys.filter(
-    (key) => form.medicalInfo.specialConditions[key],
-  );
-  const temporarySpecialConditionsCount = activeSpecialConditionKeys.filter(
-    (key) => form.medicalInfo.specialConditionVigency[key].isTemporary,
-  ).length;
-
-  useRegisterWizardHydration({
-    setForm,
-    setStepIndex,
-    setSelectedConditions,
-    setSelectedAllergies,
-    setOtherConditionItems,
-    setOtherAllergyItems,
-    setIsWizardHydrated,
-  });
-
-  useRegisterWizardPersistence(isWizardHydrated, {
-    form,
-    stepIndex,
-    selectedConditions,
-    selectedAllergies,
-    otherConditionItems,
-    otherAllergyItems,
-  });
+  // ── Borrador: se restaura sin contraseñas y siempre desde el paso 1 ────
+  useEffect(() => {
+    let mounted = true;
+    void loadRegisterDraft()
+      .then((draft) => {
+        if (!mounted || !draft) return;
+        setForm(draft);
+        const hasProgress =
+          draft.personalData.fullName || draft.personalData.email || draft.personalData.birthDate;
+        if (hasProgress) setRestoredDraft(true);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) setIsHydrated(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
-    stepScrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [stepIndex]);
+    if (!isHydrated) return;
+    const timer = setTimeout(() => {
+      void saveRegisterDraft(form).catch(() => undefined);
+    }, DRAFT_SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [form, isHydrated]);
 
-  const registerFieldOffset =
-    (field: PersonalFieldKey) => (event: LayoutChangeEvent) => {
-      fieldOffsetsRef.current[field] = event.nativeEvent.layout.y;
-    };
+  // ── Animaciones de paso y progreso ──────────────────────────────────────
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    if (reducedMotion) {
+      stepAnim.setValue(1);
+      progressAnim.setValue(stepIndex + 1);
+      return;
+    }
+    stepAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(stepAnim, {
+        toValue: 1,
+        duration: MOTION.base,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(progressAnim, {
+        toValue: stepIndex + 1,
+        duration: MOTION.base + 80,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [stepIndex, reducedMotion, stepAnim, progressAnim]);
 
-  const registerPersonalFieldRef =
-    (field: FocusablePersonalFieldKey) => (ref: TextInput | null) => {
-      personalFieldRefs.current[field] = ref;
-    };
+  const goToStep = useCallback((next: number) => {
+    setStepIndex((current) => {
+      stepDirection.current = next >= current ? 1 : -1;
+      return Math.max(0, Math.min(LAST_STEP, next));
+    });
+  }, []);
 
-  const scrollToFocusedField = (field: PersonalFieldKey) => {
-    // El fieldBlock registra su posición dentro del contenido del ScrollView.
-    // Dejamos 60px arriba para que la etiqueta sea visible sobre el teclado.
-    const doScroll = () => {
-      const targetY = Math.max(0, fieldOffsetsRef.current[field] - 60);
-      stepScrollRef.current?.scrollTo({ y: targetY, animated: true });
-    };
-    // Primera pasada: antes de que el teclado termine de subir
-    setTimeout(doScroll, 80);
-    // Segunda pasada: después de que el teclado haya terminado de animarse (iOS ~250ms, Android ~300ms)
-    setTimeout(doScroll, 380);
+  // ── Botón atrás de Android: retrocede de paso en lugar de salir ──────────
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (isSubmitting) return true;
+      if (stepIndex > 0) {
+        goToStep(stepIndex - 1);
+      } else {
+        onNavigateToLogin();
+      }
+      return true;
+    });
+    return () => subscription.remove();
+  }, [stepIndex, isSubmitting, goToStep, onNavigateToLogin]);
+
+  // ── Datos personales ────────────────────────────────────────────────────
+  const updatePersonal = (patch: Partial<RegisterWizardPayload["personalData"]>) => {
+    setForm((current) => {
+      const next = { ...current.personalData, ...patch };
+      if (patch.phone !== undefined || patch.phoneCountryIso !== undefined) {
+        next.phone = normalizeNationalPhone(next.phone, getPhoneCountry(next.phoneCountryIso));
+      }
+      return { ...current, personalData: next };
+    });
+    if (patch.email !== undefined) {
+      const normalized = patch.email.trim().toLowerCase();
+      const checked = checkedEmailRef.current;
+      if (checked?.email === normalized) {
+        setEmailStatus(checked.available ? "available" : "taken");
+      } else {
+        setEmailStatus("idle");
+        setEmailStatusMessage(null);
+      }
+    }
   };
 
-  const focusPersonalField = (
-    field: PersonalFieldKey,
-    options?: { birthDateFollowUp?: FocusablePersonalFieldKey | null },
-  ) => {
-    scrollToFocusedField(field);
+  const updateMedical = (patch: Partial<RegisterWizardPayload["medicalInfo"]>) =>
+    setForm((current) => ({ ...current, medicalInfo: { ...current.medicalInfo, ...patch } }));
 
+  const toggleSpecial = (key: SpecialConditionKey, value: boolean) =>
+    setForm((current) => ({
+      ...current,
+      medicalInfo: {
+        ...current.medicalInfo,
+        specialConditions: { ...current.medicalInfo.specialConditions, [key]: value },
+      },
+    }));
+
+  /** Devuelve true si el correo está libre. Cachea el último resultado. */
+  const verifyEmail = async (): Promise<boolean> => {
+    const email = form.personalData.email.trim().toLowerCase();
+    if (!isValidEmail(email)) return false;
+    const checked = checkedEmailRef.current;
+    if (checked?.email === email) return checked.available;
+
+    setEmailStatus("checking");
+    try {
+      const result = await checkEmailAvailability(email);
+      checkedEmailRef.current = { email, available: result.available };
+      setEmailStatus(result.available ? "available" : "taken");
+      setEmailStatusMessage(result.available ? null : "Este correo ya tiene una cuenta. Inicia sesión o recupera tu contraseña.");
+      return result.available;
+    } catch (error) {
+      setEmailStatus("error");
+      setEmailStatusMessage(
+        error instanceof Error ? error.message : "No pudimos comprobar el correo. Inténtalo de nuevo.",
+      );
+      return false;
+    }
+  };
+
+  const scrollToField = (field: PersonalField) => {
+    const y = fieldOffsets.current[field];
+    if (y !== undefined) scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: !reducedMotion });
+  };
+
+  const focusField = (field: PersonalField) => {
+    scrollToField(field);
     if (field === "birthDate") {
-      pendingBirthDateFollowUpRef.current = options?.birthDateFollowUp ?? null;
-      Keyboard.dismiss();
-      setTimeout(() => {
-        openBirthDateModal();
-      }, 180);
+      setIsBirthDateOpen(true);
       return;
     }
-
-    setTimeout(() => {
-      personalFieldRefs.current[field]?.focus();
-    }, 220);
+    setTimeout(() => inputRefs.current[field]?.focus(), 250);
   };
 
-  const handlePersonalInputSubmit = (field: FocusablePersonalFieldKey) => {
-    const nextFieldMap: Record<
-      FocusablePersonalFieldKey,
-      PersonalFieldKey | "submit"
-    > = {
-      fullName: "birthDate",
-      phone: "email",
-      email: "password",
-      password: "confirmPassword",
-      confirmPassword: "submit",
-    };
+  const handleFieldLayout = (field: PersonalField) => (event: LayoutChangeEvent) => {
+    fieldOffsets.current[field] = event.nativeEvent.layout.y;
+  };
 
-    const nextField = nextFieldMap[field];
+  const handleBlur = (field: PersonalField) => {
+    setTouched((current) => (current[field] ? current : { ...current, [field]: true }));
+    if (field === "email" && !personalErrors.email) void verifyEmail();
+  };
 
-    if (nextField === "submit") {
-      void onNext();
+  const handleSubmitField = (field: PersonalField) => {
+    if (field === "confirmPassword") {
+      void handleNext();
       return;
     }
-
-    if (nextField === "birthDate") {
-      focusPersonalField("birthDate", { birthDateFollowUp: "phone" });
-      return;
-    }
-
-    focusPersonalField(nextField);
-  };
-
-  const updateSpecialCondition = (key: SpecialConditionKey, value: boolean) => {
-    setForm((previous) => ({
-      ...previous,
-      medicalInfo: {
-        ...previous.medicalInfo,
-        specialConditions: {
-          ...previous.medicalInfo.specialConditions,
-          [key]: value,
-        },
-        specialConditionVigency: {
-          ...previous.medicalInfo.specialConditionVigency,
-          [key]: value
-            ? previous.medicalInfo.specialConditionVigency[key]
-            : { isTemporary: false, until: "" },
-        },
-      },
-    }));
-  };
-
-  const updateSpecialConditionTemporary = (
-    key: SpecialConditionKey,
-    value: boolean,
-  ) => {
-    setForm((previous) => ({
-      ...previous,
-      medicalInfo: {
-        ...previous.medicalInfo,
-        specialConditionVigency: {
-          ...previous.medicalInfo.specialConditionVigency,
-          [key]: {
-            ...previous.medicalInfo.specialConditionVigency[key],
-            isTemporary: value,
-            until: value
-              ? previous.medicalInfo.specialConditionVigency[key].until
-              : "",
-          },
-        },
-      },
-    }));
-  };
-
-  const updateSpecialConditionUntil = (
-    key: SpecialConditionKey,
-    value: string,
-  ) => {
-    setForm((previous) => ({
-      ...previous,
-      medicalInfo: {
-        ...previous.medicalInfo,
-        specialConditionVigency: {
-          ...previous.medicalInfo.specialConditionVigency,
-          [key]: {
-            ...previous.medicalInfo.specialConditionVigency[key],
-            until: value.trim(),
-          },
-        },
-      },
-    }));
-  };
-
-  const openBirthDateModal = () => {
-    const parsed = parseBirthDate(form.personalData.birthDate);
-    if (parsed) {
-      setDraftBirthYear(parsed.year);
-      setDraftBirthMonth(parsed.month);
-      setDraftBirthDay(parsed.day);
-    } else {
-      setDraftBirthYear(currentYear - 18);
-      setDraftBirthMonth(1);
-      setDraftBirthDay(1);
-    }
-    setIsBirthDateModalVisible(true);
-  };
-
-  const applyBirthDateSelection = () => {
-    const birthDate = formatBirthDate(
-      draftBirthYear,
-      draftBirthMonth,
-      draftBirthDay,
-    );
-    const age = calculateAgeFromBirthDate(birthDate);
-
-    setForm((previous) => ({
-      ...previous,
-      personalData: {
-        ...previous.personalData,
-        birthDate,
-        age: age === null ? "" : String(age),
-      },
-    }));
-
-    setIsBirthDateModalVisible(false);
-
-    const nextField = pendingBirthDateFollowUpRef.current;
-    pendingBirthDateFollowUpRef.current = null;
-
-    if (nextField) {
-      setTimeout(() => {
-        focusPersonalField(nextField);
-      }, 220);
+    const next = NEXT_FIELD[field];
+    if (next === "birthDate") {
+      continueAfterBirthDate.current = true;
+      setIsBirthDateOpen(true);
+    } else if (next) {
+      inputRefs.current[next]?.focus();
     }
   };
 
-  const buildMedicalListText = (
-    selectedItems: string[],
-    otherItems: string[],
-  ) => {
-    if (selectedItems.includes(NONE_OPTION)) {
-      return NONE_OPTION;
+  // ── Navegación ──────────────────────────────────────────────────────────
+  const validatePersonalStep = async (): Promise<boolean> => {
+    const firstError = firstErrorField(personalErrors);
+    if (firstError) {
+      setShowAllErrors(true);
+      if (stepIndex !== 0) goToStep(0);
+      setTimeout(() => focusField(firstError), stepIndex !== 0 ? MOTION.base + 60 : 0);
+      return false;
     }
-
-    const normalizedSelected = selectedItems.filter(
-      (item) => item !== OTHER_OPTION,
-    );
-    const normalizedOther = otherItems
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map((item) => `Otros: ${item}`);
-    const combined = [...normalizedSelected, ...normalizedOther];
-
-    return combined.join(", ");
+    const emailAvailable = await verifyEmail();
+    if (!emailAvailable) {
+      if (stepIndex !== 0) goToStep(0);
+      setTimeout(() => focusField("email"), stepIndex !== 0 ? MOTION.base + 60 : 0);
+      return false;
+    }
+    return true;
   };
 
-  const normalizeMedicalToken = (value: string) =>
-    value.trim().toLowerCase().replaceAll(/\s+/g, " ");
+  const handleNext = async () => {
+    if (isSubmitting || emailStatus === "checking") return;
 
-  const syncConditionsText = (
-    nextSelectedConditions: string[],
-    nextOtherConditionItems: string[],
-  ) => {
-    setForm((previousForm) => ({
-      ...previousForm,
-      medicalInfo: {
-        ...previousForm.medicalInfo,
-        conditions: buildMedicalListText(
-          nextSelectedConditions,
-          nextOtherConditionItems,
-        ),
-      },
-    }));
-  };
-
-  const syncAllergiesText = (
-    nextSelectedAllergies: string[],
-    nextOtherAllergyItems: string[],
-  ) => {
-    setForm((previousForm) => ({
-      ...previousForm,
-      medicalInfo: {
-        ...previousForm.medicalInfo,
-        allergies: buildMedicalListText(
-          nextSelectedAllergies,
-          nextOtherAllergyItems,
-        ),
-      },
-    }));
-  };
-
-  const toggleCondition = (condition: string) => {
-    setSelectedConditions((previous) => {
-      const alreadySelected = previous.includes(condition);
-      let next: string[];
-
-      if (condition === NONE_OPTION) {
-        next = alreadySelected ? [] : [NONE_OPTION];
-      } else if (alreadySelected) {
-        next = previous.filter((item) => item !== condition);
-      } else {
-        next = [...previous.filter((item) => item !== NONE_OPTION), condition];
+    if (stepIndex === 0) {
+      if (await validatePersonalStep()) {
+        setRestoredDraft(false);
+        goToStep(1);
       }
+      return;
+    }
 
-      const shouldClearOther =
-        condition === OTHER_OPTION
-          ? alreadySelected || next.includes(NONE_OPTION)
-          : next.includes(NONE_OPTION);
-      const nextOtherItems = shouldClearOther ? [] : otherConditionItems;
+    if (stepIndex === LAST_STEP) {
+      // Revalidar todo antes de enviar: el formulario pudo editarse hacia atrás.
+      if (!(await validatePersonalStep())) return;
+      await onSubmit(form);
+      return;
+    }
 
-      if (shouldClearOther) {
-        setOtherConditionDraft("");
-        setOtherConditionItems([]);
-      }
-
-      syncConditionsText(next, nextOtherItems);
-
-      return next;
-    });
+    goToStep(stepIndex + 1);
   };
 
-  const toggleAllergy = (allergy: string) => {
-    setSelectedAllergies((previous) => {
-      const alreadySelected = previous.includes(allergy);
-      let next: string[];
-
-      if (allergy === NONE_OPTION) {
-        next = alreadySelected ? [] : [NONE_OPTION];
-      } else if (alreadySelected) {
-        next = previous.filter((item) => item !== allergy);
-      } else {
-        next = [...previous.filter((item) => item !== NONE_OPTION), allergy];
-      }
-
-      const shouldClearOther =
-        allergy === OTHER_OPTION
-          ? alreadySelected || next.includes(NONE_OPTION)
-          : next.includes(NONE_OPTION);
-      const nextOtherItems = shouldClearOther ? [] : otherAllergyItems;
-
-      if (shouldClearOther) {
-        setOtherAllergyDraft("");
-        setOtherAllergyItems([]);
-      }
-
-      syncAllergiesText(next, nextOtherItems);
-
-      return next;
-    });
+  const handleBack = () => {
+    if (isSubmitting) return;
+    if (stepIndex === 0) onNavigateToLogin();
+    else goToStep(stepIndex - 1);
   };
 
-  const addOtherCondition = () => {
-    const value = otherConditionDraft.trim();
-    if (!value) {
-      setOtherConditionError("Escribe una condicion para agregar.");
-      return;
-    }
+  // ── Render ──────────────────────────────────────────────────────────────
+  const step = REGISTER_STEPS[stepIndex];
+  const isChecking = emailStatus === "checking";
+  let primaryLabel = "Continuar";
+  if (stepIndex === LAST_STEP) primaryLabel = "Crear cuenta";
 
-    if (!selectedConditions.includes(OTHER_OPTION)) {
-      setOtherConditionError(
-        "Activa la opcion Otros para agregar valores personalizados.",
-      );
-      return;
-    }
-
-    const normalized = normalizeMedicalToken(value);
-    const conditionAlreadySelected = selectedConditions
-      .filter((item) => item !== OTHER_OPTION && item !== NONE_OPTION)
-      .some((item) => normalizeMedicalToken(item) === normalized);
-
-    if (conditionAlreadySelected) {
-      setOtherConditionError(
-        "Esta condicion ya esta seleccionada en la lista principal.",
-      );
-      return;
-    }
-
-    const otherAlreadyExists = otherConditionItems.some(
-      (item) => normalizeMedicalToken(item) === normalized,
-    );
-    if (otherAlreadyExists) {
-      setOtherConditionError("Esta condicion ya fue agregada en Otros.");
-      setOtherConditionDraft("");
-      return;
-    }
-
-    const nextOtherItems = [...otherConditionItems, value];
-    setOtherConditionItems(nextOtherItems);
-    setOtherConditionDraft("");
-    setOtherConditionError(null);
-    syncConditionsText(selectedConditions, nextOtherItems);
-  };
-
-  const removeOtherCondition = (value: string) => {
-    const nextOtherItems = otherConditionItems.filter((item) => item !== value);
-    setOtherConditionItems(nextOtherItems);
-    syncConditionsText(selectedConditions, nextOtherItems);
-  };
-
-  const addOtherAllergy = () => {
-    const value = otherAllergyDraft.trim();
-    if (!value) {
-      setOtherAllergyError("Escribe una alergia para agregar.");
-      return;
-    }
-
-    if (!selectedAllergies.includes(OTHER_OPTION)) {
-      setOtherAllergyError(
-        "Activa la opcion Otros para agregar valores personalizados.",
-      );
-      return;
-    }
-
-    const normalized = normalizeMedicalToken(value);
-    const allergyAlreadySelected = selectedAllergies
-      .filter((item) => item !== OTHER_OPTION && item !== NONE_OPTION)
-      .some((item) => normalizeMedicalToken(item) === normalized);
-
-    if (allergyAlreadySelected) {
-      setOtherAllergyError(
-        "Esta alergia ya esta seleccionada en la lista principal.",
-      );
-      return;
-    }
-
-    const otherAlreadyExists = otherAllergyItems.some(
-      (item) => normalizeMedicalToken(item) === normalized,
-    );
-    if (otherAlreadyExists) {
-      setOtherAllergyError("Esta alergia ya fue agregada en Otros.");
-      setOtherAllergyDraft("");
-      return;
-    }
-
-    const nextOtherItems = [...otherAllergyItems, value];
-    setOtherAllergyItems(nextOtherItems);
-    setOtherAllergyDraft("");
-    setOtherAllergyError(null);
-    syncAllergiesText(selectedAllergies, nextOtherItems);
-  };
-
-  const removeOtherAllergy = (value: string) => {
-    const nextOtherItems = otherAllergyItems.filter((item) => item !== value);
-    setOtherAllergyItems(nextOtherItems);
-    syncAllergiesText(selectedAllergies, nextOtherItems);
-  };
-
-  const onNext = async () => {
-    if (isSubmitting || isCheckingEmailAvailability) return;
-
-    setStepError(null);
-
-    // Paso 2: validar todos los datos personales con foco en el campo fallido
-    if (currentStep === 2) {
-      const issue = getPersonalValidationIssue(
-        form.personalData,
-        calculatedAge,
-      );
-      if (issue) {
-        setStepError(issue.message);
-        focusPersonalField(issue.field);
-        return;
-      }
-
-      // Verificar disponibilidad del correo
-      const normalizedEmail = form.personalData.email.trim().toLowerCase();
-      const lastCheck = lastEmailAvailabilityRef.current;
-
-      if (!lastCheck || lastCheck.email !== normalizedEmail) {
-        try {
-          setIsCheckingEmailAvailability(true);
-          const result = await checkEmailAvailability(normalizedEmail);
-          lastEmailAvailabilityRef.current = {
-            email: normalizedEmail,
-            available: result.available,
-          };
-          if (!result.available) {
-            setEmailAvailabilityMessage(result.message);
-            focusPersonalField("email");
-            return;
-          }
-          setEmailAvailabilityMessage(null);
-        } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "No se pudo validar el correo en este momento.";
-          setStepError(message);
-          return;
-        } finally {
-          setIsCheckingEmailAvailability(false);
-        }
-      } else if (!lastCheck.available) {
-        setEmailAvailabilityMessage(
-          "Este correo ya está en uso. Inicia sesión o recupera tu contraseña.",
+  const stepContent = (() => {
+    switch (step.key) {
+      case "personal":
+        return (
+          <PersonalStep
+            theme={theme}
+            data={form.personalData}
+            errors={visibleErrors}
+            emailStatus={emailStatus}
+            emailStatusMessage={emailStatusMessage}
+            inputRefs={inputRefs}
+            onChange={updatePersonal}
+            onBlurField={handleBlur}
+            onFieldLayout={handleFieldLayout}
+            onSubmitField={handleSubmitField}
+            onOpenBirthDate={() => setIsBirthDateOpen(true)}
+            onOpenCountry={() => setIsCountryOpen(true)}
+            onFocusField={scrollToField}
+          />
         );
-        focusPersonalField("email");
-        return;
-      }
-    }
-
-    // Pasos siguientes: validación general sin foco por campo
-    const validationError = validateCurrentStep(
-      currentStep,
-      form,
-      calculatedAge,
-    );
-    if (validationError) {
-      setStepError(validationError);
-      return;
-    }
-
-    if (isLastStep) {
-      void appStorage.removeItem(REGISTER_WIZARD_DRAFT_STORAGE_KEY);
-      void onSubmit(form);
-      return;
-    }
-
-    setStepIndex((previous) =>
-      Math.min(REGISTER_STEPS.length - 1, previous + 1),
-    );
-  };
-
-  const onBack = () => {
-    if (isSubmitting || isCheckingEmailAvailability) {
-      return;
-    }
-    setStepError(null);
-    setStepIndex((previous) => Math.max(0, previous - 1));
-  };
-
-  // ─── Paso 2: Datos personales (unificado) ────────────────────────────
-  const renderPersonalStep = () => (
-    <View style={[styles.group, { gap: 12 }]}>
-      {/* Nombre completo */}
-      <View
-        style={styles.fieldBlock}
-        onLayout={registerFieldOffset("fullName")}
-      >
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Nombre completo
-        </Text>
-        <TextInput
-          ref={registerPersonalFieldRef("fullName")}
-          value={form.personalData.fullName}
-          onChangeText={(value) =>
-            setForm((previous) => ({
-              ...previous,
-              personalData: { ...previous.personalData, fullName: value },
-            }))
-          }
-          onFocus={() => scrollToFocusedField("fullName")}
-          onSubmitEditing={() => handlePersonalInputSubmit("fullName")}
-          style={[
-            styles.input,
-            {
-              marginBottom: 0,
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
-            },
-          ]}
-          placeholder="Nombre y apellido"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-          autoCapitalize="words"
-          returnKeyType="next"
-        />
-      </View>
-
-      {/* Fecha de nacimiento */}
-      <View
-        style={styles.fieldBlock}
-        onLayout={registerFieldOffset("birthDate")}
-      >
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Fecha de nacimiento
-        </Text>
-        <Pressable
-          style={[
-            styles.selectorField,
-            {
-              marginBottom: 0,
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-            },
-          ]}
-          onPress={openBirthDateModal}
-        >
-          <Text
-            style={{
-              color: form.personalData.birthDate
-                ? theme.colors.textPrimary
-                : theme.colors.inputPlaceholder,
-              fontSize: 15,
-            }}
-          >
-            {form.personalData.birthDate || "Seleccionar fecha"}
-          </Text>
-          <Text style={{ color: theme.colors.textMuted }}>▼</Text>
-        </Pressable>
-        <Text
-          style={[
-            styles.helperText,
-            { marginBottom: 0, color: theme.colors.textMuted },
-          ]}
-        >
-          Edad actual: {calculatedAge ?? "-"}
-        </Text>
-      </View>
-
-      {/* Teléfono */}
-      <View style={styles.fieldBlock} onLayout={registerFieldOffset("phone")}>
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Teléfono (opcional)
-        </Text>
-        <View
-          style={[styles.phoneRow, isCompact ? styles.phoneRowCompact : null]}
-        >
-          <Pressable
-            style={[
-              styles.countrySelector,
-              {
-                backgroundColor: theme.colors.inputBackground,
-                borderColor: theme.colors.inputBorder,
-              },
-            ]}
-            onPress={() => setIsCountryModalVisible(true)}
-          >
-            <Text
-              style={[styles.countryFlag, { color: theme.colors.textPrimary }]}
-            >
-              {selectedCountry.flag}
-            </Text>
-            <Text
-              style={[styles.countryCode, { color: theme.colors.textPrimary }]}
-            >
-              {selectedCountry.code}
-            </Text>
-            <Text style={{ color: theme.colors.textMuted }}>▼</Text>
-          </Pressable>
-          <TextInput
-            ref={registerPersonalFieldRef("phone")}
-            value={form.personalData.phone}
-            onChangeText={(value) =>
-              setForm((previous) => ({
-                ...previous,
-                personalData: {
-                  ...previous.personalData,
-                  phone: value.replaceAll(/\D/g, "").slice(0, 9),
-                },
-              }))
-            }
-            onFocus={() => scrollToFocusedField("phone")}
-            onSubmitEditing={() => handlePersonalInputSubmit("phone")}
-            style={[
-              styles.input,
-              styles.phoneInput,
-              {
-                marginBottom: 0,
-                backgroundColor: theme.colors.inputBackground,
-                borderColor: theme.colors.inputBorder,
-                color: theme.colors.textPrimary,
-              },
-            ]}
-            placeholder="987654321"
-            keyboardType="number-pad"
-            placeholderTextColor={theme.colors.inputPlaceholder}
-            maxLength={9}
-            returnKeyType="next"
+      case "medical":
+        return <MedicalStep theme={theme} data={form.medicalInfo} onChange={updateMedical} />;
+      case "special":
+        return <SpecialStep theme={theme} data={form.medicalInfo} onToggle={toggleSpecial} />;
+      default:
+        return (
+          <SummaryStep
+            theme={theme}
+            form={form}
+            onEditStep={goToStep}
+            onToggleAiConsent={(aiHealthContextConsent) => updateMedical({ aiHealthContextConsent })}
           />
-        </View>
-        <Text
-          style={[
-            styles.helperText,
-            { marginBottom: 0, color: theme.colors.textMuted },
-          ]}
-        >
-          Formato Ecuador: 9 dígitos (ej. 987654321)
-        </Text>
-      </View>
-
-      {/* Correo */}
-      <View style={styles.fieldBlock} onLayout={registerFieldOffset("email")}>
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Correo electrónico
-        </Text>
-        <TextInput
-          ref={registerPersonalFieldRef("email")}
-          value={form.personalData.email}
-          onChangeText={(value) =>
-            setForm((previous) => {
-              const nextEmail = value.trim();
-              const normalizedNextEmail = nextEmail.toLowerCase();
-              const lastCheck = lastEmailAvailabilityRef.current;
-              if (
-                lastCheck?.email !== normalizedNextEmail &&
-                emailAvailabilityMessage
-              ) {
-                setEmailAvailabilityMessage(null);
-              }
-              return {
-                ...previous,
-                personalData: { ...previous.personalData, email: nextEmail },
-              };
-            })
-          }
-          onFocus={() => scrollToFocusedField("email")}
-          style={[
-            styles.input,
-            {
-              marginBottom: 0,
-              backgroundColor: theme.colors.inputBackground,
-              borderColor: theme.colors.inputBorder,
-              color: theme.colors.textPrimary,
-            },
-          ]}
-          placeholder="tu@dominio.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          placeholderTextColor={theme.colors.inputPlaceholder}
-          onSubmitEditing={() => handlePersonalInputSubmit("email")}
-          returnKeyType="next"
-        />
-        {emailAvailabilityMessage ? (
-          <Text
-            style={[
-              styles.inlineValidationText,
-              { marginBottom: 0, color: "#C0392B" },
-            ]}
-          >
-            {emailAvailabilityMessage}
-          </Text>
-        ) : null}
-      </View>
-
-      {/* Contraseña */}
-      <View
-        style={styles.fieldBlock}
-        onLayout={registerFieldOffset("password")}
-      >
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Contraseña
-        </Text>
-        <View style={styles.passwordWrap}>
-          <TextInput
-            ref={registerPersonalFieldRef("password")}
-            value={form.personalData.password}
-            onChangeText={(value) =>
-              setForm((previous) => ({
-                ...previous,
-                personalData: { ...previous.personalData, password: value },
-              }))
-            }
-            onFocus={() => scrollToFocusedField("password")}
-            style={[
-              styles.input,
-              styles.passwordInput,
-              {
-                marginBottom: 0,
-                backgroundColor: theme.colors.inputBackground,
-                borderColor: theme.colors.inputBorder,
-                color: theme.colors.textPrimary,
-              },
-            ]}
-            placeholder="Mínimo 6 caracteres"
-            placeholderTextColor={theme.colors.inputPlaceholder}
-            autoCapitalize="none"
-            secureTextEntry={!isPasswordVisible}
-            onSubmitEditing={() => handlePersonalInputSubmit("password")}
-            returnKeyType="next"
-          />
-          <Pressable
-            onPress={() => setIsPasswordVisible((previous) => !previous)}
-            style={styles.passwordToggle}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isPasswordVisible ? "Ocultar contrasena" : "Mostrar contrasena"
-            }
-          >
-            <Ionicons
-              name={isPasswordVisible ? "eye-off-outline" : "eye-outline"}
-              size={20}
-              color={theme.colors.accentSecondary}
-            />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Confirmar contraseña */}
-      <View
-        style={styles.fieldBlock}
-        onLayout={registerFieldOffset("confirmPassword")}
-      >
-        <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Confirmar contraseña
-        </Text>
-        <View style={styles.passwordWrap}>
-          <TextInput
-            ref={registerPersonalFieldRef("confirmPassword")}
-            value={form.personalData.confirmPassword}
-            onChangeText={(value) =>
-              setForm((previous) => ({
-                ...previous,
-                personalData: {
-                  ...previous.personalData,
-                  confirmPassword: value,
-                },
-              }))
-            }
-            onFocus={() => scrollToFocusedField("confirmPassword")}
-            style={[
-              styles.input,
-              styles.passwordInput,
-              {
-                marginBottom: 0,
-                backgroundColor: theme.colors.inputBackground,
-                borderColor: theme.colors.inputBorder,
-                color: theme.colors.textPrimary,
-              },
-            ]}
-            placeholder="Repite tu contraseña"
-            placeholderTextColor={theme.colors.inputPlaceholder}
-            autoCapitalize="none"
-            secureTextEntry={!isConfirmPasswordVisible}
-            onSubmitEditing={() => handlePersonalInputSubmit("confirmPassword")}
-            returnKeyType="done"
-          />
-          <Pressable
-            onPress={() => setIsConfirmPasswordVisible((previous) => !previous)}
-            style={styles.passwordToggle}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isConfirmPasswordVisible
-                ? "Ocultar confirmacion de contrasena"
-                : "Mostrar confirmacion de contrasena"
-            }
-          >
-            <Ionicons
-              name={
-                isConfirmPasswordVisible ? "eye-off-outline" : "eye-outline"
-              }
-              size={20}
-              color={theme.colors.accentSecondary}
-            />
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-
-  const renderMedicalInfoStep = () => (
-    <View style={styles.group}>
-      <View
-        style={[
-          styles.medicalSelectorCard,
-          {
-            backgroundColor: theme.colors.inputBackground,
-            borderColor: theme.colors.inputBorder,
-          },
-        ]}
-      >
-        <Text
-          style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}
-        >
-          Enfermedades o condiciones hereditarias
-        </Text>
-        <Text
-          style={[styles.selectorSubtitle, { color: theme.colors.textMuted }]}
-        >
-          Selecciona las mas importantes para antecedentes familiares.
-        </Text>
-
-        <View style={styles.optionsWrap}>
-          {HEREDITARY_CONDITIONS.map((condition) => {
-            const isSelected = selectedConditions.includes(condition);
-            return (
-              <Pressable
-                key={condition}
-                onPress={() => toggleCondition(condition)}
-                style={[
-                  styles.optionChip,
-                  {
-                    borderColor: isSelected
-                      ? theme.colors.accentPrimary
-                      : theme.colors.inputBorder,
-                    backgroundColor: isSelected
-                      ? `${theme.colors.accentPrimary}22`
-                      : theme.colors.surface,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.optionChipText,
-                    { color: theme.colors.textPrimary },
-                  ]}
-                >
-                  {condition}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {selectedConditions.includes(OTHER_OPTION) ? (
-          <>
-            <View style={styles.otherInputRow}>
-              <TextInput
-                value={otherConditionDraft}
-                onChangeText={(value) => {
-                  setOtherConditionDraft(value);
-                  if (otherConditionError) {
-                    setOtherConditionError(null);
-                  }
-                }}
-                style={[
-                  styles.input,
-                  styles.compactInput,
-                  styles.otherInput,
-                  {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.inputBorder,
-                    color: theme.colors.textPrimary,
-                  },
-                ]}
-                placeholder="Escribe una condicion y toca Agregar"
-                placeholderTextColor={theme.colors.inputPlaceholder}
-                onSubmitEditing={addOtherCondition}
-              />
-              <Pressable
-                style={[
-                  styles.addInlineButton,
-                  { backgroundColor: theme.colors.accentPrimary },
-                ]}
-                onPress={addOtherCondition}
-              >
-                <Text
-                  style={[
-                    styles.addInlineButtonText,
-                    { color: theme.colors.buttonText },
-                  ]}
-                >
-                  Agregar
-                </Text>
-              </Pressable>
-            </View>
-            {otherConditionItems.length ? (
-              <View style={styles.optionsWrap}>
-                {otherConditionItems.map((item) => (
-                  <Pressable
-                    key={item}
-                    onPress={() => removeOtherCondition(item)}
-                    style={[
-                      styles.optionChip,
-                      {
-                        borderColor: theme.colors.inputBorder,
-                        backgroundColor: theme.colors.surface,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.optionChipText,
-                        { color: theme.colors.textPrimary },
-                      ]}
-                    >
-                      {item} ×
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            {otherConditionError ? (
-              <Text style={[styles.errorText, { color: "#D64545" }]}>
-                {otherConditionError}
-              </Text>
-            ) : null}
-          </>
-        ) : null}
-      </View>
-
-      <View
-        style={[
-          styles.medicalSelectorCard,
-          {
-            backgroundColor: theme.colors.inputBackground,
-            borderColor: theme.colors.inputBorder,
-          },
-        ]}
-      >
-        <Text
-          style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}
-        >
-          Alergias comunes
-        </Text>
-        <Text
-          style={[styles.selectorSubtitle, { color: theme.colors.textMuted }]}
-        >
-          Marca alergias frecuentes y agrega otras si aplica.
-        </Text>
-
-        <View style={styles.optionsWrap}>
-          {COMMON_ALLERGIES.map((allergy) => {
-            const isSelected = selectedAllergies.includes(allergy);
-            return (
-              <Pressable
-                key={allergy}
-                onPress={() => toggleAllergy(allergy)}
-                style={[
-                  styles.optionChip,
-                  {
-                    borderColor: isSelected
-                      ? theme.colors.accentPrimary
-                      : theme.colors.inputBorder,
-                    backgroundColor: isSelected
-                      ? `${theme.colors.accentPrimary}22`
-                      : theme.colors.surface,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.optionChipText,
-                    { color: theme.colors.textPrimary },
-                  ]}
-                >
-                  {allergy}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {selectedAllergies.includes(OTHER_OPTION) ? (
-          <>
-            <View style={styles.otherInputRow}>
-              <TextInput
-                value={otherAllergyDraft}
-                onChangeText={(value) => {
-                  setOtherAllergyDraft(value);
-                  if (otherAllergyError) {
-                    setOtherAllergyError(null);
-                  }
-                }}
-                style={[
-                  styles.input,
-                  styles.compactInput,
-                  styles.otherInput,
-                  {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.inputBorder,
-                    color: theme.colors.textPrimary,
-                  },
-                ]}
-                placeholder="Escribe una alergia y toca Agregar"
-                placeholderTextColor={theme.colors.inputPlaceholder}
-                onSubmitEditing={addOtherAllergy}
-              />
-              <Pressable
-                style={[
-                  styles.addInlineButton,
-                  { backgroundColor: theme.colors.accentPrimary },
-                ]}
-                onPress={addOtherAllergy}
-              >
-                <Text
-                  style={[
-                    styles.addInlineButtonText,
-                    { color: theme.colors.buttonText },
-                  ]}
-                >
-                  Agregar
-                </Text>
-              </Pressable>
-            </View>
-            {otherAllergyItems.length ? (
-              <View style={styles.optionsWrap}>
-                {otherAllergyItems.map((item) => (
-                  <Pressable
-                    key={item}
-                    onPress={() => removeOtherAllergy(item)}
-                    style={[
-                      styles.optionChip,
-                      {
-                        borderColor: theme.colors.inputBorder,
-                        backgroundColor: theme.colors.surface,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.optionChipText,
-                        { color: theme.colors.textPrimary },
-                      ]}
-                    >
-                      {item} ×
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            {otherAllergyError ? (
-              <Text style={[styles.errorText, { color: "#D64545" }]}>
-                {otherAllergyError}
-              </Text>
-            ) : null}
-          </>
-        ) : null}
-      </View>
-    </View>
-  );
-
-  // ─── Paso 5: Condiciones especiales ────────────────────────────────
-  const renderSpecialConditionsStep = () => (
-    <View style={styles.group}>
-      <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-        Activa las que apliquen. Son opcionales y puedes cambiarlas desde tu
-        perfil.
-      </Text>
-
-      {/* Card agrupada con divisores — elimina el espacio excesivo entre filas */}
-      <View
-        style={[
-          styles.conditionsCard,
-          {
-            backgroundColor: theme.colors.inputBackground,
-            borderColor: theme.colors.inputBorder,
-          },
-        ]}
-      >
-        {(
-          [
-            { key: "pregnancy", label: "Embarazo" },
-            { key: "lactation", label: "Lactancia" },
-            { key: "recentSurgeries", label: "Cirugías recientes" },
-            { key: "immunosuppression", label: "Inmunosupresión" },
-            {
-              key: "anticoagulantTreatment",
-              label: "Tratamiento anticoagulante",
-            },
-          ] as const
-        ).map((item, index, arr) => (
-          <View
-            key={item.key}
-            style={[
-              styles.conditionRow,
-              index < arr.length - 1 && {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: theme.colors.inputBorder,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.permissionText,
-                { color: theme.colors.textPrimary },
-              ]}
-            >
-              {item.label}
-            </Text>
-            <Switch
-              value={form.medicalInfo.specialConditions[item.key]}
-              onValueChange={(value) => updateSpecialCondition(item.key, value)}
-              trackColor={{
-                false: theme.colors.inputBorder,
-                true: theme.colors.accentPrimary,
-              }}
-            />
-          </View>
-        ))}
-      </View>
-
-      <Pressable
-        style={[
-          styles.vigencyButton,
-          {
-            borderColor:
-              activeSpecialConditionKeys.length > 0
-                ? theme.colors.accentSecondary
-                : theme.colors.inputBorder,
-            backgroundColor: theme.colors.inputBackground,
-          },
-        ]}
-        disabled={activeSpecialConditionKeys.length === 0}
-        onPress={() => setIsVigencyModalVisible(true)}
-      >
-        <Text
-          style={[
-            styles.vigencyButtonText,
-            {
-              color:
-                activeSpecialConditionKeys.length > 0
-                  ? theme.colors.accentSecondary
-                  : theme.colors.textMuted,
-            },
-          ]}
-        >
-          Configurar vigencia (opcional)
-        </Text>
-      </Pressable>
-      <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-        Vigencias temporales configuradas: {temporarySpecialConditionsCount}
-      </Text>
-    </View>
-  );
-
-  const renderSummaryStep = () => {
-    const activeConditions = specialConditionKeys
-      .filter((key) => form.medicalInfo.specialConditions[key])
-      .map((key) => SPECIAL_CONDITION_LABELS[key]);
-
-    return (
-      <View style={styles.group}>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Nombre: {form.personalData.fullName || "-"}
-        </Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Fecha de nacimiento: {form.personalData.birthDate || "-"}
-        </Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Edad: {form.personalData.age || "-"}
-        </Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Telefono:{" "}
-          {form.personalData.phone
-            ? `${form.personalData.phoneCountryCode} ${form.personalData.phone}`
-            : "-"}
-        </Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Antecedentes hereditarios: {form.medicalInfo.conditions || "Ninguna"}
-        </Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Alergias: {form.medicalInfo.allergies || "Ninguna"}
-        </Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Condiciones especiales:{" "}
-          {activeConditions.length ? activeConditions.join(", ") : "Ninguna"}
-        </Text>
-        <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
-          Vigencias temporales: {temporarySpecialConditionsCount}
-        </Text>
-      </View>
-    );
-  };
-
-  const renderStep = () => {
-    const stepRenderers: Partial<Record<number, () => React.JSX.Element>> = {
-      2: renderPersonalStep,
-      3: renderMedicalInfoStep,
-      4: renderSpecialConditionsStep,
-    };
-
-    const renderer = stepRenderers[currentStep];
-    return renderer ? renderer() : renderSummaryStep();
-  };
+        );
+    }
+  })();
 
   return (
-    <View
-      style={[
-        styles.screen,
-        {
-          backgroundColor: theme.colors.background,
-          paddingHorizontal: horizontalPadding,
-          paddingTop: topPadding,
-          paddingBottom: bottomPadding,
-        },
-      ]}
-    >
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
       <BackgroundDecor theme={theme} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={keyboardOffset}
-        style={styles.keyboardLayer}
+        style={styles.flex}
       >
         <View style={styles.header}>
-          <BrandLogo theme={theme} size={logoSize} showName={false} />
-          <Text
-            style={[
-              styles.title,
-              isShortScreen ? styles.titleCompact : null,
-              { color: theme.colors.textPrimary },
-            ]}
-          >
-            Registro de Perfil
-          </Text>
+          <BrandLogo theme={theme} size={52} showName={false} />
+          <View style={styles.flex}>
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]} accessibilityRole="header">
+              Crea tu cuenta
+            </Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
+              Paso {stepIndex + 1} de {REGISTER_STEPS.length} · {step.title}
+            </Text>
+          </View>
         </View>
 
         <View
-          style={[
-            styles.card,
-            {
-              padding: cardPadding,
-              paddingBottom: cardPadding + iosFooterPadding,
-              marginBottom: cardBottomGap,
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.surfaceBorder,
-            },
-          ]}
+          style={styles.progress}
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 1, max: REGISTER_STEPS.length, now: stepIndex + 1 }}
         >
-          <View style={styles.stepHeader}>
-            <Text
-              style={[
-                styles.stepCount,
-                { color: theme.colors.accentSecondary },
-              ]}
-            >
-              Paso {stepIndex + 1} de {REGISTER_STEPS.length}
-            </Text>
-            <Text
-              style={[styles.stepTitle, { color: theme.colors.textPrimary }]}
-            >
-              {STEP_TITLE[currentStep]}
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.progressTrack,
-              { backgroundColor: theme.colors.inputBorder },
-            ]}
-          >
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${((stepIndex + 1) / REGISTER_STEPS.length) * 100}%`,
-                  backgroundColor: theme.colors.accentPrimary,
-                },
-              ]}
-            />
-          </View>
-
-          <ScrollView
-            ref={stepScrollRef}
-            style={styles.stepContent}
-            contentContainerStyle={[
-              styles.stepContentInner,
-              { paddingBottom: isShortScreen ? 16 : 12 },
-            ]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {renderStep()}
-          </ScrollView>
-
-          {stepError ? (
-            <Text style={[styles.errorText, { color: "#D64545" }]}>
-              {stepError}
-            </Text>
-          ) : null}
-
-          <View
-            style={[
-              styles.footerActions,
-              isVeryShortScreen ? styles.footerActionsStacked : null,
-              { paddingBottom: iosFooterPadding },
-            ]}
-          >
-            <Pressable
-              style={[
-                styles.secondaryAction,
-                {
-                  borderColor: theme.colors.inputBorder,
-                  backgroundColor: theme.colors.inputBackground,
-                },
-              ]}
-              onPress={stepIndex === 0 ? onNavigateToLogin : onBack}
-              disabled={isSubmitting || isCheckingEmailAvailability}
-              accessibilityState={{
-                disabled: isSubmitting || isCheckingEmailAvailability,
-              }}
-            >
-              <Text
+          {REGISTER_STEPS.map((item, index) => (
+            <View key={item.key} style={[styles.progressTrack, { backgroundColor: theme.colors.inputBorder }]}>
+              <Animated.View
                 style={[
-                  styles.secondaryActionText,
-                  { color: theme.colors.textSecondary },
+                  styles.progressFill,
+                  {
+                    backgroundColor: theme.colors.accentPrimary,
+                    transform: [
+                      {
+                        scaleX: progressAnim.interpolate({
+                          inputRange: [index, index + 1],
+                          outputRange: [0, 1],
+                          extrapolate: "clamp",
+                        }),
+                      },
+                    ],
+                  },
                 ]}
-              >
-                {stepIndex === 0 ? "Volver al login" : "Anterior"}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.primaryAction,
-                isVeryShortScreen ? styles.primaryActionStacked : null,
-                { backgroundColor: theme.colors.accentPrimary },
-                isSubmitting && styles.footerActionDisabled,
-              ]}
-              onPress={onNext}
-              disabled={isSubmitting || isCheckingEmailAvailability}
-              accessibilityState={{
-                disabled: isSubmitting || isCheckingEmailAvailability,
-              }}
-            >
-              <Text
-                style={[
-                  styles.primaryActionText,
-                  { color: theme.colors.buttonText },
-                ]}
-              >
-                {primaryActionLabel}
-              </Text>
-            </Pressable>
-          </View>
+              />
+            </View>
+          ))}
         </View>
 
-        <Modal
-          visible={isBirthDateModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setIsBirthDateModalVisible(false)}
-        >
-          <View style={styles.modalRoot}>
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setIsBirthDateModalVisible(false)}
-            />
-            <View
-              style={[
-                styles.modalCard,
-                {
-                  backgroundColor: modalSolidBackground,
-                  borderColor: theme.colors.surfaceBorder,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.modalTitle, { color: theme.colors.textPrimary }]}
-              >
-                Selecciona fecha de nacimiento
-              </Text>
-
-              <View style={styles.datePickerGrid}>
-                <View style={styles.datePickerColumn}>
-                  <Text
-                    style={[
-                      styles.datePickerLabel,
-                      { color: theme.colors.textMuted },
-                    ]}
-                  >
-                    Año
-                  </Text>
-                  <ScrollView style={styles.datePickerList}>
-                    {yearOptions.map((year) => (
-                      <Pressable
-                        key={year}
-                        onPress={() => {
-                          setDraftBirthYear(year);
-                          const maxDay = getDaysInMonth(year, draftBirthMonth);
-                          if (draftBirthDay > maxDay) {
-                            setDraftBirthDay(maxDay);
-                          }
-                        }}
-                        style={[
-                          styles.datePickerOption,
-                          {
-                            borderColor:
-                              draftBirthYear === year
-                                ? theme.colors.accentPrimary
-                                : "transparent",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.datePickerOptionText,
-                            { color: theme.colors.textPrimary },
-                          ]}
-                        >
-                          {year}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.datePickerColumn}>
-                  <Text
-                    style={[
-                      styles.datePickerLabel,
-                      { color: theme.colors.textMuted },
-                    ]}
-                  >
-                    Mes
-                  </Text>
-                  <ScrollView style={styles.datePickerList}>
-                    {MONTH_OPTIONS.map((monthOption) => (
-                      <Pressable
-                        key={monthOption.value}
-                        onPress={() => {
-                          setDraftBirthMonth(monthOption.value);
-                          const maxDay = getDaysInMonth(
-                            draftBirthYear,
-                            monthOption.value,
-                          );
-                          if (draftBirthDay > maxDay) {
-                            setDraftBirthDay(maxDay);
-                          }
-                        }}
-                        style={[
-                          styles.datePickerOption,
-                          {
-                            borderColor:
-                              draftBirthMonth === monthOption.value
-                                ? theme.colors.accentPrimary
-                                : "transparent",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.datePickerOptionText,
-                            { color: theme.colors.textPrimary },
-                          ]}
-                        >
-                          {monthOption.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.datePickerColumn}>
-                  <Text
-                    style={[
-                      styles.datePickerLabel,
-                      { color: theme.colors.textMuted },
-                    ]}
-                  >
-                    Dia
-                  </Text>
-                  <ScrollView style={styles.datePickerList}>
-                    {dayOptions.map((day) => (
-                      <Pressable
-                        key={day}
-                        onPress={() => setDraftBirthDay(day)}
-                        style={[
-                          styles.datePickerOption,
-                          {
-                            borderColor:
-                              draftBirthDay === day
-                                ? theme.colors.accentPrimary
-                                : "transparent",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.datePickerOptionText,
-                            { color: theme.colors.textPrimary },
-                          ]}
-                        >
-                          {day}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.flex}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            showsVerticalScrollIndicator={false}
+          >
+            {restoredDraft && stepIndex === 0 ? (
+              <View style={[styles.restoredBanner, { backgroundColor: `${theme.colors.accentSecondary}14` }]}>
+                <Text style={[styles.restoredText, { color: theme.colors.textSecondary }]}>
+                  Recuperamos tu progreso. Por seguridad, vuelve a escribir tu contraseña.
+                </Text>
               </View>
+            ) : null}
 
-              <View style={styles.modalActions}>
-                <Pressable
-                  style={[
-                    styles.modalActionSecondary,
-                    { borderColor: theme.colors.inputBorder },
-                  ]}
-                  onPress={() => setIsBirthDateModalVisible(false)}
-                >
-                  <Text
-                    style={[
-                      styles.modalActionSecondaryText,
-                      { color: theme.colors.textSecondary },
-                    ]}
-                  >
-                    Cancelar
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.modalActionPrimary,
-                    { backgroundColor: theme.colors.accentPrimary },
-                  ]}
-                  onPress={applyBirthDateSelection}
-                >
-                  <Text
-                    style={[
-                      styles.modalActionPrimaryText,
-                      { color: theme.colors.buttonText },
-                    ]}
-                  >
-                    Aplicar
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        <Modal
-          visible={isCountryModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setIsCountryModalVisible(false)}
-        >
-          <View style={styles.modalRoot}>
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setIsCountryModalVisible(false)}
-            />
-            <View
-              style={[
-                styles.modalCard,
-                {
-                  backgroundColor: modalSolidBackground,
-                  borderColor: theme.colors.surfaceBorder,
-                },
-              ]}
+            <Animated.View
+              style={{
+                opacity: stepAnim,
+                transform: [
+                  {
+                    translateX: stepAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [24 * stepDirection.current, 0],
+                    }),
+                  },
+                ],
+              }}
             >
-              <Text
-                style={[styles.modalTitle, { color: theme.colors.textPrimary }]}
-              >
-                Selecciona pais
-              </Text>
-              <ScrollView style={styles.modalList}>
-                {PHONE_COUNTRIES.map((country) => (
-                  <Pressable
-                    key={country.iso}
-                    onPress={() => {
-                      setForm((previous) => ({
-                        ...previous,
-                        personalData: {
-                          ...previous.personalData,
-                          phoneCountryCode: country.code,
-                          phoneCountryIso: country.iso,
-                        },
-                      }));
-                      setIsCountryModalVisible(false);
-                    }}
-                    style={[
-                      styles.modalItem,
-                      { borderBottomColor: theme.colors.inputBorder },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.modalItemText,
-                        { color: theme.colors.textPrimary },
-                      ]}
-                    >
-                      {country.flag} {country.name} ({country.code})
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+              {stepContent}
+            </Animated.View>
+          </ScrollView>
 
-        <Modal
-          visible={isVigencyModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setIsVigencyModalVisible(false)}
-        >
-          <View style={styles.modalRoot}>
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setIsVigencyModalVisible(false)}
+          <View
+            style={[
+              styles.footer,
+              // AppRoot ya aplica el área segura inferior (SafeAreaView).
+              { borderTopColor: theme.colors.surfaceBorder },
+            ]}
+          >
+            <AppButton
+              theme={theme}
+              variant="secondary"
+              label={stepIndex === 0 ? "Ya tengo cuenta" : "Atrás"}
+              icon={stepIndex === 0 ? undefined : "chevron-back"}
+              iconPosition="left"
+              onPress={handleBack}
+              disabled={isSubmitting}
+              style={styles.secondaryButton}
             />
-            <View
-              style={[
-                styles.modalCard,
-                {
-                  backgroundColor: modalSolidBackground,
-                  borderColor: theme.colors.surfaceBorder,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.modalTitle, { color: theme.colors.textPrimary }]}
-              >
-                Vigencia de condiciones especiales
-              </Text>
-              <ScrollView style={styles.modalList}>
-                {activeSpecialConditionKeys.length === 0 ? (
-                  <Text
-                    style={[
-                      styles.helperText,
-                      { color: theme.colors.textMuted },
-                    ]}
-                  >
-                    Activa una condicion especial para configurar vigencia.
-                  </Text>
-                ) : (
-                  activeSpecialConditionKeys.map((key) => {
-                    const vigency =
-                      form.medicalInfo.specialConditionVigency[key];
-                    return (
-                      <View
-                        key={key}
-                        style={[
-                          styles.vigencyCard,
-                          {
-                            borderColor: theme.colors.inputBorder,
-                            backgroundColor: theme.colors.inputBackground,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.choiceTitle,
-                            { color: theme.colors.textPrimary },
-                          ]}
-                        >
-                          {SPECIAL_CONDITION_LABELS[key]}
-                        </Text>
-                        <View style={styles.permissionRow}>
-                          <Text
-                            style={[
-                              styles.permissionText,
-                              { color: theme.colors.textPrimary },
-                            ]}
-                          >
-                            Temporal
-                          </Text>
-                          <Switch
-                            value={vigency.isTemporary}
-                            onValueChange={(value) =>
-                              updateSpecialConditionTemporary(key, value)
-                            }
-                            trackColor={{
-                              false: theme.colors.inputBorder,
-                              true: theme.colors.accentPrimary,
-                            }}
-                          />
-                        </View>
-                        {vigency.isTemporary ? (
-                          <TextInput
-                            value={vigency.until}
-                            onChangeText={(value) =>
-                              updateSpecialConditionUntil(key, value)
-                            }
-                            style={[
-                              styles.input,
-                              styles.compactInput,
-                              {
-                                borderColor: theme.colors.inputBorder,
-                                color: theme.colors.textPrimary,
-                              },
-                            ]}
-                            placeholder="Hasta (YYYY-MM-DD)"
-                            placeholderTextColor={theme.colors.inputPlaceholder}
-                          />
-                        ) : null}
-                      </View>
-                    );
-                  })
-                )}
-              </ScrollView>
-
-              <View style={styles.modalActions}>
-                <Pressable
-                  style={[
-                    styles.modalActionPrimary,
-                    { backgroundColor: theme.colors.accentPrimary },
-                  ]}
-                  onPress={() => setIsVigencyModalVisible(false)}
-                >
-                  <Text
-                    style={[
-                      styles.modalActionPrimaryText,
-                      { color: theme.colors.buttonText },
-                    ]}
-                  >
-                    Listo
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+            <AppButton
+              theme={theme}
+              label={primaryLabel}
+              icon={stepIndex === LAST_STEP ? "checkmark" : "chevron-forward"}
+              onPress={() => void handleNext()}
+              loading={isSubmitting || (stepIndex === 0 && isChecking)}
+              style={styles.primaryButton}
+            />
           </View>
-        </Modal>
+        </View>
       </KeyboardAvoidingView>
+
+      <BirthDatePickerSheet
+        theme={theme}
+        visible={isBirthDateOpen}
+        value={form.personalData.birthDate}
+        onClose={() => {
+          continueAfterBirthDate.current = false;
+          setIsBirthDateOpen(false);
+        }}
+        onConfirm={(birthDate) => {
+          updatePersonal({ birthDate });
+          setTouched((current) => ({ ...current, birthDate: true }));
+          setIsBirthDateOpen(false);
+          if (continueAfterBirthDate.current) {
+            continueAfterBirthDate.current = false;
+            setTimeout(() => inputRefs.current.phone?.focus(), 300);
+          }
+        }}
+      />
+
+      <CountryPickerSheet
+        theme={theme}
+        visible={isCountryOpen}
+        selectedIso={form.personalData.phoneCountryIso}
+        onClose={() => setIsCountryOpen(false)}
+        onSelect={(phoneCountryIso) => {
+          updatePersonal({ phoneCountryIso });
+          setIsCountryOpen(false);
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  keyboardLayer: { flex: 1 },
-  header: { marginTop: 8, marginBottom: 14, gap: 8, alignItems: "center" },
-  title: { fontSize: 32, fontWeight: "800", textAlign: "center" },
-  titleCompact: { fontSize: 28 },
+  screen: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  flex: { flex: 1 },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 4, marginBottom: 14 },
+  title: { fontSize: 26, fontWeight: "800" },
+  subtitle: { fontSize: 14, marginTop: 2, fontWeight: "600" },
+  progress: { flexDirection: "row", gap: 6, paddingHorizontal: 4, marginBottom: 14 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
+  progressFill: { flex: 1, borderRadius: 3, transformOrigin: "left" },
   card: {
-    borderWidth: 1,
-    borderRadius: 22,
-    gap: 10,
     flex: 1,
-    minHeight: 0,
-    width: "100%",
+    borderWidth: 1,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    marginHorizontal: -16,
+    width: undefined,
+    overflow: "hidden",
+  },
+  scrollContent: { padding: 18, paddingBottom: 28, maxWidth: 640, width: "100%", alignSelf: "center" },
+  restoredBanner: { borderRadius: 14, padding: 12, marginBottom: 16 },
+  restoredText: { fontSize: 13, lineHeight: 19 },
+  footer: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
     maxWidth: 640,
+    width: "100%",
     alignSelf: "center",
   },
-  stepHeader: { gap: 2 },
-  stepCount: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  stepTitle: { fontSize: 22, fontWeight: "800" },
-  progressTrack: { height: 8, borderRadius: 999, overflow: "hidden" },
-  progressFill: { height: "100%", borderRadius: 999 },
-  stepContent: { flex: 1, minHeight: 0 },
-  stepContentInner: { paddingBottom: 8 },
-  group: { gap: 8 },
-  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 2 },
-  label: { fontSize: 13, marginBottom: 2 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    marginBottom: 8,
-  },
-  passwordWrap: { position: "relative" },
-  passwordInput: { paddingRight: 48 },
-  passwordToggle: { position: "absolute", right: 12, top: 12, zIndex: 3 },
-  selectorField: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  phoneRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  phoneRowCompact: { flexDirection: "column", alignItems: "stretch" },
-  countrySelector: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 130,
-  },
-  countryFlag: { fontSize: 18 },
-  countryCode: { fontSize: 15, fontWeight: "700" },
-  phoneInput: { flex: 1, marginBottom: 0 },
-  helperText: { fontSize: 12, marginTop: -2, marginBottom: 8 },
-  inlineValidationText: {
-    fontSize: 12,
-    marginTop: -2,
-    marginBottom: 8,
-    fontWeight: "600",
-  },
-  medicalSelectorCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 4,
-  },
-  selectorSubtitle: { fontSize: 12, marginBottom: 10 },
-  optionsWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 10,
-  },
-  optionChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  optionChipText: { fontSize: 13, fontWeight: "600" },
-  otherInputRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  otherInput: { flex: 1, marginBottom: 0 },
-  addInlineButton: {
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  addInlineButtonText: { fontSize: 13, fontWeight: "800" },
-  vigencyButton: {
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  vigencyButtonText: { fontSize: 13, fontWeight: "700" },
-  vigencyCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-  },
-  choiceTitle: { fontSize: 15, fontWeight: "700" },
-  medicationCard: { borderWidth: 1, borderRadius: 14, padding: 12 },
-  medicationHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  compactInput: { backgroundColor: "transparent", marginBottom: 6 },
-  removeText: { fontSize: 13, fontWeight: "700" },
-  addButton: {
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  addButtonText: { fontSize: 14, fontWeight: "700" },
-  // Campo compacto: label + input sin marginBottom acumulado
-  fieldBlock: { gap: 3 },
-  // Card de condiciones especiales
-  conditionsCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    overflow: "hidden" as const,
-  },
-  conditionRow: {
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    justifyContent: "space-between" as const,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  permissionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-  },
-  permissionText: { fontSize: 14, flex: 1, paddingRight: 12 },
-  summaryText: { fontSize: 13, lineHeight: 18 },
-  errorText: { fontSize: 13, fontWeight: "600" },
-  footerActions: { flexDirection: "row", gap: 10, marginTop: 2 },
-  footerActionsStacked: { flexDirection: "column" },
-  secondaryAction: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
-  secondaryActionText: { fontSize: 14, fontWeight: "700" },
-  primaryAction: {
-    flex: 1.25,
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
-  primaryActionStacked: { flex: 1 },
-  footerActionDisabled: { opacity: 0.65 },
-  primaryActionText: { fontSize: 14, fontWeight: "800" },
-  modalRoot: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
-  modalOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.58)",
-  },
-  modalCard: {
-    borderWidth: 1,
-    borderRadius: 18,
-    maxHeight: "70%",
-    overflow: "hidden",
-    elevation: 8,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  modalList: { paddingHorizontal: 12, paddingBottom: 10 },
-  modalItem: {
-    borderBottomWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-  },
-  modalItemText: { fontSize: 15 },
-  datePickerGrid: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-  },
-  datePickerColumn: { flex: 1 },
-  datePickerLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 6,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  datePickerList: { maxHeight: 220 },
-  datePickerOption: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    marginBottom: 6,
-  },
-  datePickerOptionText: {
-    fontSize: 14,
-    textAlign: "center",
-    fontWeight: "600",
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    paddingTop: 4,
-  },
-  modalActionSecondary: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    alignItems: "center",
-    paddingVertical: 11,
-  },
-  modalActionSecondaryText: { fontWeight: "700", fontSize: 14 },
-  modalActionPrimary: {
-    flex: 1,
-    borderRadius: 10,
-    alignItems: "center",
-    paddingVertical: 11,
-  },
-  modalActionPrimaryText: { fontWeight: "800", fontSize: 14 },
+  secondaryButton: { flex: 1 },
+  primaryButton: { flex: 1.4 },
 });

@@ -1,1 +1,7 @@
-export type { CountryOption, RegisterWizardPayload } from "./register.types";
+export type {
+  CountryOption,
+  MedicalSelection,
+  RegisterWizardPayload,
+  SpecialConditionKey,
+  SpecialConditions,
+} from "./register.types";

@@ -1,6 +1,11 @@
 import { appStorage } from "../../../shared/storage";
 
 import type { RegisterWizardPayload } from "../models/register.types";
+import {
+  getPhoneCountry,
+  serializeMedicalSelection,
+  toE164,
+} from "../utils/register.utils";
 import { mapAuthError } from "./authErrors";
 
 const AUTH_SESSION_KEY = "medicai_auth_session_v1";
@@ -21,6 +26,7 @@ export type AppAuthSession = {
     immunosuppression?: boolean;
     anticoagulantTreatment?: boolean;
     notificationLeadMinutes?: number;
+    aiHealthContextConsent?: boolean;
   };
   accessToken: string;
   refreshToken: string;
@@ -40,6 +46,7 @@ export type ProfileUpdatePayload = Partial<{
   immunosuppression: boolean;
   anticoagulantTreatment: boolean;
   notificationLeadMinutes: number;
+  aiHealthContextConsent: boolean;
 }>;
 
 export type EmailAvailabilityResponse = {
@@ -205,15 +212,17 @@ export const requestPasswordReset = async (email: string) => {
 };
 
 export const signUpWithProfile = async (payload: RegisterWizardPayload) => {
+  const { personalData, medicalInfo } = payload;
   await apiRequest<{ message: string }>("/auth/register", {
-    email: payload.personalData.email.trim(),
-    password: payload.personalData.password,
-    fullName: payload.personalData.fullName.trim() || undefined,
-    birthDate: payload.personalData.birthDate || undefined,
-    phone: payload.personalData.phone || undefined,
-    conditions: payload.medicalInfo.conditions || undefined,
-    allergies: payload.medicalInfo.allergies || undefined,
-    specialConditions: payload.medicalInfo.specialConditions,
+    email: personalData.email.trim().toLowerCase(),
+    password: personalData.password,
+    fullName: personalData.fullName.trim().replace(/\s+/g, " ") || undefined,
+    birthDate: personalData.birthDate || undefined,
+    phone: toE164(personalData.phone, getPhoneCountry(personalData.phoneCountryIso)),
+    conditions: serializeMedicalSelection(medicalInfo.conditions),
+    allergies: serializeMedicalSelection(medicalInfo.allergies),
+    specialConditions: medicalInfo.specialConditions,
+    aiHealthContextConsent: medicalInfo.aiHealthContextConsent,
   });
 };
 
