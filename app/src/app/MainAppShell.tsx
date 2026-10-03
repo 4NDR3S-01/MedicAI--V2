@@ -1,13 +1,14 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   AppointmentsScreen,
-  FamilyScreen,
   MedicationsScreen,
   ProfileScreen,
 } from '../features/tabs';
+import { syncOwnReminders } from '../features/tabs/services/reminders-sync';
+import { CircleScreen, hasPendingCircleInvite, onCircleInvite } from '../features/circle';
 import { HomeScreen } from '../features/home';
 import type { AppTheme } from '../shared/theme';
 import { ChatModal, FloatingChatButton } from '../shared/ui';
@@ -47,6 +48,24 @@ export function MainAppShell({
     }
   }, [initialAvatarData]);
 
+  // Alguien del Círculo pudo cambiar medicamentos o citas desde su teléfono:
+  // al abrir la app y al volver a ella se ponen al día alarmas y recordatorios.
+  useEffect(() => {
+    void syncOwnReminders().catch(() => undefined);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void syncOwnReminders().catch(() => undefined);
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // Una invitación abierta desde un enlace lleva directamente a Círculo.
+  useEffect(() => {
+    void hasPendingCircleInvite().then((pending) => {
+      if (pending) setTab('family');
+    });
+    return onCircleInvite(() => setTab('family'));
+  }, []);
+
   const handleSetAvatar = async (data: string) => {
     setAvatarData(data);
     await AsyncStorage.setItem('user_avatar_data', data).catch(() => {});
@@ -58,7 +77,7 @@ export function MainAppShell({
       body = <MedicationsScreen theme={theme} contentBottomInset={contentBottomInset} />;
       break;
     case 'family':
-      body = <FamilyScreen theme={theme} contentBottomInset={contentBottomInset} />;
+      body = <CircleScreen theme={theme} contentBottomInset={contentBottomInset} />;
       break;
     case 'appointments':
       body = <AppointmentsScreen theme={theme} contentBottomInset={contentBottomInset} />;

@@ -12,6 +12,7 @@ import { AuthModule } from '../modules/auth/auth.module';
 import { AiModule } from '../modules/ai/ai.module';
 import { MedicationsModule } from '../modules/medications/medications.module';
 import { AppointmentsModule } from '../modules/appointments/appointments.module';
+import { CircleModule } from '../modules/circle/circle.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AppointmentsModule } from '../modules/appointments/appointments.module'
     AiModule,
     MedicationsModule,
     AppointmentsModule,
+    CircleModule,
   ],
   providers: [
     {

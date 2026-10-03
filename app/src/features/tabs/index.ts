@@ -2,8 +2,6 @@ export { AssistantScreen } from './screens/AssistantScreen';
 export type { AssistantScreenProps } from './screens/AssistantScreen';
 export { AppointmentsScreen } from './screens/AppointmentsScreen';
 export type { AppointmentsScreenProps } from './screens/AppointmentsScreen';
-export { FamilyScreen } from './screens/FamilyScreen';
-export type { FamilyScreenProps } from './screens/FamilyScreen';
 export { MedicationsScreen } from './screens/MedicationsScreen';
 export type { MedicationsScreenProps } from './screens/MedicationsScreen';
 export { ProfileScreen } from './screens/ProfileScreen';

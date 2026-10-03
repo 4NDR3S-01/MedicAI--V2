@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text } from "react-native";
 
-import type { AppTheme } from "../../../../shared/theme";
-import { PressableScale } from "../../../../shared/ui";
+import type { AppTheme } from "../theme";
+import { PressableScale } from "./PressableScale";
 
 type SelectableChipProps = {
   theme: AppTheme;

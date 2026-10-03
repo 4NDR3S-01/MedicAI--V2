@@ -48,6 +48,12 @@ type KeyboardAwareScrollViewProps = {
    * botón principal que suele ir debajo tampoco quede tapado.
    */
   revealExtraSpace?: number;
+  /**
+   * Reserva el espacio del teclado con padding inferior. Desactívalo si un
+   * contenedor superior ya lo hace (p. ej. FormSheet).
+   */
+  reserveKeyboardSpace?: boolean;
+  style?: StyleProp<ViewStyle>;
 };
 
 /**
@@ -59,6 +65,8 @@ export function KeyboardAwareScrollView({
   children,
   contentContainerStyle,
   revealExtraSpace = 96,
+  reserveKeyboardSpace = true,
+  style,
 }: Readonly<KeyboardAwareScrollViewProps>) {
   const { keyboardVisible, bottomInset } = useKeyboardInset();
   const reducedMotion = useReducedMotion();
@@ -85,7 +93,7 @@ export function KeyboardAwareScrollView({
 
   return (
     <RevealFocusedInputContext.Provider value={revealFocusedInput}>
-      <View style={[styles.flex, { paddingBottom: bottomInset }]}>
+      <View style={[styles.flex, style, { paddingBottom: reserveKeyboardSpace ? bottomInset : 0 }]}>
         <ScrollView
           ref={scrollRef}
           style={styles.flex}

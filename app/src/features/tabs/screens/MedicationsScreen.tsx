@@ -1,168 +1,55 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   AppState,
+  Easing,
   FlatList,
   LayoutAnimation,
-  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native';
 
+import type { AppTheme } from '../../../shared/theme';
+import { FloatingActionButton, useEnterAnimation, useReducedMotion, useSwapAnimation } from '../../../shared/ui';
 import { appStorage } from '../../../shared/storage';
 import { onDoseAction } from '../../../shared/services/dose-refresh-bus';
-import type { AppTheme } from '../../../shared/theme';
-import * as medicationsAPI from '../services/medications.service';
-import type { MedicationData } from '../services/medications.service';
-import { getStoredSession } from '../../auth';
-import { AddMedicationModal } from '../components/AddMedicationModal';
-import { FloatingActionButton } from '../../../shared/ui';
-import {
-  scheduleMedicationNotifications,
-  cancelNotificationsByDataId,
-  rescheduleMedicationsAfterLaunch,
-  detectTimezoneChangeAndReschedule,
-  reconcileMissedDoses,
-} from '../../../shared/services/notifications.service';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import {
+  cancelDoseAlarm,
+  cancelNotificationsByDataId,
+  syncMedicationAlarms,
+} from '../../../shared/services/notifications.service';
+import { getStoredSession } from '../../auth';
+import * as medicationsAPI from '../services/medications.service';
+import type { MedicationData, MedicationLog } from '../services/medications.service';
+import { DoseActionSheet } from '../components/DoseActionSheet';
+import { MedicationCard } from '../components/MedicationCard';
+import { MedicationFormSheet } from '../components/MedicationFormSheet';
+import { EmptyState, SkeletonList } from '../components/ScreenStates';
+import {
+  getHandledDoseKeys,
+  getTodayDoseSlots,
+  type DoseSlot,
+} from '../utils/dose-status';
 
-type DoseStatus = 'pending' | 'taken' | 'skipped';
+const CACHE_KEY = 'medicai_medications_cache_v2';
+const CLOCK_TICK_MS = 30_000;
 
-type Segment = 'active' | 'inactive';
+type Segment = 'active' | 'paused';
+type ScreenCache = { day: string; medications: MedicationData[]; logs: MedicationLog[] };
+type DoseTarget = { medication: MedicationData; slot: DoseSlot };
 
-const DOSE_CACHE_KEY = 'medicai_dose_status_cache_v1';
-const RECONCILE_DAILY_KEY = 'medicai_reconciled_today_v1';
+const dayKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
-const isToday = (date: Date): boolean => {
-  const now = new Date();
-  return date.getFullYear() === now.getFullYear()
-    && date.getMonth() === now.getMonth()
-    && date.getDate() === now.getDate();
+const animateLayout = (reducedMotion: boolean) => {
+  if (!reducedMotion) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 };
-
-const getTodayDoses = (
-  times: string[],
-  medication?: { firstDoseTime?: string | null; createdAt?: string },
-): string[] => {
-  const now = new Date();
-  const isFirstDay = medication?.createdAt
-    ? isToday(new Date(medication.createdAt))
-    : false;
-
-  return times.filter((t) => {
-    const [h, m] = t.split(':').map(Number);
-    const doseDate = new Date(now);
-    doseDate.setHours(h, m, 0, 0);
-    if (isFirstDay && medication?.firstDoseTime && t < medication.firstDoseTime) return false;
-    return isToday(doseDate);
-  });
-};
-
-const parseDoseTime = (timeStr: string, baseDate?: Date): Date => {
-  const [h, m] = timeStr.split(':').map(Number);
-  const d = baseDate ? new Date(baseDate) : new Date();
-  d.setHours(h, m, 0, 0);
-  return d;
-};
-
-const getNextDose = (
-  medication: MedicationData,
-  doseStatusMap: Record<string, Record<string, DoseStatus>>,
-): string | null => {
-  const now = new Date();
-  const doses = getTodayDoses(medication.times, medication);
-  const statuses = doseStatusMap[medication.id] ?? {};
-  return doses.find((t) => {
-    if (statuses[t] === 'taken' || statuses[t] === 'skipped') return false;
-    return parseDoseTime(t).getTime() >= now.getTime();
-  }) ?? null;
-};
-
-const getNextDoseCountdown = (timeStr: string): string => {
-  const target = parseDoseTime(timeStr);
-  const diffMs = target.getTime() - Date.now();
-  if (diffMs <= 0) return 'Ahora';
-  const mins = Math.floor(diffMs / 60000);
-  const hrs = Math.floor(mins / 60);
-  if (hrs > 0) return `${hrs}h ${mins % 60}m`;
-  return `${mins}m`;
-};
-
-const getMotivationalPhrase = (progress: number): string => {
-  if (progress === 0) return 'Cada dosis cuenta — empieza ahora';
-  if (progress < 0.5) return 'Vas bien, mantén el ritmo';
-  if (progress < 1) return 'Casi terminas el día';
-  return 'Tratamiento completo, excelente trabajo';
-};
-
-const getGreeting = (): { emoji: string; text: string; subtitle: string } => {
-  const h = new Date().getHours();
-  if (h < 12) return { emoji: '🌅', text: 'Buenos días', subtitle: 'Tu rutina matutina' };
-  if (h < 18) return { emoji: '☀️', text: 'Buenas tardes', subtitle: 'No olvides tus dosis' };
-  return { emoji: '🌙', text: 'Buenas noches', subtitle: 'Últimos recordatorios del día' };
-};
-
-const formatRelativeDate = (dateStr: string): string => {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
-  const days = Math.ceil(diffMs / 86400000);
-  if (days <= 0) return 'Hoy';
-  if (days === 1) return 'Mañana';
-  if (days <= 7) return `En ${days} días`;
-  if (days <= 30) return `En ${Math.ceil(days / 7)} semanas`;
-  return `${d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`;
-};
-
-type SkeletonProps = { theme: AppTheme };
-function SkeletonCard({ theme }: Readonly<SkeletonProps>) {
-  const pulseAnim = useRef(new Animated.Value(0.3)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulseAnim]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.card,
-        {
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.surfaceBorder,
-          opacity: pulseAnim,
-          gap: 16,
-        },
-      ]}
-    >
-      <View style={styles.cardHeader}>
-        <View style={[styles.skelCircle, { backgroundColor: theme.colors.surfaceBorder }]} />
-        <View style={{ flex: 1, gap: 8 }}>
-          <View style={[styles.skelLine, { backgroundColor: theme.colors.surfaceBorder, width: '60%' }]} />
-          <View style={[styles.skelLine, { backgroundColor: theme.colors.surfaceBorder, width: '40%', height: 10 }]} />
-        </View>
-        <View style={[styles.skelCircle, { backgroundColor: theme.colors.surfaceBorder, width: 40, height: 24, borderRadius: 12 }]} />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {[1, 2, 3].map((i) => (
-          <View key={i} style={[styles.skelPill, { backgroundColor: theme.colors.surfaceBorder }]} />
-        ))}
-      </View>
-    </Animated.View>
-  );
-}
 
 export type MedicationsScreenProps = {
   theme: AppTheme;
@@ -170,822 +57,610 @@ export type MedicationsScreenProps = {
 };
 
 export function MedicationsScreen({ theme, contentBottomInset }: Readonly<MedicationsScreenProps>) {
+  const reducedMotion = useReducedMotion();
   const [medications, setMedications] = useState<MedicationData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [logs, setLogs] = useState<MedicationLog[]>([]);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingMedication, setEditingMedication] = useState<MedicationData | null>(null);
-  const [doseStatusMap, setDoseStatusMap] = useState<Record<string, Record<string, DoseStatus>>>({});
-  const [takenCount, setTakenCount] = useState(0);
-  const [totalDosesToday, setTotalDosesToday] = useState(0);
   const [segment, setSegment] = useState<Segment>('active');
-  const doseRefreshVersionRef = useRef(0);
-  const [countdown, setCountdown] = useState<string>('');
-  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [now, setNow] = useState(() => new Date());
+  const [form, setForm] = useState<{ visible: boolean; medication: MedicationData | null }>({
+    visible: false,
+    medication: null,
+  });
+  const [doseTarget, setDoseTarget] = useState<DoseTarget | null>(null);
+  const [doseBusy, setDoseBusy] = useState(false);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+  const [alarmIssue, setAlarmIssue] = useState<string | null>(null);
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
+  // Referencias a los últimos datos para callbacks estables (tarjetas memoizadas).
+  const medicationsRef = useRef(medications);
+  const logsRef = useRef(logs);
+  medicationsRef.current = medications;
+  logsRef.current = logs;
 
-  const isEmpty = medications.length === 0;
-  const progress = totalDosesToday > 0 ? takenCount / totalDosesToday : 0;
-  const greeting = useMemo(() => getGreeting(), []);
-  const motivationalPhrase = useMemo(() => getMotivationalPhrase(progress), [progress]);
+  const enter = useEnterAnimation(status !== 'loading');
+  const swap = useSwapAnimation(segment);
 
-  const activeMeds = useMemo(() => medications.filter((m) => m.active === true), [medications]);
-  const inactiveMeds = useMemo(() => medications.filter((m) => m.active !== true), [medications]);
-  const filteredMeds = segment === 'active' ? activeMeds : inactiveMeds;
-  const isSegmentEmpty = filteredMeds.length === 0;
-  const showFloatingAddButton = !isEmpty && segment === 'active';
-
-  const nextDoseInfo = useMemo(() => {
-    let earliest: { medId: string; time: string } | null = null;
-    for (const med of activeMeds) {
-      const next = getNextDose(med, doseStatusMap);
-      if (!next) continue;
-      if (!earliest || next < earliest.time) earliest = { medId: med.id, time: next };
-    }
-    return earliest;
-  }, [activeMeds, doseStatusMap]);
-
-  useEffect(() => {
-    const update = () => {
-      if (nextDoseInfo) setCountdown(getNextDoseCountdown(nextDoseInfo.time));
-      else setCountdown('');
-    };
-    update();
-    const interval = setInterval(update, 30000);
-    return () => clearInterval(interval);
-  }, [nextDoseInfo?.time]);
-
-  const computeDoseStatus = useCallback(async (
-    meds: MedicationData[],
-    accessToken: string,
-  ) => {
-    const now = new Date();
-    const statusMap: Record<string, Record<string, DoseStatus>> = {};
-    let taken = 0;
-    let total = 0;
-
-    // Una sola petición para todos los medicamentos (antes: una por
-    // medicamento, en serie). Si falla, se conserva el estado actual en vez
-    // de marcar todo como pendiente y sobrescribir la caché.
-    let todayLogsByMedication: Map<string, medicationsAPI.MedicationLog[]>;
-    try {
-      const logs = await medicationsAPI.fetchTodayMedicationLogs(accessToken);
-      todayLogsByMedication = new Map();
-      for (const log of logs) {
-        if (!isToday(new Date(log.takenAt))) continue;
-        const list = todayLogsByMedication.get(log.medicationId);
-        if (list) list.push(log);
-        else todayLogsByMedication.set(log.medicationId, [log]);
-      }
-    } catch {
-      return;
-    }
-
+  // ── Alarmas ───────────────────────────────────────────────────────────────
+  const syncAlarms = useCallback(async (meds: MedicationData[], dayLogs: MedicationLog[], force: boolean) => {
+    const current = new Date();
+    const handled = new Set<string>();
     for (const med of meds) {
-      statusMap[med.id] = {};
-      if (!med.active) continue;
-
-      const doses = getTodayDoses(med.times, med);
-      total += doses.length;
-
-      const todayLogs = todayLogsByMedication.get(med.id) ?? [];
-
-      for (const doseTime of doses) {
-        const [h, m] = doseTime.split(':').map(Number);
-        const matchingLog = todayLogs.find((l) => {
-          if (l.scheduledFor) {
-            const logTime = new Date(l.scheduledFor);
-            return logTime.getHours() === h && logTime.getMinutes() === m;
-          }
-          return false;
-        });
-
-        if (matchingLog?.action === 'TAKEN') {
-          statusMap[med.id][doseTime] = 'taken';
-          taken++;
-        } else if (matchingLog?.action === 'SKIPPED') {
-          statusMap[med.id][doseTime] = 'skipped';
-        } else {
-          statusMap[med.id][doseTime] = 'pending';
-        }
-      }
+      getHandledDoseKeys(getTodayDoseSlots(med, dayLogs, current), current).forEach((key) => handled.add(key));
     }
-
-    setDoseStatusMap(statusMap);
-    setTakenCount(taken);
-    setTotalDosesToday(total);
-
     try {
-      await appStorage.setItem(DOSE_CACHE_KEY, JSON.stringify({
-        date: now.toISOString().slice(0, 10),
-        statusMap,
-        takenCount: taken,
-        totalDosesToday: total,
-      }));
+      const result = await syncMedicationAlarms(meds, { force, handledDoseKeys: handled });
+      setAlarmIssue(
+        result.status === 'no-permission' && meds.some((med) => med.active)
+          ? 'Las notificaciones están desactivadas: no sonarán las alarmas.'
+          : null,
+      );
     } catch {
-      // non-critical
+      setAlarmIssue('No pudimos programar algunas alarmas.');
     }
   }, []);
 
-  useEffect(() => {
-    const restoreCache = async () => {
-      try {
-        const cached = await appStorage.getItem(DOSE_CACHE_KEY);
-        if (!cached) return;
-        const parsed = JSON.parse(cached) as {
-          date: string;
-          statusMap: Record<string, Record<string, DoseStatus>>;
-          takenCount: number;
-          totalDosesToday: number;
-        };
-        if (parsed.date === new Date().toISOString().slice(0, 10)) {
-          setDoseStatusMap(parsed.statusMap);
-          setTakenCount(parsed.takenCount);
-          setTotalDosesToday(parsed.totalDosesToday);
-        }
-      } catch {
-        // ignore cache errors
-      }
-    };
-    void restoreCache();
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onDoseAction(() => {
-      doseRefreshVersionRef.current += 1;
-      const sessionPromise = getStoredSession();
-      void sessionPromise.then((session) => {
-        if (session?.accessToken) {
-          void computeDoseStatus(medications, session.accessToken);
-        }
-      });
-    });
-    return unsubscribe;
-  }, [medications, computeDoseStatus]);
-
-  useEffect(() => {
-    let lastDate = new Date().toISOString().slice(0, 10);
-
-    // Las tomas solo cambian por acciones del usuario (emitDoseAction) o por
-    // la alarma nativa, que se procesa al volver a primer plano. El intervalo
-    // solo detecta el cambio de día: antes consultaba al servidor cada minuto
-    // aunque no hubiera cambios.
-    const refreshAll = (onlyOnDateChange = false) => {
-      const today = new Date().toISOString().slice(0, 10);
-      const dateChanged = today !== lastDate;
-      if (dateChanged) lastDate = today;
-      if (onlyOnDateChange && !dateChanged) return;
-
-      doseRefreshVersionRef.current += 1;
-      const sessionPromise = getStoredSession();
-      void sessionPromise.then((session) => {
-        if (session?.accessToken) {
-          if (dateChanged) {
-            void loadMedicationsInternal(session.accessToken);
-          } else {
-            void computeDoseStatus(medications, session.accessToken);
-          }
-        }
-      });
-    };
-
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refreshAll();
-    });
-    const interval = setInterval(() => refreshAll(true), 60000);
-    return () => {
-      sub.remove();
-      clearInterval(interval);
-    };
-  }, [medications]);
-
-  const loadMedicationsInternal = useCallback(async (
-    accessToken: string,
-  ) => {
-    try {
-      const data = await medicationsAPI.fetchMedications(accessToken);
-      setMedications(data || []);
-      void computeDoseStatus(data || [], accessToken);
-
-      const tzChanged = await detectTimezoneChangeAndReschedule(data || []);
-      if (!tzChanged) {
-        void rescheduleMedicationsAfterLaunch(data || []);
-      }
-
-      const today = new Date().toISOString().slice(0, 10);
-      const lastReconciled = await appStorage.getItem(RECONCILE_DAILY_KEY);
-      if (lastReconciled !== today) {
-        await appStorage.setItem(RECONCILE_DAILY_KEY, today);
-        void reconcileMissedDoses(data || [], accessToken);
-      }
-    } catch {
-      // refresh silently
-    }
-  }, [computeDoseStatus]);
-
-  const loadMedications = useCallback(async () => {
-    try {
-      setError(null);
-      const session = await getStoredSession();
-      if (!session?.accessToken) {
-        setError('No autorizado.');
-        return;
-      }
-
-      const data = await medicationsAPI.fetchMedications(session.accessToken);
-      setMedications(data || []);
-
-      const tzChanged = await detectTimezoneChangeAndReschedule(data || []);
-      if (!tzChanged) {
-        void rescheduleMedicationsAfterLaunch(data || []);
-      }
-
-      void computeDoseStatus(data || [], session.accessToken);
-
-      const today = new Date().toISOString().slice(0, 10);
-      const lastReconciled = await appStorage.getItem(RECONCILE_DAILY_KEY);
-      if (lastReconciled !== today) {
-        await appStorage.setItem(RECONCILE_DAILY_KEY, today);
-        void reconcileMissedDoses(data || [], session.accessToken);
-      }
-
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
-      ]).start();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al cargar medicamentos';
-      setError(message);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [fadeAnim, slideAnim, computeDoseStatus]);
-
-  useEffect(() => {
-    setIsLoading(true);
-    void loadMedications();
-  }, [loadMedications]);
-
-  const deleteMedication = useCallback(async (medicationId: string) => {
-    if (Platform.OS === 'android') {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
+  // ── Carga de datos ────────────────────────────────────────────────────────
+  const load = useCallback(async () => {
     const session = await getStoredSession();
     if (!session?.accessToken) {
-      Alert.alert('Error', 'No autorizado.');
+      setErrorMessage('Tu sesión expiró. Vuelve a iniciar sesión.');
+      setStatus((current) => (current === 'ready' ? current : 'error'));
       return;
     }
-    await medicationsAPI.deleteMedication(medicationId, session.accessToken);
-    await cancelNotificationsByDataId(medicationId);
-    setMedications((current) => current.filter((med) => med.id !== medicationId));
-  }, []);
 
-  const handleDeleteMedication = useCallback((medicationId: string, name: string) => {
-    Alert.alert('Eliminar medicamento', `¿Eliminar "${name}" y todas sus alarmas?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: () => {
-          void deleteMedication(medicationId).catch((err) => {
-            const message = err instanceof Error ? err.message : 'Error al eliminar';
-            Alert.alert('Error', message);
-          });
-        },
-      },
+    const [medsResult, logsResult] = await Promise.allSettled([
+      medicationsAPI.fetchMedications(session.accessToken),
+      medicationsAPI.fetchTodayMedicationLogs(session.accessToken),
     ]);
-  }, [deleteMedication]);
 
-  const toggleMedicationStatus = async (med: MedicationData) => {
-    if (!med.active) {
+    if (medsResult.status === 'rejected') {
+      const message = medsResult.reason instanceof Error ? medsResult.reason.message : 'No se pudieron cargar tus medicamentos.';
+      setErrorMessage(message);
+      // Con datos en pantalla (caché) no se sustituye la lista por el error.
+      setStatus((current) => (current === 'ready' ? current : 'error'));
+      return;
+    }
+
+    const meds = medsResult.value ?? [];
+    const dayLogs = logsResult.status === 'fulfilled' ? logsResult.value ?? [] : logsRef.current;
+    setMedications(meds);
+    setLogs(dayLogs);
+    setErrorMessage(null);
+    setStatus('ready');
+    setNow(new Date());
+    void appStorage
+      .setItem(CACHE_KEY, JSON.stringify({ day: dayKey(new Date()), medications: meds, logs: dayLogs } satisfies ScreenCache))
+      .catch(() => undefined);
+    void syncAlarms(meds, dayLogs, false);
+  }, [syncAlarms]);
+
+  // Primer render: caché del día (sin esqueleto) y luego datos frescos.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await appStorage.getItem(CACHE_KEY);
+        const cache = raw ? (JSON.parse(raw) as ScreenCache) : null;
+        if (!cancelled && cache?.medications) {
+          setMedications(cache.medications);
+          setLogs(cache.day === dayKey(new Date()) ? cache.logs ?? [] : []);
+          setStatus('ready');
+        }
+      } catch {
+        // caché corrupta: se ignora
+      }
+      if (!cancelled) await load();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  // Reloj: estados de las tomas ("es la hora", "sin registrar") y cambio de día.
+  useEffect(() => {
+    let lastDay = dayKey(new Date());
+    const timer = setInterval(() => {
+      const current = new Date();
+      setNow(current);
+      if (dayKey(current) !== lastDay) {
+        lastDay = dayKey(current);
+        setLogs([]);
+        void load();
+      }
+    }, CLOCK_TICK_MS);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  // Al volver a la app (p. ej. tras responder una alarma) y tras acciones de alarmas.
+  useEffect(() => {
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load();
+    });
+    const unsubscribe = onDoseAction(() => void load());
+    return () => {
+      appStateSub.remove();
+      unsubscribe();
+    };
+  }, [load]);
+
+  // ── Datos derivados ───────────────────────────────────────────────────────
+  const slotsById = useMemo(() => {
+    const map = new Map<string, DoseSlot[]>();
+    for (const med of medications) map.set(med.id, getTodayDoseSlots(med, logs, now));
+    return map;
+  }, [medications, logs, now]);
+
+  const activeMeds = useMemo(() => medications.filter((med) => med.active), [medications]);
+  const pausedMeds = useMemo(() => medications.filter((med) => !med.active), [medications]);
+  const visibleMeds = segment === 'active' ? activeMeds : pausedMeds;
+
+  const summary = useMemo(() => {
+    const slots = activeMeds.flatMap((med) => (slotsById.get(med.id) ?? []).map((slot) => ({ med, slot })));
+    const taken = slots.filter(({ slot }) => slot.state === 'taken').length;
+    const missed = slots.filter(({ slot }) => slot.state === 'missed').length;
+    const next = slots
+      .filter(({ slot }) => slot.state === 'due' || slot.state === 'upcoming')
+      .sort((a, b) => a.slot.at.getTime() - b.slot.at.getTime())[0];
+    return { total: slots.length, taken, missed, next };
+  }, [activeMeds, slotsById]);
+
+  // ── Acciones ──────────────────────────────────────────────────────────────
+  const withToken = async () => {
+    const session = await getStoredSession();
+    if (!session?.accessToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+    return session.accessToken;
+  };
+
+  const handleToggle = useCallback(async (medication: MedicationData) => {
+    const nextActive = !medication.active;
+    if (nextActive) {
       const { ready } = await ensureAlarmPermissions();
       if (!ready) {
-        Alert.alert('Permisos incompletos', 'Completa la configuración de permisos para activar alarmas.');
+        Alert.alert('Permisos incompletos', 'Concede los permisos de notificaciones y alarmas para poder avisarte.');
         return;
       }
     }
-    if (Platform.OS === 'android') {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
-    setMedications((current) =>
-      current.map((m) => (m.id === med.id ? { ...m, active: !med.active } : m)),
-    );
+
+    setTogglingIds((current) => new Set(current).add(medication.id));
+    animateLayout(reducedMotion);
+    setMedications((current) => current.map((med) => (med.id === medication.id ? { ...med, active: nextActive } : med)));
+
     try {
-      const session = await getStoredSession();
-      if (!session?.accessToken) {
-        setMedications((current) =>
-          current.map((m) => (m.id === med.id ? { ...m, active: med.active } : m)),
-        );
-        return;
-      }
-      const updated = await medicationsAPI.updateMedication(med.id, session.accessToken, {
-        active: !med.active,
+      const updated = await medicationsAPI.updateMedication(medication.id, await withToken(), { active: nextActive });
+      const nextList = medicationsRef.current.map((med) => (med.id === updated.id ? updated : med));
+      setMedications(nextList);
+      void syncAlarms(nextList, logsRef.current, true);
+    } catch (error) {
+      animateLayout(reducedMotion);
+      setMedications((current) => current.map((med) => (med.id === medication.id ? { ...med, active: medication.active } : med)));
+      Alert.alert('No se pudo actualizar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+    } finally {
+      setTogglingIds((current) => {
+        const next = new Set(current);
+        next.delete(medication.id);
+        return next;
       });
-      setMedications((current) => current.map((m) => (m.id === med.id ? updated : m)));
+    }
+  }, [reducedMotion, syncAlarms]);
 
-      try {
-        await scheduleMedicationNotifications(updated);
-      } catch {
-        Alert.alert(
-          'Medicamento actualizado',
-          updated.active
-            ? 'El medicamento se activó, pero no se pudieron reprogramar sus alarmas.'
-            : 'El medicamento se desactivó, pero no se pudieron cancelar sus alarmas locales.',
-        );
-      }
-    } catch (err) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setMedications((current) =>
-        current.map((m) => (m.id === med.id ? { ...m, active: med.active } : m)),
-      );
-      const message = err instanceof Error ? err.message : 'Error al actualizar el estado';
-      Alert.alert('Error', message);
+  const handleEdit = useCallback((medication: MedicationData) => {
+    setForm({ visible: true, medication });
+  }, []);
+
+  const handleDelete = useCallback((medication: MedicationData) => {
+    Alert.alert(
+      'Eliminar medicamento',
+      `Se eliminará "${medication.name}" con su historial de tomas y sus alarmas. Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await medicationsAPI.deleteMedication(medication.id, await withToken());
+                await cancelNotificationsByDataId(medication.id);
+                animateLayout(reducedMotion);
+                const nextList = medicationsRef.current.filter((med) => med.id !== medication.id);
+                setMedications(nextList);
+                void syncAlarms(nextList, logsRef.current, true);
+              } catch (error) {
+                Alert.alert('No se pudo eliminar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }, [reducedMotion, syncAlarms]);
+
+  const handleDosePress = useCallback((medication: MedicationData, slot: DoseSlot) => {
+    setDoseTarget({ medication, slot });
+  }, []);
+
+  const registerDose = async (action: 'TAKEN' | 'SKIPPED') => {
+    if (!doseTarget) return;
+    const { medication, slot } = doseTarget;
+    setDoseBusy(true);
+    try {
+      const log = await medicationsAPI.logMedicationAction(medication.id, await withToken(), action, slot.at.toISOString());
+      setLogs((current) => [log, ...current]);
+      // Si se registra antes de la hora, esa alarma ya no debe sonar.
+      if (slot.at.getTime() > Date.now()) void cancelDoseAlarm(medication.id, slot.at);
+      setDoseTarget(null);
+    } catch (error) {
+      Alert.alert('No se pudo registrar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+    } finally {
+      setDoseBusy(false);
     }
   };
 
-  const renderHero = () => {
-    if (isLoading || isEmpty) return null;
-    return (
-      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-        <View style={styles.heroRow}>
-          <View style={styles.heroGreeting}>
-            <Text style={styles.greetingEmoji}>{greeting.emoji}</Text>
-            <Text style={[styles.greetingText, { color: theme.colors.textPrimary }]}>
-              {greeting.text}
-            </Text>
-            <Text style={[styles.greetingSubtitle, { color: theme.colors.textMuted }]}>
-              {greeting.subtitle}
-            </Text>
-          </View>
-          {nextDoseInfo ? (
-            <View style={[styles.countdownChip, { backgroundColor: `${theme.colors.accentPrimary}12`, borderColor: `${theme.colors.accentPrimary}30` }]}>
-              <MaterialCommunityIcons name="timer-sand" size={18} color={theme.colors.accentPrimary} />
-              <Text style={[styles.countdownText, { color: theme.colors.accentPrimary }]}>
-                Próxima: {countdown || getNextDoseCountdown(nextDoseInfo.time)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={[styles.progressCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <View style={styles.progressHeader}>
-            <View style={styles.progressLeftStat}>
-              <Text style={[styles.progressBigNumber, { color: theme.colors.textPrimary }]}>
-                {takenCount}<Text style={[styles.progressSmall, { color: theme.colors.textMuted }]}>/{totalDosesToday}</Text>
-              </Text>
-              <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>dosis hoy</Text>
-            </View>
-            <View style={styles.progressRightStat}>
-              <View style={styles.progressStatItem}>
-                <Text style={[styles.progressStatValue, { color: theme.colors.accentPrimary }]}>{activeMeds.length}</Text>
-                <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>activos</Text>
-              </View>
-              <View style={[styles.progressStatDivider, { backgroundColor: theme.colors.surfaceBorder }]} />
-              <View style={styles.progressStatItem}>
-                <Text style={[styles.progressStatValue, { color: theme.colors.textMuted }]}>{inactiveMeds.length}</Text>
-                <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>inactivos</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={[styles.progressBarBg, { backgroundColor: `${theme.colors.accentPrimary}10` }]}>
-            <Animated.View style={[
-              styles.progressBarFill,
-              {
-                backgroundColor: progress >= 1 ? theme.colors.success : theme.colors.accentPrimary,
-                width: `${Math.round(progress * 100)}%`,
-              },
-            ]} />
-          </View>
-
-          <View style={[styles.motivationRow, { backgroundColor: `${theme.colors.accentPrimary}08` }]}>
-            <MaterialCommunityIcons
-              name={progress >= 1 ? 'trophy' : progress >= 0.5 ? 'thumb-up-outline' : 'run-fast'}
-              size={16}
-              color={progress >= 1 ? theme.colors.success : theme.colors.accentPrimary}
-            />
-            <Text style={[styles.motivationText, { color: theme.colors.accentPrimary }]}>
-              {motivationalPhrase}
-            </Text>
-          </View>
-        </View>
-      </Animated.View>
-    );
+  const undoDose = async () => {
+    const log = doseTarget?.slot.log;
+    if (!doseTarget || !log) return;
+    const { medication, slot } = doseTarget;
+    setDoseBusy(true);
+    try {
+      await medicationsAPI.deleteMedicationLog(medication.id, log.id, await withToken());
+      const nextLogs = logsRef.current.filter((item) => item.id !== log.id);
+      setLogs(nextLogs);
+      // Una toma futura vuelve a necesitar su alarma.
+      if (slot.at.getTime() > Date.now()) void syncAlarms(medicationsRef.current, nextLogs, true);
+      setDoseTarget(null);
+    } catch (error) {
+      Alert.alert('No se pudo deshacer', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+    } finally {
+      setDoseBusy(false);
+    }
   };
 
-  const renderSegmentBar = () => {
-    if (isEmpty || isLoading) return null;
-    return (
-      <View style={[styles.segmentBar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-        <Pressable
-          style={[styles.segmentBtn, segment === 'active' && { backgroundColor: theme.colors.accentPrimary }]}
-          onPress={() => setSegment('active')}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: segment === 'active' }}
-        >
-          <Text style={[styles.segmentBtnText, { color: segment === 'active' ? '#fff' : theme.colors.textSecondary }]}>
-            Activos ({activeMeds.length})
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.segmentBtn, segment === 'inactive' && { backgroundColor: `${theme.colors.textMuted}40` }]}
-          onPress={() => setSegment('inactive')}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: segment === 'inactive' }}
-        >
-          <Text style={[styles.segmentBtnText, { color: segment === 'inactive' ? '#fff' : theme.colors.textSecondary }]}>
-            Inactivos ({inactiveMeds.length})
-          </Text>
-        </Pressable>
-      </View>
-    );
+  const handleSaved = (saved: MedicationData, isNew: boolean) => {
+    // Si cambia de pestaña, la transición la hace useSwapAnimation.
+    if (!isNew || segment === 'active') animateLayout(reducedMotion);
+    const nextList = isNew
+      ? [saved, ...medicationsRef.current]
+      : medicationsRef.current.map((med) => (med.id === saved.id ? saved : med));
+    setMedications(nextList);
+    if (isNew) setSegment('active');
+    void syncAlarms(nextList, logsRef.current, true);
   };
 
-  if (isLoading) {
+  const fixAlarms = async () => {
+    const { ready } = await ensureAlarmPermissions();
+    if (ready) void syncAlarms(medicationsRef.current, logsRef.current, true);
+  };
+
+  const openNewForm = () => setForm({ visible: true, medication: null });
+
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const hasMedications = medications.length > 0;
+  const progress = summary.total ? summary.taken / summary.total : 0;
+  const greeting = getGreeting(now);
+
+  const header = (
+    <View>
+      {alarmIssue ? (
+        <Pressable
+          onPress={() => void fixAlarms()}
+          accessibilityRole="button"
+          style={[styles.issue, { backgroundColor: `${theme.colors.accentTertiary}14`, borderColor: `${theme.colors.accentTertiary}40` }]}
+        >
+          <MaterialCommunityIcons name="bell-off-outline" size={20} color={theme.colors.accentTertiary} />
+          <Text style={[styles.issueText, { color: theme.colors.textPrimary }]}>{alarmIssue}</Text>
+          <Text style={[styles.issueAction, { color: theme.colors.accentTertiary }]}>Revisar</Text>
+        </Pressable>
+      ) : null}
+
+      {hasMedications ? (
+        <>
+          <View style={styles.heroRow}>
+            <View style={styles.heroGreeting}>
+              <MaterialCommunityIcons name={greeting.icon} size={26} color={theme.colors.accentTertiary} style={styles.greetingIcon} />
+              <Text style={[styles.greetingText, { color: theme.colors.textPrimary }]}>{greeting.text}</Text>
+              <Text style={[styles.greetingSubtitle, { color: theme.colors.textMuted }]}>{greeting.subtitle}</Text>
+            </View>
+            {summary.next ? (
+              <View style={[styles.countdownChip, { backgroundColor: `${theme.colors.accentPrimary}12`, borderColor: `${theme.colors.accentPrimary}30` }]}>
+                <MaterialCommunityIcons name="timer-sand" size={18} color={theme.colors.accentPrimary} />
+                <Text style={[styles.countdownText, { color: theme.colors.accentPrimary }]}>
+                  Próxima: {countdownLabel(summary.next.slot.at, now)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <ProgressCard
+            theme={theme}
+            taken={summary.taken}
+            total={summary.total}
+            missed={summary.missed}
+            activeCount={activeMeds.length}
+            inactiveCount={pausedMeds.length}
+            progress={progress}
+            reducedMotion={reducedMotion}
+          />
+
+          <View style={[styles.segmentBar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+            <Pressable
+              style={[styles.segmentBtn, segment === 'active' && { backgroundColor: theme.colors.accentPrimary }]}
+              onPress={() => setSegment('active')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: segment === 'active' }}
+            >
+              <Text style={[styles.segmentBtnText, { color: segment === 'active' ? '#fff' : theme.colors.textSecondary }]}>
+                Activos ({activeMeds.length})
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.segmentBtn, segment === 'paused' && { backgroundColor: `${theme.colors.textMuted}40` }]}
+              onPress={() => setSegment('paused')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: segment === 'paused' }}
+            >
+              <Text style={[styles.segmentBtnText, { color: segment === 'paused' ? '#fff' : theme.colors.textSecondary }]}>
+                Inactivos ({pausedMeds.length})
+              </Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+    </View>
+  );
+
+  if (status === 'loading') {
     return (
       <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
-        <ScrollableContainer contentBottomInset={contentBottomInset}>
-          <View style={{ marginTop: 20 }}>
-            {[1, 2, 3, 4].map((i) => (
-              <View key={i} style={{ marginBottom: 12 }}>
-                <SkeletonCard theme={theme} />
-              </View>
-            ))}
-          </View>
-        </ScrollableContainer>
+        <SkeletonList theme={theme} bottomInset={contentBottomInset + 100} />
       </View>
+    );
+  }
+
+  let emptyState: React.ReactNode = null;
+  if (status === 'error' && !hasMedications) {
+    emptyState = (
+      <EmptyState
+        theme={theme}
+        icon="connection"
+        iconColor={theme.colors.accentTertiary}
+        title={errorMessage ?? 'No pudimos cargar tus medicamentos'}
+        text="Verifica tu conexión e inténtalo de nuevo."
+        actionIcon="refresh"
+        actionLabel="Reintentar"
+        onAction={() => {
+          setStatus('loading');
+          void load();
+        }}
+      />
+    );
+  } else if (!hasMedications) {
+    emptyState = (
+      <EmptyState
+        theme={theme}
+        icon="pill"
+        title="Tu botiquín está vacío"
+        text="Añade tus medicamentos y recibe recordatorios inteligentes para no olvidar ninguna dosis."
+        actionIcon="plus"
+        actionLabel="Agregar primer medicamento"
+        onAction={openNewForm}
+      />
+    );
+  } else if (!visibleMeds.length) {
+    emptyState = (
+      <EmptyState
+        theme={theme}
+        icon={segment === 'paused' ? 'pause-circle-outline' : 'pill-multiple'}
+        title={segment === 'paused' ? 'No hay medicamentos inactivos' : 'No hay medicamentos activos'}
+        text={
+          segment === 'paused'
+            ? 'Cuando desactives un medicamento aparecerá aquí.'
+            : 'Activa un medicamento inactivo o agrega uno nuevo con el botón +.'
+        }
+      />
     );
   }
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
-      <FlatList
-        data={filteredMeds}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={() => (
-          <View>
-            {renderHero()}
-            {renderSegmentBar()}
-          </View>
-        )}
-        contentContainerStyle={[
-          styles.listContent,
-          isSegmentEmpty && styles.listContentEmpty,
-          { paddingBottom: contentBottomInset + 100 },
-        ]}
-        extraData={{ segment }}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => {
-              setIsRefreshing(true);
-              void loadMedications();
-            }}
-            tintColor={theme.colors.accentPrimary}
-            colors={[theme.colors.accentPrimary]}
-          />
-        }
-        ListEmptyComponent={
-          error ? (
-            <View style={styles.emptyState}>
-              <View style={[styles.emptyIconBox, { backgroundColor: `${theme.colors.accentTertiary}14` }]}>
-                <MaterialCommunityIcons name="connection" size={44} color={theme.colors.accentTertiary} />
-              </View>
-              <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>{error}</Text>
-              <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
-                Verifica tu conexión e inténtalo de nuevo.
-              </Text>
-              <Pressable
-                onPress={() => {
-                  setIsLoading(true);
-                  void loadMedications();
-                }}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  { backgroundColor: theme.colors.accentPrimary, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <MaterialCommunityIcons name="refresh" size={18} color="#fff" />
-                <Text style={styles.primaryButtonText}>Reintentar</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <View style={[styles.emptyIconBox, { backgroundColor: `${theme.colors.accentPrimary}12` }]}>
-                <MaterialCommunityIcons
-                  name={isEmpty ? 'pill' : segment === 'inactive' ? 'pause-circle-outline' : 'pill-multiple'}
-                  size={52}
-                  color={theme.colors.accentPrimary}
-                />
-              </View>
-              <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>
-                {isEmpty
-                  ? 'Tu botiquín está vacío'
-                  : segment === 'inactive'
-                    ? 'No hay medicamentos inactivos'
-                    : 'No hay medicamentos activos'}
-              </Text>
-              <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
-                {isEmpty
-                  ? 'Añade tus medicamentos y recibe recordatorios inteligentes para no olvidar ninguna dosis.'
-                  : segment === 'inactive'
-                    ? 'Cuando desactives un medicamento aparecerá aquí.'
-                    : 'Activa un medicamento inactivo o agrega uno nuevo con el botón +.'}
-              </Text>
-              {isEmpty ? (
-                <Pressable
-                  onPress={() => {
-                    setEditingMedication(null);
-                    setShowAddModal(true);
-                  }}
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    { backgroundColor: theme.colors.accentPrimary, opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-                  <Text style={styles.primaryButtonText}>Agregar primer medicamento</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          )
-        }
-        renderItem={({ item }) => {
-          const todayDoses = getTodayDoses(item.times, item);
-          const doseStatuses = doseStatusMap[item.id];
-          const pendingCount = todayDoses.filter((t) => {
-            const status = doseStatuses?.[t];
-            return status !== 'taken' && status !== 'skipped';
-          }).length;
-          const completedCount = todayDoses.filter((t) => doseStatusMap[item.id]?.[t] === 'taken').length;
-          const allCompleted = todayDoses.length > 0 && pendingCount === 0;
-          const isExpanded = expandedCards[item.id] ?? false;
-          const visibleDoses = isExpanded ? todayDoses : todayDoses.slice(0, 3);
-          const hiddenCount = todayDoses.length - visibleDoses.length;
-
-          const accentColor = !item.active
-            ? theme.colors.textMuted
-            : allCompleted
-              ? theme.colors.success
-              : theme.colors.accentPrimary;
-          const accentBg = !item.active
-            ? `${theme.colors.textMuted}10`
-            : allCompleted
-              ? `${theme.colors.success}12`
-              : `${theme.colors.accentPrimary}10`;
-
-          return (
-            <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.card,
-                  {
-                    backgroundColor: theme.colors.surface,
-                    borderLeftColor: accentColor,
-                    borderLeftWidth: 4,
-                    borderColor: theme.colors.surfaceBorder,
-                  },
-                  !item.active && styles.cardInactive,
-                  pressed && { transform: [{ scale: 0.99 }], backgroundColor: accentBg },
-                ]}
-                onLongPress={() => {
-                  setEditingMedication(item);
-                  setShowAddModal(true);
-                }}
-                delayLongPress={250}
-                onPress={() => {
-                  if (item.active && todayDoses.length > 3) {
-                    if (Platform.OS === 'android') {
-                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    }
-                    setExpandedCards((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
-                  } else if (todayDoses.length > 0 && pendingCount > 0 && item.active) {
-                    setEditingMedication(item);
-                    setShowAddModal(true);
-                  }
-                }}
-                accessibilityLabel={`${item.name}, ${item.dosage}, ${item.active ? 'activo' : 'inactivo'}, ${completedCount} de ${todayDoses.length} tomadas`}
-              >
-                <View style={styles.cardHeader}>
-                  <View style={[styles.medIconCircle, { backgroundColor: accentBg }]}>
-                    <MaterialCommunityIcons
-                      name={!item.active ? 'sleep' : allCompleted ? 'check-circle' : 'pill'}
-                      size={22}
-                      color={accentColor}
-                    />
-                  </View>
-                  <View style={styles.cardHeaderInfo}>
-                    <Text
-                      style={[styles.medName, { color: item.active ? theme.colors.textPrimary : theme.colors.textMuted }]}
-                      numberOfLines={1}
-                    >
-                      {item.name}
-                    </Text>
-                    <View style={styles.medMetaRow}>
-                      <Text style={[styles.dosageText, { color: accentColor }]}>{item.dosage}</Text>
-                      <View style={[styles.metaDot, { backgroundColor: accentColor }]} />
-                      <Text style={[styles.frequencyText, { color: theme.colors.textSecondary }]}>
-                        {item.frequency}
-                      </Text>
-                    </View>
-                  </View>
-                  <Switch
-                    value={item.active}
-                    onValueChange={() => toggleMedicationStatus(item)}
-                    trackColor={{ false: theme.colors.surfaceBorder, true: `${theme.colors.accentPrimary}60` }}
-                    thumbColor={item.active ? theme.colors.accentPrimary : theme.colors.textMuted}
-                    accessibilityLabel={item.active ? 'Desactivar alarma' : 'Activar alarma'}
-                  />
-                </View>
-
-                {todayDoses.length > 0 && item.active && (
-                  <View style={styles.doseTimeline}>
-                    {visibleDoses.map((t) => {
-                      const status = doseStatusMap[item.id]?.[t];
-                      const isTaken = status === 'taken';
-                      const isSkipped = status === 'skipped';
-                      const isPending = !isTaken && !isSkipped;
-                      const isNow = isPending && parseDoseTime(t).getTime() <= Date.now();
-
-                      let pillBg = `${theme.colors.accentPrimary}08`;
-                      let pillBorder = `${theme.colors.accentPrimary}18`;
-                      let dotColor = theme.colors.accentPrimary;
-                      let iconName: keyof typeof MaterialCommunityIcons.glyphMap = 'clock-outline';
-
-                      if (isTaken) {
-                        pillBg = `${theme.colors.success}10`;
-                        pillBorder = `${theme.colors.success}25`;
-                        dotColor = theme.colors.success;
-                        iconName = 'check-circle';
-                      } else if (isSkipped) {
-                        pillBg = `${theme.colors.textMuted}08`;
-                        pillBorder = `${theme.colors.textMuted}15`;
-                        dotColor = theme.colors.textMuted;
-                        iconName = 'minus-circle-outline';
-                      } else if (isNow) {
-                        pillBg = `${theme.colors.accentTertiary}10`;
-                        pillBorder = `${theme.colors.accentTertiary}25`;
-                        dotColor = theme.colors.accentTertiary;
-                        iconName = 'alarm-light';
-                      }
-
-                      return (
-                        <View
-                          key={`${item.id}-${t}`}
-                          style={[styles.dosePill, { backgroundColor: pillBg, borderColor: pillBorder }]}
-                        >
-                          <View style={[styles.doseDot, { backgroundColor: dotColor }]} />
-                          <Text style={[styles.dosePillTime, {
-                            color: dotColor,
-                            fontWeight: isNow ? '900' : '700',
-                          }]}>
-                            {t}
-                          </Text>
-                          <MaterialCommunityIcons name={iconName} size={12} color={dotColor} />
-                        </View>
-                      );
-                    })}
-                    {!isExpanded && hiddenCount > 0 && (
-                      <View style={[styles.expandChip, { backgroundColor: `${theme.colors.textMuted}10`, borderColor: `${theme.colors.textMuted}20` }]}>
-                        <Text style={[styles.expandChipText, { color: theme.colors.textMuted }]}>
-                          +{hiddenCount} más
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {item.notes ? (
-                  <View style={[styles.notesRow, { backgroundColor: `${theme.colors.accentPrimary}05` }]}>
-                    <MaterialCommunityIcons name="note-text-outline" size={13} color={theme.colors.textMuted} />
-                    <Text style={[styles.notesText, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                      {item.notes}
-                    </Text>
-                  </View>
-                ) : null}
-
-                <View style={styles.cardFooter}>
-                  {todayDoses.length > 0 && item.active ? (
-                    <View style={[styles.statusPill, { backgroundColor: accentBg }]}>
-                      <MaterialCommunityIcons
-                        name={allCompleted ? 'check-circle' : 'progress-check'}
-                        size={14}
-                        color={accentColor}
-                      />
-                      <Text style={[styles.statusPillText, { color: accentColor }]}>
-                        {allCompleted ? 'Completado' : `${completedCount}/${todayDoses.length} tomadas`}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.statusPill, { backgroundColor: `${theme.colors.textMuted}08` }]}>
-                      <MaterialCommunityIcons name="information-outline" size={14} color={theme.colors.textMuted} />
-                      <Text style={[styles.statusPillText, { color: theme.colors.textMuted }]}>
-                        {!item.active ? 'Inactivo' : todayDoses.length === 0 ? 'Sin dosis hoy' : ''}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={styles.cardActions}>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.actionBtn,
-                        { backgroundColor: `${theme.colors.textSecondary}08` },
-                        pressed && styles.actionBtnPressed,
-                      ]}
-                      onPress={() => {
-                        setEditingMedication(item);
-                        setShowAddModal(true);
-                      }}
-                      accessibilityLabel="Editar medicamento"
-                    >
-                      <MaterialCommunityIcons name="pencil-outline" size={16} color={theme.colors.textSecondary} />
-                    </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.actionBtn,
-                        { backgroundColor: `${theme.colors.accentTertiary}10` },
-                        pressed && styles.actionBtnPressed,
-                      ]}
-                      onPress={() => handleDeleteMedication(item.id, item.name)}
-                      accessibilityLabel="Eliminar medicamento"
-                    >
-                      <MaterialCommunityIcons name="trash-can-outline" size={16} color={theme.colors.accentTertiary} />
-                    </Pressable>
-                  </View>
-                </View>
-              </Pressable>
+      <Animated.View
+        style={[styles.screen, enter.style]}
+        renderToHardwareTextureAndroid={enter.animating}
+        needsOffscreenAlphaCompositing={enter.animating}
+      >
+        <FlatList
+          data={visibleMeds}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={header}
+          ListEmptyComponent={emptyState ? <Animated.View style={swap}>{emptyState}</Animated.View> : null}
+          renderItem={({ item }) => (
+            <Animated.View style={swap}>
+              <MedicationCard
+                theme={theme}
+                medication={item}
+                slots={slotsById.get(item.id) ?? []}
+                isToggling={togglingIds.has(item.id)}
+                onToggleActive={handleToggle}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onDosePress={handleDosePress}
+              />
             </Animated.View>
-          );
-        }}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        ListFooterComponent={
-          filteredMeds.length > 0 ? (
-            <Text style={[styles.listFooterText, { color: theme.colors.textMuted }]}>
-              Mantén presionada una tarjeta para editar
-            </Text>
-          ) : null
-        }
-      />
+          )}
+          ItemSeparatorComponent={Separator}
+          ListFooterComponent={
+            visibleMeds.length > 0 ? (
+              <Text style={[styles.listFooterText, { color: theme.colors.textMuted }]}>
+                Toca una hora para registrar la toma · Mantén presionada una tarjeta para editar
+              </Text>
+            ) : null
+          }
+          contentContainerStyle={[
+            styles.listContent,
+            !visibleMeds.length && styles.listContentEmpty,
+            { paddingBottom: contentBottomInset + 100 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => {
+                setIsRefreshing(true);
+                void load().finally(() => setIsRefreshing(false));
+              }}
+              tintColor={theme.colors.accentPrimary}
+              colors={[theme.colors.accentPrimary]}
+            />
+          }
+        />
+      </Animated.View>
 
-      {showFloatingAddButton ? (
+      {hasMedications && segment === 'active' ? (
         <FloatingActionButton
           theme={theme}
           icon="plus"
-          onPress={() => {
-            setEditingMedication(null);
-            setShowAddModal(true);
-          }}
+          onPress={openNewForm}
           accessibilityLabel="Agregar medicamento"
           backgroundColor={theme.colors.accentPrimary}
         />
       ) : null}
 
-      <AddMedicationModal
-        visible={showAddModal}
-        onClose={() => {
-          setShowAddModal(false);
-          setEditingMedication(null);
-        }}
-        onMedicationAdded={(medication) => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setMedications((current) => {
-            const updated = [medication, ...current];
-            getStoredSession().then((session) => {
-              if (session?.accessToken) computeDoseStatus(updated, session.accessToken);
-            });
-            return updated;
-          });
-        }}
-        onMedicationUpdated={(medication) => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setMedications((current) => {
-            const updated = current.map((m) => (m.id === medication.id ? medication : m));
-            getStoredSession().then((session) => {
-              if (session?.accessToken) computeDoseStatus(updated, session.accessToken);
-            });
-            return updated;
-          });
-        }}
-        initialData={editingMedication}
+      <MedicationFormSheet
         theme={theme}
+        visible={form.visible}
+        medication={form.medication}
+        onClose={() => setForm((current) => ({ ...current, visible: false }))}
+        onSaved={handleSaved}
+      />
+
+      <DoseActionSheet
+        theme={theme}
+        target={doseTarget}
+        busy={doseBusy}
+        onClose={() => setDoseTarget(null)}
+        onRegister={(action) => void registerDose(action)}
+        onUndo={() => void undoDose()}
       />
     </View>
   );
 }
 
-function ScrollableContainer({
-  children,
-  contentBottomInset,
-}: Readonly<{ children: React.ReactNode; contentBottomInset: number }>) {
+const Separator = () => <View style={styles.separator} />;
+
+// ─── Textos del encabezado ──────────────────────────────────────────────────
+
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+
+const getGreeting = (date: Date): { icon: IconName; text: string; subtitle: string } => {
+  const hour = date.getHours();
+  if (hour < 12) return { icon: 'weather-sunset-up', text: 'Buenos días', subtitle: 'Tu rutina matutina' };
+  if (hour < 18) return { icon: 'white-balance-sunny', text: 'Buenas tardes', subtitle: 'No olvides tus dosis' };
+  return { icon: 'weather-night', text: 'Buenas noches', subtitle: 'Últimos recordatorios del día' };
+};
+
+const getMotivationalPhrase = (progress: number): string => {
+  if (progress === 0) return 'Cada dosis cuenta, empieza ahora';
+  if (progress < 0.5) return 'Vas bien, mantén el ritmo';
+  if (progress < 1) return 'Casi terminas el día';
+  return 'Tratamiento completo, excelente trabajo';
+};
+
+const countdownLabel = (target: Date, now: Date): string => {
+  const diffMs = target.getTime() - now.getTime();
+  if (diffMs <= 0) return 'Ahora';
+  const minutes = Math.floor(diffMs / 60_000);
+  const hours = Math.floor(minutes / 60);
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
+};
+
+// ─── Tarjeta de progreso ────────────────────────────────────────────────────
+
+function ProgressCard({
+  theme,
+  taken,
+  total,
+  missed,
+  activeCount,
+  inactiveCount,
+  progress,
+  reducedMotion,
+}: Readonly<{
+  theme: AppTheme;
+  taken: number;
+  total: number;
+  missed: number;
+  activeCount: number;
+  inactiveCount: number;
+  progress: number;
+  reducedMotion: boolean;
+}>) {
+  const fill = useRef(new Animated.Value(progress)).current;
+  useEffect(() => {
+    if (reducedMotion) {
+      fill.setValue(progress);
+      return;
+    }
+    Animated.timing(fill, { toValue: progress, duration: 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [progress, reducedMotion, fill]);
+
+  const complete = progress >= 1;
+  let motivationIcon: IconName = 'run-fast';
+  if (complete) motivationIcon = 'trophy';
+  else if (progress >= 0.5) motivationIcon = 'thumb-up-outline';
+
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ paddingHorizontal: 18, paddingTop: 20, paddingBottom: contentBottomInset + 100 }}>
-        {children}
+    <View style={[styles.progressCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+      <View style={styles.progressHeader}>
+        <View>
+          <Text style={[styles.progressBigNumber, { color: theme.colors.textPrimary }]}>
+            {taken}
+            <Text style={[styles.progressSmall, { color: theme.colors.textMuted }]}>/{total}</Text>
+          </Text>
+          <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>dosis hoy</Text>
+        </View>
+        <View style={styles.progressRightStat}>
+          <View style={styles.progressStatItem}>
+            <Text style={[styles.progressStatValue, { color: theme.colors.accentPrimary }]}>{activeCount}</Text>
+            <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>activos</Text>
+          </View>
+          <View style={[styles.progressStatDivider, { backgroundColor: theme.colors.surfaceBorder }]} />
+          <View style={styles.progressStatItem}>
+            <Text style={[styles.progressStatValue, { color: theme.colors.textMuted }]}>{inactiveCount}</Text>
+            <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>inactivos</Text>
+          </View>
+        </View>
       </View>
+
+      <View
+        style={[styles.progressBarBg, { backgroundColor: `${theme.colors.accentPrimary}10` }]}
+        accessibilityRole="progressbar"
+        accessibilityValue={{ min: 0, max: total, now: taken }}
+      >
+        <Animated.View
+          style={[
+            styles.progressBarFill,
+            { backgroundColor: complete ? theme.colors.success : theme.colors.accentPrimary, transform: [{ scaleX: fill }] },
+          ]}
+        />
+      </View>
+
+      <View style={[styles.motivationRow, { backgroundColor: `${theme.colors.accentPrimary}08` }]}>
+        <MaterialCommunityIcons name={motivationIcon} size={16} color={complete ? theme.colors.success : theme.colors.accentPrimary} />
+        <Text style={[styles.motivationText, { color: theme.colors.accentPrimary }]}>{getMotivationalPhrase(progress)}</Text>
+      </View>
+
+      {missed > 0 ? (
+        <View style={[styles.motivationRow, { backgroundColor: `${theme.colors.accentTertiary}10` }]}>
+          <MaterialCommunityIcons name="alert-circle-outline" size={16} color={theme.colors.accentTertiary} />
+          <Text style={[styles.motivationText, { color: theme.colors.accentTertiary }]}>
+            {missed === 1 ? '1 toma sin registrar: tócala para registrarla' : `${missed} tomas sin registrar: tócalas para registrarlas`}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -994,18 +669,17 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   listContent: { paddingHorizontal: 18, paddingTop: 14 },
   listContentEmpty: { flexGrow: 1, justifyContent: 'center' },
+  separator: { height: 10 },
 
-  heroRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  heroGreeting: { gap: 2 },
-  greetingEmoji: { fontSize: 24, marginBottom: 2 },
+  issue: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 14 },
+  issueText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  issueAction: { fontSize: 13, fontWeight: '800' },
+
+  heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 },
+  heroGreeting: { gap: 2, flexShrink: 1 },
+  greetingIcon: { marginBottom: 2 },
   greetingText: { fontSize: 24, fontWeight: '900', letterSpacing: -0.8 },
   greetingSubtitle: { fontSize: 12, fontWeight: '700', marginTop: 2 },
-
   countdownChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1020,7 +694,6 @@ const styles = StyleSheet.create({
 
   progressCard: { borderRadius: 24, borderWidth: 1, padding: 16, marginBottom: 16, gap: 14 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressLeftStat: { gap: 0 },
   progressBigNumber: { fontSize: 30, fontWeight: '900', letterSpacing: -1 },
   progressSmall: { fontSize: 16, fontWeight: '700' },
   progressLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
@@ -1029,149 +702,14 @@ const styles = StyleSheet.create({
   progressStatValue: { fontSize: 18, fontWeight: '900' },
   progressStatLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   progressStatDivider: { width: 1, height: 28, borderRadius: 1 },
-
   progressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressBarFill: { height: 6, borderRadius: 3 },
-
-  motivationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
+  progressBarFill: { flex: 1, borderRadius: 3, transformOrigin: 'left' },
+  motivationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12 },
   motivationText: { fontSize: 12, fontWeight: '700', flex: 1 },
 
-  segmentBar: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 4,
-    marginBottom: 16,
-    gap: 4,
-  },
-  segmentBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 14,
-  },
+  segmentBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 18, padding: 4, marginBottom: 16, gap: 4 },
+  segmentBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 14 },
   segmentBtnText: { fontSize: 13, fontWeight: '800' },
 
-  card: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-  },
-  cardInactive: { opacity: 0.7 },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  medIconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardHeaderInfo: { flex: 1, gap: 3 },
-  medName: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  medMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dosageText: { fontSize: 13, fontWeight: '700' },
-  metaDot: { width: 3, height: 3, borderRadius: 2 },
-  frequencyText: { fontSize: 12, fontWeight: '600' },
-
-  doseTimeline: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  dosePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  doseDot: { width: 6, height: 6, borderRadius: 3 },
-  dosePillTime: { fontSize: 11, fontVariant: ['tabular-nums'] },
-  expandChip: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  expandChipText: { fontSize: 11, fontWeight: '800' },
-
-  notesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  notesText: { fontSize: 11, fontWeight: '600', flex: 1 },
-
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  statusPillText: { fontSize: 11, fontWeight: '800' },
-  cardActions: { flexDirection: 'row', gap: 6 },
-  actionBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnPressed: { opacity: 0.6 },
-
-  emptyState: { alignItems: 'center', paddingVertical: 48, gap: 12 },
-  emptyIconBox: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  emptyTitle: { fontSize: 21, fontWeight: '900', textAlign: 'center' },
-  emptySubtext: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 20, paddingHorizontal: 16, opacity: 0.7 },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    borderRadius: 16,
-    marginTop: 8,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  primaryButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-
-  listFooterText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 12 },
-
-  skelCircle: { width: 46, height: 46, borderRadius: 16 },
-  skelLine: { height: 12, borderRadius: 6 },
-  skelPill: { width: 50, height: 24, borderRadius: 12 },
+  listFooterText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 12, paddingHorizontal: 12 },
 });

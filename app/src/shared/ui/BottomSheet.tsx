@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import {
   Animated,
-  Easing,
   Modal,
   Pressable,
   StyleSheet,
@@ -12,7 +11,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { AppTheme } from '../theme';
-import { MOTION, useReducedMotion } from './motion';
+import { MOTION } from './motion';
+import { useSheetTransition } from './useSheetTransition';
 
 type BottomSheetProps = {
   theme: AppTheme;
@@ -39,35 +39,7 @@ export function BottomSheet({
 }: Readonly<BottomSheetProps>) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const reducedMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(0)).current;
-  const [mounted, setMounted] = useState(visible);
-  const mountedRef = useRef(visible);
-
-  useEffect(() => {
-    if (visible) {
-      mountedRef.current = true;
-      setMounted(true);
-      progress.setValue(reducedMotion ? 1 : 0);
-      if (!reducedMotion) {
-        Animated.spring(progress, { toValue: 1, useNativeDriver: true, ...MOTION.enter }).start();
-      }
-      return;
-    }
-
-    if (!mountedRef.current) return;
-    Animated.timing(progress, {
-      toValue: 0,
-      duration: reducedMotion ? 0 : MOTION.fast,
-      easing: Easing.in(Easing.cubic),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) {
-        mountedRef.current = false;
-        setMounted(false);
-      }
-    });
-  }, [visible, reducedMotion, progress]);
+  const { mounted, progress, onLayout } = useSheetTransition(visible, MOTION.fast);
 
   if (!mounted) return null;
 
@@ -94,6 +66,7 @@ export function BottomSheet({
 
         <Animated.View
           accessibilityViewIsModal
+          onLayout={onLayout}
           style={[
             styles.sheet,
             {

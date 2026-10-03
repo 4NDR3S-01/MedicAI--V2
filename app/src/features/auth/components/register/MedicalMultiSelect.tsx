@@ -10,8 +10,8 @@ import {
 } from "../../config/register.constants";
 import type { MedicalSelection } from "../../models/register.types";
 import { normalizeMedicalToken } from "../../utils/register.utils";
-import { ERROR_COLOR, useFieldColors } from "./FormField";
-import { SelectableChip } from "./SelectableChip";
+import { ERROR_COLOR, useFieldColors } from "../../../../shared/ui/FormField";
+import { SelectableChip } from "../../../../shared/ui/SelectableChip";
 
 type OptionGroup = { title?: string; items: readonly string[] };
 

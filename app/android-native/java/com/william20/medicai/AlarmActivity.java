@@ -123,26 +123,36 @@ public class AlarmActivity extends Activity {
 
     private long extractDoseTimestamp(String compoundId) {
         if (compoundId == null) return -1;
-        String[] parts = compoundId.split("_dose_");
-        if (parts.length == 2) {
-            try {
-                return Long.parseLong(parts[1]);
-            } catch (NumberFormatException e) {
-                return -1;
+        // Formatos: <med>_dose_<toma>  y  <med>_snooze_<pospuesta>_<toma>
+        // (la alarma pospuesta conserva la hora original de la toma).
+        String tail = null;
+        int doseIndex = compoundId.indexOf("_dose_");
+        if (doseIndex > 0) {
+            tail = compoundId.substring(doseIndex + "_dose_".length());
+        } else {
+            int snoozeIndex = compoundId.indexOf("_snooze_");
+            if (snoozeIndex > 0) {
+                String[] snoozeParts = compoundId.substring(snoozeIndex + "_snooze_".length()).split("_");
+                tail = snoozeParts.length == 2 ? snoozeParts[1] : null;
             }
         }
-        return -1;
+        if (tail == null) return -1;
+        try {
+            return Long.parseLong(tail);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     private String extractMedicationId(String compoundId) {
         if (compoundId == null) return "";
-        String[] parts = compoundId.split("_dose_");
-        if (parts.length > 0 && !parts[0].isEmpty()) {
-            return parts[0];
-        }
-        parts = compoundId.split("_snooze_");
-        if (parts.length > 0 && !parts[0].isEmpty()) {
-            return parts[0];
+        // split() devuelve la cadena completa si no encuentra el separador, así
+        // que hay que comprobar cuál de los dos formatos tiene el id.
+        for (String separator : new String[] {"_dose_", "_snooze_"}) {
+            int index = compoundId.indexOf(separator);
+            if (index > 0) {
+                return compoundId.substring(0, index);
+            }
         }
         return compoundId;
     }
@@ -151,7 +161,9 @@ public class AlarmActivity extends Activity {
         if (alarmId == null) return;
         long snoozeTime = System.currentTimeMillis() + SNOOZE_MS;
         String snoozeTitle = "[Pospuesto] " + (alarmTitle != null ? alarmTitle : "Medicamento");
-        String snoozeId = extractMedicationId(alarmId) + "_snooze_" + snoozeTime;
+        long originalDose = extractDoseTimestamp(alarmId);
+        String snoozeId = extractMedicationId(alarmId) + "_snooze_" + snoozeTime
+            + (originalDose > 0 ? "_" + originalDose : "");
         AlarmScheduler.scheduleExactAlarm(this, snoozeId, new Date(snoozeTime), snoozeTitle, alarmBody);
     }
 
