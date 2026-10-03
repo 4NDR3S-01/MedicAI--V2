@@ -19,6 +19,7 @@ import {
   useFieldColors,
 } from '../../../shared/ui';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { describeMedication, findDuplicateMedication } from '../utils/duplicates';
 import { isForeignTimeZone, zonedParts, zonedToDate } from '../../../shared/services/dose-schedule';
 import { getStoredSession } from '../../auth';
 import * as medicationsAPI from '../services/medications.service';
@@ -158,6 +159,8 @@ export type MedicationFormSheetProps = {
   timeZoneNote?: string;
   /** Zona horaria del dueño (otra persona): el fin del tratamiento es su día. */
   ownerTimeZone?: string | null;
+  /** Medicamentos actuales del dueño, para avisar si se repite uno. */
+  existingMedications?: MedicationData[];
 };
 
 export function MedicationFormSheet({
@@ -171,6 +174,7 @@ export function MedicationFormSheet({
   canEditSchedule = true,
   timeZoneNote,
   ownerTimeZone,
+  existingMedications = [],
 }: Readonly<MedicationFormSheetProps>) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
@@ -237,12 +241,30 @@ export function MedicationFormSheet({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (confirmedDuplicate = false) => {
     setShowErrors(true);
     const currentErrors = validate(form);
     const missingFrequency = !form.frequency;
     setFrequencyError(missingFrequency);
     if (Object.values(currentErrors).some(Boolean) || missingFrequency) return;
+
+    // Mismo medicamento ya activo (p. ej. lo agregó otra persona del Círculo):
+    // dos registros harían sonar dos alarmas por la misma toma.
+    const nameChanged = !medication || medication.name.trim() !== form.name.trim();
+    const duplicate = !confirmedDuplicate && nameChanged
+      ? findDuplicateMedication(form.name, existingMedications, medication?.id)
+      : null;
+    if (duplicate) {
+      Alert.alert(
+        'Este medicamento ya está registrado',
+        `Ya existe ${describeMedication(duplicate)}. Si es el mismo, edita ese en lugar de agregarlo otra vez, para que no suenen dos alarmas.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Es otro, guardar', onPress: () => void handleSave(true) },
+        ],
+      );
+      return;
+    }
 
     // Las alarmas solo funcionan con los permisos concedidos. Si el
     // medicamento es de otra persona, suenan en su teléfono, no en este.

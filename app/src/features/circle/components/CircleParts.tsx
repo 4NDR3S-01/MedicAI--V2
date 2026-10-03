@@ -3,7 +3,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LayoutAnimation, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
-import { SelectableChip, TextField, useReducedMotion } from '../../../shared/ui';
+import { SelectField, SelectableChip, TextField, useReducedMotion } from '../../../shared/ui';
+import type { ReminderMode } from '../services/circle.service';
 import {
   PERMISSION_GROUPS,
   PERMISSION_META,
@@ -90,6 +91,51 @@ export function Badge({ label, color, icon }: Readonly<{ label: string; color: s
     <View style={[styles.badge, { backgroundColor: `${color}18` }]}>
       {icon ? <MaterialCommunityIcons name={icon} size={13} color={color} /> : null}
       <Text style={[styles.badgeText, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── Recordatorios en mi teléfono ───────────────────────────────────────────
+
+export const REMINDER_OPTIONS: { value: ReminderMode; label: string }[] = [
+  { value: 'OFF', label: 'No recibir' },
+  { value: 'NOTIFY', label: 'Solo aviso' },
+  { value: 'ALARM', label: 'Alarma completa' },
+];
+
+export const reminderHint = (mode: ReminderMode, name: string) =>
+  mode === 'ALARM'
+    ? `Sonará la alarma a la hora de las tomas de ${name}, y te avisaremos de sus citas y de las tomas que no registre.`
+    : mode === 'NOTIFY'
+      ? `Te llegará un aviso a la hora de sus tomas y citas, y si no registra alguna.`
+      : `No recibirás avisos de sus tomas ni de sus citas.`;
+
+/** "Sus recordatorios en tu teléfono": no recibir, solo aviso o alarma completa. */
+export function ReminderModePicker({
+  theme,
+  value,
+  name,
+  onChange,
+  disabled,
+}: Readonly<{ theme: AppTheme; value: ReminderMode; name: string; onChange: (mode: ReminderMode) => void; disabled?: boolean }>) {
+  return (
+    <View style={[styles.reminderBox, { borderColor: theme.colors.surfaceBorder }]}>
+      <View style={styles.reminderRow}>
+        <MaterialCommunityIcons name="bell-ring-outline" size={22} color={theme.colors.accentPrimary} />
+        <View style={styles.flex}>
+          <Text style={[styles.reminderTitle, { color: theme.colors.textPrimary }]}>Sus recordatorios en tu teléfono</Text>
+          <Text style={[styles.reminderHintText, { color: theme.colors.textMuted }]}>{reminderHint(value, name)}</Text>
+        </View>
+      </View>
+      <SelectField
+        theme={theme}
+        value={value}
+        options={REMINDER_OPTIONS}
+        onChange={onChange}
+        disabled={disabled}
+        accessibilityLabel={`Recordatorios de ${name}`}
+        style={styles.reminderSelect}
+      />
     </View>
   );
 }
@@ -417,6 +463,11 @@ const styles = StyleSheet.create({
   avatar: { alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontWeight: '900' },
 
+  reminderBox: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12 },
+  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  reminderTitle: { fontSize: 14, fontWeight: '800' },
+  reminderHintText: { fontSize: 12, lineHeight: 16, marginTop: 1 },
+  reminderSelect: { minHeight: 46 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12, minHeight: 46 },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 10 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },

@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsEmail, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 
-import { CARE_VALUES, RELATION_CODES, RELATION_LABEL_MAX, type CareValue, type RelationCode } from '../circle.constants';
+import { CARE_VALUES, RELATION_CODES, RELATION_LABEL_MAX, REMINDER_MODES, type CareValue, type RelationCode, type ReminderMode } from '../circle.constants';
 import { PermissionsDto } from './permissions.dto';
 
 export class CreateInvitationDto {
@@ -39,6 +39,11 @@ export class CreateInvitationDto {
   @ValidateNested()
   @Type(() => PermissionsDto)
   requested!: PermissionsDto;
+
+  /** Recibir sus recordatorios en mi teléfono: OFF | NOTIFY | ALARM. */
+  @IsOptional()
+  @IsIn(REMINDER_MODES)
+  reminderMode?: ReminderMode;
 
   /** Grupos propios a los que añadir a esta persona (organización privada). */
   @IsOptional()
