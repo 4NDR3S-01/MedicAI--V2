@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { LayoutAnimation, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { LayoutAnimation, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
 import { SelectableChip, TextField, useReducedMotion } from '../../../shared/ui';
@@ -90,6 +90,37 @@ export function Badge({ label, color, icon }: Readonly<{ label: string; color: s
     <View style={[styles.badge, { backgroundColor: `${color}18` }]}>
       {icon ? <MaterialCommunityIcons name={icon} size={13} color={color} /> : null}
       <Text style={[styles.badgeText, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── Buscador ────────────────────────────────────────────────────────────────
+
+export function SearchBar({
+  theme,
+  value,
+  onChange,
+  placeholder,
+}: Readonly<{ theme: AppTheme; value: string; onChange: (value: string) => void; placeholder: string }>) {
+  return (
+    <View style={[styles.search, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder }]}>
+      <MaterialCommunityIcons name="magnify" size={20} color={theme.colors.textMuted} />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.inputPlaceholder}
+        style={[styles.searchInput, { color: theme.colors.textPrimary }]}
+        autoCorrect={false}
+        autoCapitalize="none"
+        returnKeyType="search"
+        accessibilityLabel={placeholder}
+      />
+      {value ? (
+        <Pressable onPress={() => onChange('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Borrar búsqueda">
+          <MaterialCommunityIcons name="close-circle" size={18} color={theme.colors.textMuted} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -386,6 +417,8 @@ const styles = StyleSheet.create({
   avatar: { alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontWeight: '900' },
 
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12, minHeight: 46 },
+  searchInput: { flex: 1, fontSize: 15, paddingVertical: 10 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   sectionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
   sectionHint: { fontSize: 12.5, lineHeight: 17, marginTop: 2 },
