@@ -691,6 +691,53 @@ export class AuthService {
     }
   }
 
+  // ─── Eliminar cuenta ───────────────────────────────────────────────────────
+
+  /**
+   * Perfiles a cargo que solo administra este usuario: si se borra la cuenta,
+   * nadie más podría gestionarlos, así que se borran con ella.
+   */
+  private async findOrphanDependents(userId: string) {
+    const managed = await this.prisma.circleGrant.findMany({
+      where: { granteeId: userId, manageCircle: true, link: { status: 'ACTIVE' }, owner: { isManaged: true } },
+      select: { owner: { select: { id: true, fullName: true } } },
+    });
+    const orphans: { id: string; fullName: string | null }[] = [];
+    for (const { owner } of managed) {
+      const others = await this.prisma.circleGrant.count({
+        where: { ownerId: owner.id, manageCircle: true, granteeId: { not: userId }, link: { status: 'ACTIVE' } },
+      });
+      if (!others) orphans.push(owner);
+    }
+    return orphans;
+  }
+
+  async deleteAccountPreview(userId: string) {
+    return { dependents: await this.findOrphanDependents(userId) };
+  }
+
+  /**
+   * Borra la cuenta y TODA su información (medicamentos, tomas, citas,
+   * vínculos, permisos, invitaciones y grupos, por cascada) más los perfiles a
+   * cargo que se quedarían sin nadie que los administre. Irreversible.
+   */
+  async deleteAccount(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, passwordHash: true } });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado.');
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
+      throw new UnauthorizedException('La contraseña no es correcta.');
+    }
+
+    const orphans = await this.findOrphanDependents(userId);
+    await this.prisma.$transaction([
+      this.prisma.user.deleteMany({ where: { id: { in: orphans.map((orphan) => orphan.id) }, isManaged: true } }),
+      this.prisma.user.delete({ where: { id: userId } }),
+    ]);
+    this.forgetRotationsForUser(userId);
+    this.logger.log('Account deleted', { userId, dependentsDeleted: orphans.length });
+    return { message: 'Tu cuenta y tus datos fueron eliminados.' };
+  }
+
   async getProfile(userId: string) {
     if (!userId) {
       throw new UnauthorizedException('Usuario no autenticado.');

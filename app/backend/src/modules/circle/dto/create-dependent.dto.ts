@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 import { RELATION_CODES, RELATION_LABEL_MAX, type RelationCode } from '../circle.constants';
 
@@ -40,4 +40,18 @@ export class CreateDependentDto {
   @IsString()
   @MaxLength(500)
   conditions?: string;
+
+  // Situaciones especiales (las mismas que en el registro).
+  @IsOptional() @IsBoolean() pregnancy?: boolean;
+  @IsOptional() @IsBoolean() lactation?: boolean;
+  @IsOptional() @IsBoolean() recentSurgeries?: boolean;
+  @IsOptional() @IsBoolean() immunosuppression?: boolean;
+  @IsOptional() @IsBoolean() anticoagulantTreatment?: boolean;
+
+  /** Grupos propios en los que colocar a la persona. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  groupIds?: string[];
 }

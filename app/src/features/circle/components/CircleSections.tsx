@@ -11,6 +11,9 @@ import { Avatar, SectionTitle } from './CircleParts';
 
 type Group = { id: string; title: string; hint: string; members: CircleMember[] };
 
+/** Con muchas personas (p. ej. un médico) se dibujan por tandas. */
+const PAGE_SIZE = 20;
+
 /**
  * Agrupa por "quién está a cargo de quién", que es lo que más importa al
  * entrar: a quién cuido yo, quién me cuida a mí y el resto.
@@ -65,20 +68,36 @@ export function CircleSections({
 }>) {
   const reducedMotion = useReducedMotion();
   const [showPrevious, setShowPrevious] = useState(false);
+  const [limits, setLimits] = useState<Record<string, number>>({});
   const ownerName = displayName(overview.owner).split(/\s+/)[0];
   const groups = groupMembers(overview.members, managing, ownerName);
   const sent = overview.invitations.sent;
 
   return (
     <View style={styles.sections}>
-      {groups.map((group) => (
-        <View key={group.id} style={styles.section}>
-          <SectionTitle theme={theme} title={`${group.title} · ${group.members.length}`} hint={group.hint} />
-          {group.members.map((member) => (
-            <MemberCard key={member.linkId} theme={theme} member={member} managing={managing} onPress={onOpenMember} onOpenCare={onOpenCare} />
-          ))}
-        </View>
-      ))}
+      {groups.map((group) => {
+        const limit = limits[group.id] ?? PAGE_SIZE;
+        const hidden = group.members.length - limit;
+        return (
+          <View key={group.id} style={styles.section}>
+            <SectionTitle theme={theme} title={`${group.title} · ${group.members.length}`} hint={group.hint} />
+            {group.members.slice(0, limit).map((member) => (
+              <MemberCard key={member.linkId} theme={theme} member={member} managing={managing} onPress={onOpenMember} onOpenCare={onOpenCare} />
+            ))}
+            {hidden > 0 ? (
+              <Pressable
+                onPress={() => setLimits((current) => ({ ...current, [group.id]: limit + PAGE_SIZE }))}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.more, { borderColor: theme.colors.surfaceBorder }, pressed && styles.pressed]}
+              >
+                <Text style={[styles.moreText, { color: theme.colors.accentSecondary }]}>
+                  Mostrar {Math.min(hidden, PAGE_SIZE)} más · quedan {hidden}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        );
+      })}
 
       {sent.length ? (
         <View style={styles.section}>
@@ -153,4 +172,6 @@ const styles = StyleSheet.create({
   previousName: { fontSize: 14, fontWeight: '700' },
   previousMeta: { fontSize: 12, marginTop: 2 },
   reinvite: { fontSize: 13.5, fontWeight: '800' },
+  more: { alignItems: 'center', paddingVertical: 12, borderWidth: 1, borderRadius: 14, borderStyle: 'dashed' },
+  moreText: { fontSize: 13.5, fontWeight: '800' },
 });

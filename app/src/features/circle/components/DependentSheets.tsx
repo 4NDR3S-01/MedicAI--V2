@@ -8,7 +8,9 @@ import { AppButton, FieldShell, FormSheet, PressableScale, TextField, useFieldCo
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 import { shareInvitation, withToken } from '../hooks/useCircle';
 import * as circleAPI from '../services/circle.service';
-import type { CircleInvitation, CircleMember } from '../services/circle.service';
+import type { CircleGroup, CircleInvitation, CircleMember } from '../services/circle.service';
+import { EMPTY_MEDICAL_INFO, MedicalInfoEditor, type MedicalInfo } from '../../auth';
+import { GroupPicker } from './CircleGroups';
 import { NO_PERMISSIONS, PERMISSION_PRESETS, type PermissionSet } from '../utils/permissions';
 import { firstName, reciprocalSuggestions, type RelationCode } from '../utils/relations';
 import { InfoNote, PermissionEditor, RelationPicker, SectionTitle } from './CircleParts';
@@ -32,6 +34,8 @@ export function DependentSheet({
   member,
   onClose,
   onSaved,
+  groups = [],
+  onGroupCreated,
 }: Readonly<{
   theme: AppTheme;
   visible: boolean;
@@ -39,8 +43,13 @@ export function DependentSheet({
   member?: CircleMember | null;
   onClose: () => void;
   onSaved: (member: CircleMember, isNew: boolean) => void;
+  /** Mis grupos, para colocar a la persona al crearla. */
+  groups?: CircleGroup[];
+  onGroupCreated?: (group: CircleGroup) => void;
 }>) {
   const editing = Boolean(member);
+  const [medical, setMedical] = useState<MedicalInfo>(EMPTY_MEDICAL_INFO);
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [iosPicker, setIosPicker] = useState(false);
@@ -48,8 +57,6 @@ export function DependentSheet({
   const [relationText, setRelationText] = useState('');
   const [myRelation, setMyRelation] = useState<RelationCode | null>(null);
   const [myRelationText, setMyRelationText] = useState('');
-  const [allergies, setAllergies] = useState('');
-  const [conditions, setConditions] = useState('');
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const dateColors = useFieldColors(theme, iosPicker, false);
@@ -63,8 +70,8 @@ export function DependentSheet({
     setRelationText('');
     setMyRelation(null);
     setMyRelationText('');
-    setAllergies('');
-    setConditions('');
+    setMedical(EMPTY_MEDICAL_INFO);
+    setGroupIds([]);
     setShowErrors(false);
     if (member) {
       // Datos de salud actuales para editarlos.
@@ -72,8 +79,15 @@ export function DependentSheet({
         .then((token) => circleAPI.fetchHealthInfo(token, member.person.id))
         .then((health) => {
           setBirthDate(fromIsoDay(health.birthDate));
-          setAllergies(health.allergies ?? '');
-          setConditions(health.conditions ?? '');
+          setMedical({
+            conditions: health.conditions ?? '',
+            allergies: health.allergies ?? '',
+            pregnancy: health.pregnancy,
+            lactation: health.lactation,
+            recentSurgeries: health.recentSurgeries,
+            immunosuppression: health.immunosuppression,
+            anticoagulantTreatment: health.anticoagulantTreatment,
+          });
         })
         .catch(() => undefined);
     }
@@ -120,22 +134,20 @@ export function DependentSheet({
     try {
       setSaving(true);
       const token = await withToken();
-      const health = {
-        birthDate: birthDate ? toIsoDay(birthDate) : '',
-        allergies: allergies.trim(),
-        conditions: conditions.trim(),
-      };
+      const birth = birthDate ? toIsoDay(birthDate) : '';
       const saved = member
-        ? await circleAPI.updateDependent(token, member.person.id, { fullName: name.trim(), ...health })
+        ? await circleAPI.updateDependent(token, member.person.id, { fullName: name.trim(), birthDate: birth, ...medical })
         : await circleAPI.createDependent(token, {
           fullName: name.trim(),
-          birthDate: health.birthDate || undefined,
+          birthDate: birth || undefined,
           relation: relation as RelationCode,
           relationLabel: relation === 'OTHER' ? relationText.trim() : undefined,
           myRelation: myRelation as RelationCode,
           myRelationLabel: myRelation === 'OTHER' ? myRelationText.trim() : undefined,
-          allergies: health.allergies || undefined,
-          conditions: health.conditions || undefined,
+          ...medical,
+          allergies: medical.allergies || undefined,
+          conditions: medical.conditions || undefined,
+          groupIds,
         });
       onSaved(saved, !member);
       onClose();
@@ -226,8 +238,24 @@ export function DependentSheet({
         </>
       ) : null}
 
-      <TextField theme={theme} label="Alergias" optional value={allergies} onChangeText={setAllergies} placeholder="Ej. Penicilina" maxLength={500} multiline />
-      <TextField theme={theme} label="Condiciones" optional value={conditions} onChangeText={setConditions} placeholder="Ej. Asma" maxLength={500} multiline />
+      <SectionTitle theme={theme} title="Información médica" hint="Opcional. Ayuda a evitar medicamentos que no le convengan." />
+      <MedicalInfoEditor theme={theme} value={medical} onChange={setMedical} subject="other" />
+
+      {!editing ? (
+        <>
+          <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
+          <GroupPicker
+            theme={theme}
+            groups={groups}
+            value={groupIds}
+            onChange={setGroupIds}
+            onCreate={(group, next) => {
+              onGroupCreated?.(group);
+              setGroupIds(next);
+            }}
+          />
+        </>
+      ) : null}
 
       {!editing ? (
         <InfoNote theme={theme} icon="alarm">

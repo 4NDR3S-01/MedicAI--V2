@@ -69,7 +69,22 @@ async function syncCareReminders(accessToken: string): Promise<void> {
  * porque cualquiera del Círculo puede cambiar medicamentos o citas desde su
  * teléfono. Es barato si nada cambió (el plan se compara por firma).
  */
+const MIN_SYNC_INTERVAL_MS = 2 * 60_000;
+let lastSyncAt = 0;
+let syncInFlight: Promise<void> | null = null;
+
 export async function syncOwnReminders(options: { force?: boolean } = {}): Promise<void> {
+  // Volver a la app muchas veces seguidas no debe disparar decenas de
+  // peticiones: sin `force`, como mucho una vez cada 2 minutos.
+  if (!options.force && (syncInFlight || Date.now() - lastSyncAt < MIN_SYNC_INTERVAL_MS)) return syncInFlight ?? undefined;
+  lastSyncAt = Date.now();
+  syncInFlight = runSync(options).finally(() => {
+    syncInFlight = null;
+  });
+  return syncInFlight;
+}
+
+async function runSync(options: { force?: boolean }): Promise<void> {
   const session = await getStoredSession();
   if (!session?.accessToken) return;
 
