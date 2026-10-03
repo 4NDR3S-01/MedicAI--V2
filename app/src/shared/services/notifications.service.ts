@@ -35,6 +35,8 @@ export const CHANNELS = {
   MEDICATION_ALARMS: 'medicai_medication_alarms',
   MEDICATION_REMINDERS: 'medicai_medication_reminders',
   APPOINTMENTS: 'medicai_appointments',
+  /** Debe coincidir con CIRCLE_CHANNEL del backend (push). */
+  CIRCLE: 'medicai_circle',
 } as const;
 
 export const NOTIFICATION_CATEGORIES = {
@@ -313,6 +315,18 @@ export async function setupNotifications(): Promise<void> {
       enableVibrate: true,
       showBadge: true,
     });
+
+    // Avisos del Círculo enviados por el servidor (push): invitaciones,
+    // "no registró su toma", cambios de permisos.
+    await Notifications.setNotificationChannelAsync(CHANNELS.CIRCLE, {
+      name: 'Avisos del Círculo',
+      description: 'Invitaciones, tomas sin registrar de las personas que cuidas y cambios en lo que comparten',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 200, 150, 200],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+      enableVibrate: true,
+      showBadge: true,
+    });
   }
 
   // Category for dose alarms: full interaction
@@ -464,6 +478,7 @@ const buildPlanSignature = (medications: MedicationScheduleInput[], leadMinutes:
         med.customEndDate,
         med.ownerName ?? null,
         med.careMode ?? null,
+        med.timeZone ?? null,
       ])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
   });

@@ -13,6 +13,7 @@ import { createHash, randomBytes, randomInt } from 'crypto';
 
 import { MailService } from '../../infrastructure/mail/mail.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { CircleAccessService } from './circle-access.service';
 import {
   HANDOVER_TTL_MS,
@@ -39,7 +40,7 @@ import type { UpdateDependentDto } from './dto/update-dependent.dto';
 import type { UpdateLinkDto } from './dto/update-link.dto';
 import type { UpdatePermissionsDto } from './dto/update-permissions.dto';
 
-const PERSON_SELECT = { id: true, fullName: true, email: true, isManaged: true } satisfies Prisma.UserSelect;
+const PERSON_SELECT = { id: true, fullName: true, email: true, isManaged: true, timezone: true } satisfies Prisma.UserSelect;
 type Person = Prisma.UserGetPayload<{ select: typeof PERSON_SELECT }>;
 
 const LINK_INCLUDE = {
@@ -69,6 +70,8 @@ const publicPerson = (person: Person) => ({
   fullName: person.fullName,
   email: person.email.endsWith(`@${MANAGED_EMAIL_DOMAIN}`) ? '' : person.email,
   isManaged: person.isManaged,
+  /** Las horas de sus tomas se interpretan en esta zona. */
+  timezone: person.timezone,
 });
 
 type InvitationState = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELED' | 'EXPIRED';
@@ -86,6 +89,7 @@ export class CircleService {
     private readonly access: CircleAccessService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly push: PushService,
   ) {}
 
   // ─── Vista general ─────────────────────────────────────────────────────────
@@ -230,6 +234,7 @@ export class CircleService {
     );
 
     if (email) this.sendInvitationEmail(invitation);
+    if (inviteeUserId) this.notifyInvitation(invitation, inviteeUserId);
     this.logger.log('Circle invitation created', { inviterId, actorId, invitationId: invitation.id, byEmail: Boolean(email) });
     return this.toInvitation(invitation, new Date(), inviteeUserId ? true : email ? false : null);
   }
@@ -330,6 +335,11 @@ export class CircleService {
         });
       });
 
+      void this.push.notify(this.inviterContacts(invitation), {
+        title: `${this.nameOf(actor)} aceptó tu invitación`,
+        body: 'Ya forma parte del Círculo. Desde su ficha puedes ver lo que comparten.',
+        data: { type: 'CIRCLE', linkId: link.id },
+      });
       this.logger.log('Circle invitation accepted', { invitationId, linkId: link.id });
       return this.toMember(link, actorId);
     } catch (error) {
@@ -348,6 +358,11 @@ export class CircleService {
       data: { status: 'DECLINED', respondedAt: new Date(), inviteeUserId: actorId },
     });
     if (!count) throw new ConflictException('Esta invitación ya fue respondida.');
+    void this.push.notify(this.inviterContacts(invitation), {
+      title: `${this.nameOf(actor)} rechazó tu invitación`,
+      body: 'No se compartirá ninguna información. Puedes reenviarla si fue un error.',
+      data: { type: 'CIRCLE' },
+    });
     this.logger.log('Circle invitation declined', { invitationId });
     return { message: 'Invitación rechazada.' };
   }
@@ -382,6 +397,7 @@ export class CircleService {
       include: INVITATION_INCLUDE,
     });
     if (updated.inviteeEmail) this.sendInvitationEmail(updated);
+    if (updated.inviteeUserId) this.notifyInvitation(updated, updated.inviteeUserId);
     const [{ hasAccount }] = await this.markAccounts([updated]);
     return this.toInvitation(updated, new Date(), hasAccount);
   }
@@ -435,6 +451,14 @@ export class CircleService {
       create: { linkId: link.id, ownerId, granteeId, ...permissions },
       update: permissions,
     });
+    const owner = await this.findPerson(ownerId);
+    void this.push.notify([granteeId], {
+      title: `${this.nameOf(owner)} actualizó lo que compartes`,
+      body: 'Cambió lo que puedes ver o hacer con su información. Revísalo en Círculo.',
+      data: { type: 'CIRCLE', linkId },
+    });
+    // Sus recordatorios en el teléfono de esa persona pueden cambiar.
+    void this.push.requestSync([granteeId], 'permissions');
     this.logger.log('Circle permissions updated', { linkId, ownerId, actorId });
 
     const updated = await this.prisma.circleLink.findUniqueOrThrow({
@@ -462,6 +486,17 @@ export class CircleService {
         data: { status: 'REVOKED', revokedAt: new Date(), revokedById: targetId },
       }),
     ]);
+    const otherId = link.userAId === targetId ? link.userBId : link.userAId;
+    const target = await this.findPerson(targetId);
+    if (otherId !== actorId) {
+      void this.push.notify([otherId], {
+        title: `${this.nameOf(target)} ya no está en tu Círculo`,
+        body: 'Dejaron de compartir información. Sus recordatorios ya no te llegarán.',
+        data: { type: 'CIRCLE' },
+      });
+    }
+    // Ambos teléfonos dejan de programar los recordatorios del otro.
+    void this.push.requestSync([targetId, otherId].filter((id) => id !== actorId), 'revoked');
     this.logger.log('Circle link revoked', { linkId, actorId, targetId });
     return { message: 'Vínculo eliminado. Ya no comparten información.' };
   }
@@ -651,6 +686,8 @@ export class CircleService {
           anticoagulantTreatment: dto.anticoagulantTreatment ?? false,
           isManaged: true,
           managedById: actorId,
+          // Un perfil a cargo vive en la zona horaria de quien lo cuida.
+          timezone: actor.timezone,
         },
       });
       const created = await tx.circleLink.create({
@@ -714,7 +751,10 @@ export class CircleService {
   /** Borra el perfil y TODA su información (medicamentos, citas, vínculos). */
   async deleteDependent(actorId: string, dependentId: string) {
     await this.assertManagesDependent(actorId, dependentId);
+    const guardians = await this.prisma.circleGrant.findMany({ where: { ownerId: dependentId }, select: { granteeId: true } });
     await this.prisma.user.delete({ where: { id: dependentId } });
+    // Sus alarmas dejan de sonar en los teléfonos de los demás cuidadores.
+    void this.push.requestSync(guardians.map((grant) => grant.granteeId).filter((id) => id !== actorId), 'dependent-deleted');
     this.logger.log('Dependent profile deleted', { actorId, dependentId });
     return { message: 'Perfil eliminado.' };
   }
@@ -783,6 +823,27 @@ export class CircleService {
   }
 
   // ─── Ayudantes ─────────────────────────────────────────────────────────────
+
+  private nameOf(person: { fullName: string | null; email: string }) {
+    return person.fullName?.trim().split(/\s+/)[0] || 'Alguien';
+  }
+
+  /** A quién avisar de la respuesta: quien invita y, si es otra persona, quien la creó. */
+  private inviterContacts(invitation: CircleInvitation) {
+    return [invitation.inviterId, invitation.createdById];
+  }
+
+  /** "Te invitaron": a la cuenta a la que va dirigida la invitación (si ya existe). */
+  private notifyInvitation(invitation: InvitationWithPeople, inviteeUserId: string) {
+    const forDependent = invitation.inviter.isManaged;
+    void this.push.notify([inviteeUserId], {
+      title: forDependent
+        ? `${this.nameOf(invitation.createdBy)} te invita a cuidar a ${this.nameOf(invitation.inviter)}`
+        : `${this.nameOf(invitation.inviter)} te invitó a su Círculo`,
+      body: 'Ábrela en Círculo para ver qué compartirá cada uno antes de aceptar.',
+      data: { type: 'CIRCLE_INVITE', invitationId: invitation.id },
+    });
+  }
 
   private async findPerson(userId: string, requireVerifiedEmailInfo = false) {
     const user = await this.prisma.user.findUnique({

@@ -1,4 +1,8 @@
-import { appStorage } from "../../../shared/storage";
+import { Platform } from "react-native";
+import * as Device from "expo-device";
+
+import { NetworkError } from "../../../shared/services/network-error";
+import { clearSession, loadSession, saveSession } from "./session-store";
 
 import type { RegisterWizardPayload } from "../models/register.types";
 import {
@@ -8,7 +12,6 @@ import {
 } from "../utils/register.utils";
 import { mapAuthError } from "./authErrors";
 
-const AUTH_SESSION_KEY = "medicai_auth_session_v1";
 const LOGOUT_TIMEOUT_MS = 4000;
 
 /** Error de la API con su código HTTP (para distinguir "sin red" de "sesión inválida"). */
@@ -160,9 +163,7 @@ const apiRequest = async <T>(
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error(
-      "No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.",
-    );
+    throw new NetworkError();
   }
 
   if (!response.ok) {
@@ -184,9 +185,7 @@ const apiRequest = async <T>(
   }
 };
 
-const persistSession = async (session: AppAuthSession) => {
-  await appStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-};
+const persistSession = (session: AppAuthSession) => saveSession(session);
 
 const mergeStoredSessionUser = async (user: Partial<ProfileUser>) => {
   const session = await getStoredSession();
@@ -203,19 +202,14 @@ const mergeStoredSessionUser = async (user: Partial<ProfileUser>) => {
   return updatedSession;
 };
 
-export const getStoredSession = async (): Promise<AppAuthSession | null> => {
-  const raw = await appStorage.getItem(AUTH_SESSION_KEY);
-  if (!raw) {
-    return null;
-  }
+/** Sesión guardada: tokens del almacén cifrado + perfil (ver session-store). */
+export const getStoredSession = (): Promise<AppAuthSession | null> => loadSession<AppAuthSession>();
 
-  try {
-    return JSON.parse(raw) as AppAuthSession;
-  } catch {
-    await appStorage.removeItem(AUTH_SESSION_KEY);
-    return null;
-  }
-};
+/** Nombre legible del dispositivo para "Sesiones abiertas". */
+const deviceInfo = () => ({
+  deviceName: [Device.manufacturer, Device.modelName].filter(Boolean).join(" ").slice(0, 80) || undefined,
+  platform: Platform.OS === "ios" || Platform.OS === "android" || Platform.OS === "web" ? Platform.OS : undefined,
+});
 
 export const flushPendingProfileSync = async () => {
   return;
@@ -225,6 +219,7 @@ export const signInWithEmail = async (email: string, password: string) => {
   const session = await apiRequest<AppAuthSession>("/auth/login", {
     email,
     password,
+    ...deviceInfo(),
   });
 
   await persistSession(session);
@@ -265,7 +260,7 @@ export const checkEmailAvailability = async (email: string) => {
  */
 export const signOut = async () => {
   const session = await getStoredSession();
-  await appStorage.removeItem(AUTH_SESSION_KEY);
+  await clearSession();
   if (!session?.accessToken || !session.refreshToken || !API_BASE_URL) return;
 
   const controller = new AbortController();
@@ -286,7 +281,7 @@ export const signOut = async () => {
 
 /** El servidor rechazó la sesión: se borra y se avisa a la app. */
 const expireSession = async () => {
-  await appStorage.removeItem(AUTH_SESSION_KEY);
+  await clearSession();
   sessionExpiredListeners.forEach((listener) => listener());
 };
 

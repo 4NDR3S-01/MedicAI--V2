@@ -168,6 +168,7 @@ function MedicationCardBase({
                 <View style={[styles.doseDot, { backgroundColor: color }]} />
                 <Text style={[styles.dosePillTime, { color, fontWeight: slot.state === 'due' ? '900' : '700' }]}>
                   {slot.time}
+                  {slot.viewerTime ? <Text style={styles.viewerTime}>{` · tú ${slot.viewerTime}`}</Text> : null}
                 </Text>
                 <MaterialCommunityIcons name={meta.icon} size={12} color={color} />
               </Pressable>
@@ -279,6 +280,7 @@ const styles = StyleSheet.create({
   },
   doseDot: { width: 6, height: 6, borderRadius: 3 },
   dosePillTime: { fontSize: 12, fontVariant: ['tabular-nums'] },
+  viewerTime: { fontSize: 11, fontWeight: '600', opacity: 0.75 },
   expandChip: {
     alignItems: 'center',
     justifyContent: 'center',

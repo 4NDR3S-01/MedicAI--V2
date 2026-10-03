@@ -26,6 +26,7 @@ import {
 } from '../../../shared/services/notifications.service';
 import { getStoredSession } from '../../auth';
 import * as medicationsAPI from '../services/medications.service';
+import { logDose, pendingDoseLogs, removeQueuedDose } from '../services/dose-queue';
 import type { MedicationData, MedicationLog } from '../services/medications.service';
 import { DoseActionSheet } from '../components/DoseActionSheet';
 import { MedicationCard } from '../components/MedicationCard';
@@ -111,9 +112,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       return;
     }
 
-    const [medsResult, logsResult] = await Promise.allSettled([
+    const [medsResult, logsResult, pendingResult] = await Promise.allSettled([
       medicationsAPI.fetchMedications(session.accessToken),
       medicationsAPI.fetchTodayMedicationLogs(session.accessToken),
+      pendingDoseLogs(),
     ]);
 
     if (medsResult.status === 'rejected') {
@@ -125,7 +127,11 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     }
 
     const meds = medsResult.value ?? [];
-    const dayLogs = logsResult.status === 'fulfilled' ? logsResult.value ?? [] : logsRef.current;
+    // Tomas registradas sin conexión que aún no llegaron al servidor.
+    const pending = pendingResult.status === 'fulfilled' ? pendingResult.value : [];
+    const dayLogs = logsResult.status === 'fulfilled'
+      ? [...pending, ...(logsResult.value ?? [])]
+      : logsRef.current;
     setMedications(meds);
     setLogs(dayLogs);
     setErrorMessage(null);
@@ -287,7 +293,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     const { medication, slot } = doseTarget;
     setDoseBusy(true);
     try {
-      const log = await medicationsAPI.logMedicationAction(medication.id, await withToken(), action, slot.at.toISOString());
+      const log = await logDose(medication.id, action, slot.at.toISOString());
       setLogs((current) => [log, ...current]);
       // Si se registra antes de la hora, esa alarma ya no debe sonar.
       if (slot.at.getTime() > Date.now()) void cancelDoseAlarm(medication.id, slot.at);
@@ -305,7 +311,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     const { medication, slot } = doseTarget;
     setDoseBusy(true);
     try {
-      await medicationsAPI.deleteMedicationLog(medication.id, log.id, await withToken());
+      if (!(await removeQueuedDose(log.id))) {
+        await medicationsAPI.deleteMedicationLog(medication.id, log.id, await withToken());
+      }
       const nextLogs = logsRef.current.filter((item) => item.id !== log.id);
       setLogs(nextLogs);
       // Una toma futura vuelve a necesitar su alarma.

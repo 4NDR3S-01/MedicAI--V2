@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, Request, UseGua
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { CircleAccessService } from '../circle/circle-access.service';
 import { OwnerQueryDto } from '../circle/dto/owner-query.dto';
+import { CareNotifierService } from '../push/care-notifier.service';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -17,7 +18,15 @@ export class AppointmentsController {
   constructor(
     private readonly appointmentsService: AppointmentsService,
     private readonly access: CircleAccessService,
+    private readonly careNotifier: CareNotifierService,
   ) {}
+
+  /** Tras un cambio: los teléfonos del dueño y de sus cuidadores se resincronizan. */
+  private async changed<T>(ownerId: string, actorId: string, result: Promise<T>): Promise<T> {
+    const value = await result;
+    this.careNotifier.dataChanged(ownerId, actorId, 'appointment');
+    return value;
+  }
 
   @Get()
   async findAll(@Query() query: OwnerQueryDto, @Request() req: any) {
@@ -34,7 +43,7 @@ export class AppointmentsController {
   @Post()
   async create(@Body() dto: CreateAppointmentDto, @Query() query: OwnerQueryDto, @Request() req: any) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'manageAppointments');
-    return this.appointmentsService.create(ownerId, dto, req.user?.sub);
+    return this.changed(ownerId, req.user?.sub, this.appointmentsService.create(ownerId, dto, req.user?.sub));
   }
 
   @Put(':id')
@@ -45,12 +54,12 @@ export class AppointmentsController {
     @Request() req: any,
   ) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'manageAppointments');
-    return this.appointmentsService.update(appointmentId, ownerId, dto, req.user?.sub);
+    return this.changed(ownerId, req.user?.sub, this.appointmentsService.update(appointmentId, ownerId, dto, req.user?.sub));
   }
 
   @Delete(':id')
   async delete(@Param('id') appointmentId: string, @Query() query: OwnerQueryDto, @Request() req: any) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'manageAppointments');
-    return this.appointmentsService.delete(appointmentId, ownerId);
+    return this.changed(ownerId, req.user?.sub, this.appointmentsService.delete(appointmentId, ownerId));
   }
 }

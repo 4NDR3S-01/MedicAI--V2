@@ -46,10 +46,11 @@ import {
   getCareMedicationOwner,
 } from '../shared/services/notifications.service';
 import { emitDoseAction } from '../shared/services/dose-refresh-bus';
-import { parseCircleInviteCode, setPendingCircleInvite } from '../features/circle';
+import { isCirclePushType, parseCircleInviteCode, requestOpenCircle, setPendingCircleInvite } from '../features/circle';
 import { clearUserData } from '../shared/services/user-data';
 import AlarmNative from '../shared/native/AlarmNative';
-import { logMedicationAction, fetchMedications } from '../features/tabs/services/medications.service';
+import { fetchMedications } from '../features/tabs/services/medications.service';
+import { logDose } from '../features/tabs/services/dose-queue';
 
 const SPLASH_DURATION_MS = 1200;
 const AUTH_STATE_STORAGE_KEY = 'medicai_auth_state_v1';
@@ -564,9 +565,9 @@ export function AppRoot() {
           const scheduledFor = action.doseTimestamp
             ? new Date(action.doseTimestamp).toISOString()
             : undefined;
-          await logMedicationAction(
+          // Sin red, la toma queda en cola (no se pierde lo marcado en la alarma).
+          await logDose(
             action.medicationId,
-            session.accessToken,
             action.action,
             scheduledFor,
             await getCareMedicationOwner(action.medicationId),
@@ -633,9 +634,15 @@ export function AppRoot() {
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { actionIdentifier, notification } = response;
       const data = notification.request.content.data as { id?: string; type?: string; scheduledFor?: string };
+      // Avisos del Círculo enviados por el servidor (no llevan id): abrir esa pestaña.
+      if (isCirclePushType(data?.type)) {
+        requestOpenCircle();
+        return;
+      }
       if (!data?.id || typeof data.id !== 'string') return;
 
       try {
+
         if (data.type === 'APPOINTMENT') {
           if (actionIdentifier === NOTIFICATION_ACTIONS.SNOOZE_APPOINTMENT) {
             const snoozed = await snoozeAppointmentReminder(notification.request.content);
@@ -656,12 +663,12 @@ export function AppRoot() {
           const scheduledFor = typeof data.scheduledFor === 'string' ? data.scheduledFor : undefined;
 
           if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
-            await logMedicationAction(data.id, session.accessToken, 'TAKEN', scheduledFor, await getCareMedicationOwner(data.id));
+            await logDose(data.id, 'TAKEN', scheduledFor, await getCareMedicationOwner(data.id));
             setActiveAlarm(null);
             emitDoseAction();
             Alert.alert('Éxito', 'Toma de medicamento registrada.');
           } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
-            await logMedicationAction(data.id, session.accessToken, 'SKIPPED', scheduledFor, await getCareMedicationOwner(data.id));
+            await logDose(data.id, 'SKIPPED', scheduledFor, await getCareMedicationOwner(data.id));
             setActiveAlarm(null);
             emitDoseAction();
             Alert.alert('Información', 'Dosis marcada como omitida.');
@@ -779,7 +786,7 @@ export function AppRoot() {
         Alert.alert('Error', 'No autorizado.');
         return;
       }
-      await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN', getActiveAlarmScheduledFor(), await getCareMedicationOwner(activeAlarm.id));
+      await logDose(activeAlarm.id, 'TAKEN', getActiveAlarmScheduledFor(), await getCareMedicationOwner(activeAlarm.id));
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
       emitDoseAction();
@@ -798,7 +805,7 @@ export function AppRoot() {
         Alert.alert('Error', 'No autorizado.');
         return;
       }
-      await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED', getActiveAlarmScheduledFor(), await getCareMedicationOwner(activeAlarm.id));
+      await logDose(activeAlarm.id, 'SKIPPED', getActiveAlarmScheduledFor(), await getCareMedicationOwner(activeAlarm.id));
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
       emitDoseAction();

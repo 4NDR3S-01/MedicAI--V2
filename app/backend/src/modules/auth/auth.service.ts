@@ -1,4 +1,5 @@
 import {
+  NotFoundException,
   BadRequestException,
   Injectable,
   Logger,
@@ -8,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { SignOptions } from 'jsonwebtoken';
 
 import { getBirthDateIssue } from '../../common/birth-date';
@@ -25,6 +26,8 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 1000 * 60 * 30;
 // refresh token, la primera lo rota y las demás reciben el mismo par nuevo
 // durante esta ventana en lugar de un 401 que cerraría la sesión.
 const REFRESH_REUSE_GRACE_MS = 15_000;
+/** Dispositivos con sesión abierta a la vez (los más antiguos se cierran). */
+const MAX_SESSIONS_PER_USER = 10;
 
 const PROFILE_SELECT = {
   id: true,
@@ -243,8 +246,10 @@ export class AuthService {
       throw new UnauthorizedException('Debes verificar tu correo electronico antes de iniciar sesion.');
     }
 
-    const tokens = await this.generateAuthTokens(user.id, user.email);
-    await this.setRefreshToken(user.id, tokens.refreshToken);
+    const tokens = await this.createSession(user.id, user.email, {
+      deviceName: dto.deviceName,
+      platform: dto.platform,
+    });
     this.logger.log('Login succeeded', { userId: user.id });
 
     return {
@@ -257,57 +262,179 @@ export class AuthService {
     const payload = await this.verifyRefreshToken(refreshToken);
     const presentedHash = this.hashToken(refreshToken);
 
+    // Tokens anteriores a las sesiones por dispositivo (sin `sid`).
+    if (!payload.sid) return this.refreshLegacy(refreshToken, presentedHash, payload.sub);
+
+    const session = await this.prisma.userSession.findUnique({ where: { id: payload.sid } });
+    if (!session || session.userId !== payload.sub) {
+      throw new UnauthorizedException('Sesión inválida.');
+    }
+
+    const presented = Buffer.from(presentedHash, 'hex');
+    const stored = Buffer.from(session.refreshTokenHash, 'hex');
+    if (presented.length !== stored.length || !timingSafeEqual(presented, stored)) {
+      // Dos peticiones simultáneas con el mismo token: la segunda recibe lo mismo.
+      const recent = this.takeRecentlyRotated(presentedHash, payload.sub);
+      if (recent) return recent;
+      // Un token ya rotado que vuelve a usarse puede haber sido robado: se
+      // cierra esa sesión (el dispositivo legítimo tendrá que volver a entrar).
+      await this.prisma.userSession.deleteMany({ where: { id: session.id } });
+      this.logger.warn('Refresh token reuse detected; session revoked', { userId: payload.sub, sessionId: session.id });
+      throw new UnauthorizedException('Sesión inválida.');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { email: true } });
+    if (!user) throw new UnauthorizedException('Sesión inválida.');
+
+    const tokens = await this.generateAuthTokens(payload.sub, user.email, session.id);
+    await this.prisma.userSession.update({
+      where: { id: session.id },
+      data: {
+        refreshTokenHash: this.hashToken(tokens.refreshToken),
+        lastUsedAt: new Date(),
+        expiresAt: this.tokenExpiry(tokens.refreshToken),
+      },
+    });
+    this.rememberRotation(presentedHash, payload.sub, tokens);
+    return tokens;
+  }
+
+  /** Sesión heredada (User.refreshTokenHash): se convierte en UserSession. */
+  private async refreshLegacy(refreshToken: string, presentedHash: string, userId: string) {
     const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
+      where: { id: userId },
       select: { id: true, email: true, refreshTokenHash: true },
     });
-
     if (!user?.refreshTokenHash) {
+      const recent = this.takeRecentlyRotated(presentedHash, userId);
+      if (recent) return recent;
       throw new UnauthorizedException('Sesión inválida.');
     }
-
     if (!(await this.matchesRefreshTokenHash(refreshToken, presentedHash, user.refreshTokenHash))) {
       const recent = this.takeRecentlyRotated(presentedHash, user.id);
-      if (recent) {
-        return recent;
-      }
+      if (recent) return recent;
       throw new UnauthorizedException('Sesión inválida.');
     }
-
-    const tokens = await this.generateAuthTokens(user.id, user.email);
-    await this.setRefreshToken(user.id, tokens.refreshToken);
+    await this.prisma.user.update({ where: { id: user.id }, data: { refreshTokenHash: null }, select: { id: true } });
+    const tokens = await this.createSession(user.id, user.email, {});
     this.rememberRotation(presentedHash, user.id, tokens);
-
     return tokens;
   }
 
   async logout(refreshToken: string) {
     const payload = await this.verifyRefreshToken(refreshToken);
     const presentedHash = this.hashToken(refreshToken);
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { id: true, refreshTokenHash: true },
-    });
 
     // Solo el refresh token vigente cierra la sesión: uno antiguo (ya rotado)
     // no puede usarse para echar al usuario de su sesión actual.
-    const isCurrent = Boolean(
-      user?.refreshTokenHash && (await this.matchesRefreshTokenHash(refreshToken, presentedHash, user.refreshTokenHash)),
-    );
-    if (!isCurrent) {
-      return { message: 'Sesión cerrada correctamente.' };
+    if (payload.sid) {
+      const { count } = await this.prisma.userSession.deleteMany({
+        where: { id: payload.sid, userId: payload.sub, refreshTokenHash: presentedHash },
+      });
+      // Ese dispositivo deja de recibir notificaciones de esta cuenta.
+      if (count) await this.prisma.pushToken.deleteMany({ where: { sessionId: payload.sid } });
+    } else {
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { refreshTokenHash: true },
+      });
+      if (user?.refreshTokenHash && (await this.matchesRefreshTokenHash(refreshToken, presentedHash, user.refreshTokenHash))) {
+        await this.prisma.user.update({ where: { id: payload.sub }, data: { refreshTokenHash: null }, select: { id: true } });
+      }
     }
-
-    await this.prisma.user.update({
-      where: { id: payload.sub },
-      data: { refreshTokenHash: null },
-      select: { id: true },
-    });
-    this.forgetRotationsForUser(payload.sub);
     this.logger.log('Logout succeeded', { userId: payload.sub });
-
     return { message: 'Sesión cerrada correctamente.' };
   }
+
+  // ─── Zona horaria ──────────────────────────────────────────────────────────
+
+  /**
+   * Guarda la zona horaria del teléfono. Los perfiles a cargo creados por esta
+   * persona la siguen (un niño viaja con su tutor).
+   */
+  async updateTimezone(userId: string, timezone: string) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    } catch {
+      throw new BadRequestException('Zona horaria no válida.');
+    }
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { timezone }, select: { id: true } }),
+      this.prisma.user.updateMany({ where: { managedById: userId, isManaged: true }, data: { timezone } }),
+    ]);
+    return { timezone };
+  }
+
+  // ─── Sesiones por dispositivo ──────────────────────────────────────────────
+
+  /** Mis dispositivos con sesión abierta (el actual marcado). */
+  async listSessions(userId: string, currentSessionId?: string) {
+    const sessions = await this.prisma.userSession.findMany({
+      where: { userId, expiresAt: { gt: new Date() } },
+      orderBy: { lastUsedAt: 'desc' },
+      select: { id: true, deviceName: true, platform: true, createdAt: true, lastUsedAt: true },
+    });
+    return sessions.map((session) => ({ ...session, current: session.id === currentSessionId }));
+  }
+
+  /** Cierra la sesión de otro dispositivo mío. */
+  async revokeSession(userId: string, sessionId: string) {
+    const { count } = await this.prisma.userSession.deleteMany({ where: { id: sessionId, userId } });
+    if (!count) throw new NotFoundException('Sesión no encontrada.');
+    await this.prisma.pushToken.deleteMany({ where: { sessionId, userId } });
+    return { message: 'Sesión cerrada en ese dispositivo.' };
+  }
+
+  /** Cierra todas mis sesiones excepto la actual. */
+  async revokeOtherSessions(userId: string, currentSessionId?: string) {
+    const { count } = await this.prisma.userSession.deleteMany({
+      where: { userId, ...(currentSessionId ? { id: { not: currentSessionId } } : {}) },
+    });
+    await this.prisma.pushToken.deleteMany({
+      where: { userId, ...(currentSessionId ? { NOT: { sessionId: currentSessionId } } : {}) },
+    });
+    await this.prisma.user.update({ where: { id: userId }, data: { refreshTokenHash: null }, select: { id: true } });
+    return { message: count === 1 ? 'Se cerró 1 sesión.' : `Se cerraron ${count} sesiones.` };
+  }
+
+  private async createSession(
+    userId: string,
+    email: string,
+    device: { deviceName?: string; platform?: string },
+  ) {
+    const sessionId = randomUUID();
+    const tokens = await this.generateAuthTokens(userId, email, sessionId);
+    const now = new Date();
+    await this.prisma.$transaction([
+      // Limpieza: sesiones vencidas y, si hay demasiadas, las más antiguas.
+      this.prisma.userSession.deleteMany({ where: { userId, expiresAt: { lte: now } } }),
+      this.prisma.userSession.create({
+        data: {
+          id: sessionId,
+          userId,
+          refreshTokenHash: this.hashToken(tokens.refreshToken),
+          deviceName: device.deviceName?.trim().slice(0, 80) || null,
+          platform: device.platform ?? null,
+          expiresAt: this.tokenExpiry(tokens.refreshToken),
+        },
+      }),
+    ]);
+    const extra = await this.prisma.userSession.findMany({
+      where: { userId },
+      orderBy: { lastUsedAt: 'desc' },
+      skip: MAX_SESSIONS_PER_USER,
+      select: { id: true },
+    });
+    if (extra.length) await this.prisma.userSession.deleteMany({ where: { id: { in: extra.map((item) => item.id) } } });
+    return tokens;
+  }
+
+  /** Vencimiento (claim `exp`) de un JWT ya firmado por nosotros. */
+  private tokenExpiry(token: string) {
+    const decoded = this.jwtService.decode<{ exp?: number }>(token);
+    return decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 30 * 24 * 3600 * 1000);
+  }
+
 
   async validateEmailVerificationToken(rawToken: string): Promise<AuthTokenValidationResult> {
     if (!rawToken) {
@@ -434,6 +561,9 @@ export class AuthService {
           isEmailVerified: true,
         },
       }),
+      // Contraseña nueva: se cierran las sesiones de todos los dispositivos.
+      this.prisma.userSession.deleteMany({ where: { userId: passwordReset.userId } }),
+      this.prisma.pushToken.deleteMany({ where: { userId: passwordReset.userId } }),
       this.prisma.passwordResetToken.update({
         where: { id: passwordReset.id },
         data: { consumedAt: new Date() },
@@ -587,7 +717,7 @@ export class AuthService {
     return `${webBaseUrl}/auth/${route}?token=${encodeURIComponent(token)}`;
   }
 
-  private async generateAuthTokens(userId: string, email: string) {
+  private async generateAuthTokens(userId: string, email: string, sessionId: string) {
     const accessSecret = this.configService.getOrThrow<string>('JWT_ACCESS_SECRET');
     const refreshSecret = this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
     const accessTtl = this.configService.getOrThrow<string>('JWT_ACCESS_EXPIRES_IN');
@@ -595,14 +725,15 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(
-        { sub: userId, email },
+        { sub: userId, email, sid: sessionId },
         {
           secret: accessSecret,
           expiresIn: accessTtl as SignOptions['expiresIn'],
         },
       ),
       this.jwtService.signAsync(
-        { sub: userId, email },
+        // jti: dos tokens firmados en el mismo segundo nunca son iguales.
+        { sub: userId, email, sid: sessionId, jti: randomUUID() },
         {
           secret: refreshSecret,
           expiresIn: refreshTtl as SignOptions['expiresIn'],
@@ -620,13 +751,7 @@ export class AuthService {
    * usuario compartían esos 72 bytes, por lo que cualquier token antiguo no
    * expirado seguía siendo válido tras la rotación.
    */
-  private async setRefreshToken(userId: string, refreshToken: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { refreshTokenHash: this.hashToken(refreshToken) },
-      select: { id: true },
-    });
-  }
+
 
   private async matchesRefreshTokenHash(rawToken: string, presentedHash: string, storedHash: string) {
     // Hashes bcrypt heredados (sesiones iniciadas antes de este cambio): se
@@ -680,7 +805,7 @@ export class AuthService {
     const refreshSecret = this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
 
     try {
-      return await this.jwtService.verifyAsync<{ sub: string; email: string }>(
+      return await this.jwtService.verifyAsync<{ sub: string; email: string; sid?: string }>(
         refreshToken,
         {
           secret: refreshSecret,

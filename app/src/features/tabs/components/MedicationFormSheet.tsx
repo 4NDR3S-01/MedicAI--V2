@@ -19,6 +19,7 @@ import {
   useFieldColors,
 } from '../../../shared/ui';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { isForeignTimeZone, zonedParts, zonedToDate } from '../../../shared/services/dose-schedule';
 import { getStoredSession } from '../../auth';
 import * as medicationsAPI from '../services/medications.service';
 import type { MedicationData } from '../services/medications.service';
@@ -65,10 +66,15 @@ const emptyForm = (): FormState => ({
   notes: '',
 });
 
-const formFromMedication = (medication: MedicationData): FormState => {
+const formFromMedication = (medication: MedicationData, timeZone?: string | null): FormState => {
   const { amount, unit } = parseDosage(medication.dosage);
   const known = FREQUENCY_OPTIONS.some((option) => option.value === medication.frequency);
-  const endDate = medication.customEndDate ? new Date(medication.customEndDate) : null;
+  let endDate = medication.customEndDate ? new Date(medication.customEndDate) : null;
+  // El último día del tratamiento es un día del calendario del dueño.
+  if (endDate && isForeignTimeZone(timeZone)) {
+    const p = zonedParts(endDate, timeZone);
+    endDate = new Date(p.year, p.month - 1, p.day);
+  }
   return {
     name: medication.name,
     dosageAmount: amount,
@@ -148,6 +154,10 @@ export type MedicationFormSheetProps = {
   /** Al editar lo de otra persona: qué partes permite cambiar. */
   canEditDetails?: boolean;
   canEditSchedule?: boolean;
+  /** Si el dueño está en otra zona horaria: aviso de que las horas son las suyas. */
+  timeZoneNote?: string;
+  /** Zona horaria del dueño (otra persona): el fin del tratamiento es su día. */
+  ownerTimeZone?: string | null;
 };
 
 export function MedicationFormSheet({
@@ -159,6 +169,8 @@ export function MedicationFormSheet({
   ownerId,
   canEditDetails = true,
   canEditSchedule = true,
+  timeZoneNote,
+  ownerTimeZone,
 }: Readonly<MedicationFormSheetProps>) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
@@ -172,7 +184,7 @@ export function MedicationFormSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setForm(medication ? formFromMedication(medication) : emptyForm());
+    setForm(medication ? formFromMedication(medication, ownerTimeZone) : emptyForm());
     setShowErrors(false);
     setFrequencyError(false);
     setIosPicker(null);
@@ -253,8 +265,12 @@ export function MedicationFormSheet({
     }
 
     const isCustom = form.frequency === CUSTOM;
-    const endDate = form.hasEndDate && form.endDate ? new Date(form.endDate) : null;
-    endDate?.setHours(23, 59, 0, 0);
+    let endDate = form.hasEndDate && form.endDate ? new Date(form.endDate) : null;
+    if (endDate && isForeignTimeZone(ownerTimeZone)) {
+      endDate = zonedToDate(endDate.getFullYear(), endDate.getMonth() + 1, endDate.getDate(), 23, 59, ownerTimeZone);
+    } else {
+      endDate?.setHours(23, 59, 0, 0);
+    }
     const payload = {
       name: form.name.trim(),
       dosage: `${form.dosageAmount.trim().replace(',', '.')} ${form.dosageUnit}`,
@@ -366,6 +382,13 @@ export function MedicationFormSheet({
         </FieldShell>
 
       </View>
+
+      {timeZoneNote ? (
+        <View style={[styles.preview, { backgroundColor: `${theme.colors.accentSecondary}14` }]}>
+          <Ionicons name="earth-outline" size={16} color={theme.colors.accentSecondary} />
+          <Text style={[styles.previewText, { color: theme.colors.textSecondary }]}>{timeZoneNote}</Text>
+        </View>
+      ) : null}
 
       <View pointerEvents={scheduleLocked ? 'none' : 'auto'} style={[styles.group, scheduleLocked && styles.locked]}>
         <FieldShell

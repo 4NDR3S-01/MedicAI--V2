@@ -1,8 +1,9 @@
 import {
+  dayBoundsIn,
   doseKey,
-  endOfDay,
+  formatClockIn,
   getDoseDatesBetween,
-  startOfDay,
+  isForeignTimeZone,
   type DoseScheduleInput,
 } from '../../../shared/services/dose-schedule';
 import type { MedicationLog } from '../services/medications.service';
@@ -20,7 +21,10 @@ export type DoseSlot = {
   key: string;
   medicationId: string;
   at: Date;
+  /** Hora de la toma en la zona del dueño ("08:00"). */
   time: string;
+  /** Si el dueño está en otra zona: la misma toma en la hora de este teléfono. */
+  viewerTime?: string;
   state: DoseState;
   log?: MedicationLog;
 };
@@ -65,13 +69,17 @@ export function getTodayDoseSlots(
   logs: MedicationLog[],
   now: Date,
 ): DoseSlot[] {
-  return getDoseDatesBetween(medication, startOfDay(now), endOfDay(now)).map((at) => {
+  // "Hoy" es el día del dueño del medicamento (puede ser otro en otra zona).
+  const { start, end } = dayBoundsIn(now, medication.timeZone);
+  const foreign = isForeignTimeZone(medication.timeZone);
+  return getDoseDatesBetween(medication, start, end).map((at) => {
     const log = findLogForDose(logs, medication.id, at);
     return {
       key: doseKey(medication.id, at),
       medicationId: medication.id,
       at,
-      time: formatHHmm(at),
+      time: formatClockIn(at, medication.timeZone),
+      viewerTime: foreign ? formatHHmm(at) : undefined,
       state: getDoseState(at, log, now),
       log,
     };

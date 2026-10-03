@@ -26,6 +26,7 @@ import { getStoredSession } from '../../auth';
 import * as appointmentsAPI from '../services/appointments.service';
 import type { AppointmentData } from '../services/appointments.service';
 import { formatClock } from '../utils/appointment-status';
+import { isForeignTimeZone, zonedParts, zonedToDate } from '../../../shared/services/dose-schedule';
 
 const TITLE_MAX = 120;
 const DOCTOR_MAX = 120;
@@ -45,21 +46,36 @@ type FormErrors = Partial<Record<'title' | 'doctorName' | 'date' | 'time', strin
 
 const emptyForm = (): FormState => ({ title: '', doctorName: '', date: null, time: '', location: '', notes: '' });
 
-const formFromAppointment = (appointment: AppointmentData): FormState => {
+/** Fecha y hora "de pared" en la zona del dueño (o la del teléfono). */
+const wallClock = (instant: Date, timeZone?: string | null) => {
+  if (!isForeignTimeZone(timeZone)) return { date: instant, time: formatClock(instant) };
+  const p = zonedParts(instant, timeZone);
+  return {
+    date: new Date(p.year, p.month - 1, p.day),
+    time: `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`,
+  };
+};
+
+const formFromAppointment = (appointment: AppointmentData, timeZone?: string | null): FormState => {
   const scheduled = new Date(appointment.scheduledAt);
   const valid = !Number.isNaN(scheduled.getTime());
+  const wall = valid ? wallClock(scheduled, timeZone) : null;
   return {
     title: appointment.title,
     doctorName: appointment.doctorName,
-    date: valid ? scheduled : null,
-    time: valid ? formatClock(scheduled) : '',
+    date: wall?.date ?? null,
+    time: wall?.time ?? '',
     location: appointment.location ?? '',
     notes: appointment.notes ?? '',
   };
 };
 
-const combine = (date: Date, time: string): Date => {
+/** Día + hora elegidos → instante. En otra zona, son la fecha y hora del dueño. */
+const combine = (date: Date, time: string, timeZone?: string | null): Date => {
   const [hours, minutes] = time.split(':').map(Number);
+  if (isForeignTimeZone(timeZone)) {
+    return zonedToDate(date.getFullYear(), date.getMonth() + 1, date.getDate(), hours, minutes, timeZone);
+  }
   const result = new Date(date);
   result.setHours(hours, minutes, 0, 0);
   return result;
@@ -70,14 +86,14 @@ const timeToDate = (time: string): Date => combine(new Date(), time || '09:00');
 const formatLongDate = (date: Date) =>
   date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 
-function validate(form: FormState, original: AppointmentData | null | undefined): FormErrors {
+function validate(form: FormState, original: AppointmentData | null | undefined, timeZone?: string | null): FormErrors {
   const errors: FormErrors = {};
   if (!form.title.trim()) errors.title = 'Indica el motivo de la cita.';
   if (!form.doctorName.trim()) errors.doctorName = 'Indica el profesional o especialidad.';
   if (!form.date) errors.date = 'Elige la fecha.';
   if (!form.time) errors.time = 'Elige la hora.';
   if (form.date && form.time) {
-    const scheduled = combine(form.date, form.time);
+    const scheduled = combine(form.date, form.time, timeZone);
     const unchanged = original && new Date(original.scheduledAt).getTime() === scheduled.getTime();
     // Al editar se permite conservar una fecha ya pasada (p. ej. corregir el título).
     if (!unchanged && scheduled.getTime() <= Date.now()) errors.time = 'Esa fecha y hora ya pasaron.';
@@ -95,6 +111,8 @@ export type AppointmentFormSheetProps = {
   ownerId?: string;
   /** La otra persona no usa la app (perfil a cargo). */
   ownerIsDependent?: boolean;
+  /** Zona horaria del dueño: la fecha y hora se eligen en su hora local. */
+  ownerTimeZone?: string | null;
 };
 
 export function AppointmentFormSheet({
@@ -105,6 +123,7 @@ export function AppointmentFormSheet({
   onSaved,
   ownerId,
   ownerIsDependent = false,
+  ownerTimeZone,
 }: Readonly<AppointmentFormSheetProps>) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
@@ -116,14 +135,14 @@ export function AppointmentFormSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setForm(appointment ? formFromAppointment(appointment) : emptyForm());
+    setForm(appointment ? formFromAppointment(appointment, ownerTimeZone) : emptyForm());
     setShowErrors(false);
     setIosPicker(null);
     void getAppointmentReminderLeadMinutes().then(setLeadMinutes).catch(() => setLeadMinutes(null));
   }, [visible, appointment]);
 
   const update = (patch: Partial<FormState>) => setForm((current) => ({ ...current, ...patch }));
-  const errors = showErrors ? validate(form, appointment) : {};
+  const errors = showErrors ? validate(form, appointment, ownerTimeZone) : {};
   const dateColors = useFieldColors(theme, iosPicker === 'date', Boolean(errors.date));
   const timeColors = useFieldColors(theme, iosPicker === 'time', Boolean(errors.time));
 
@@ -163,7 +182,7 @@ export function AppointmentFormSheet({
 
   const handleSave = async () => {
     setShowErrors(true);
-    const currentErrors = validate(form, appointment);
+    const currentErrors = validate(form, appointment, ownerTimeZone);
     if (Object.values(currentErrors).some(Boolean) || !form.date) return;
 
     const session = await getStoredSession();
@@ -175,7 +194,7 @@ export function AppointmentFormSheet({
     const payload = {
       title: form.title.trim(),
       doctorName: form.doctorName.trim(),
-      scheduledAt: combine(form.date, form.time).toISOString(),
+      scheduledAt: combine(form.date, form.time, ownerTimeZone).toISOString(),
       location: form.location.trim(),
       notes: form.notes.trim(),
     };
@@ -353,6 +372,15 @@ export function AppointmentFormSheet({
           textAlignVertical="top"
         />
 
+        {isForeignTimeZone(ownerTimeZone) ? (
+          <View style={[styles.info, { backgroundColor: `${theme.colors.accentSecondary}12` }]}>
+            <Ionicons name="earth-outline" size={16} color={theme.colors.accentSecondary} />
+            <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
+              Elige la fecha y la hora de la cita en la hora local de esa persona ({ownerTimeZone?.split('/').pop()?.replace(/_/g, ' ')}).
+            </Text>
+          </View>
+        ) : null}
+
         <View style={[styles.info, { backgroundColor: `${theme.colors.accentSecondary}12` }]}>
           <Ionicons name="notifications-outline" size={16} color={theme.colors.accentSecondary} />
           <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
@@ -366,7 +394,7 @@ export function AppointmentFormSheet({
           </Text>
         </View>
 
-        {showErrors && Object.values(validate(form, appointment)).some(Boolean) ? (
+        {showErrors && Object.values(validate(form, appointment, ownerTimeZone)).some(Boolean) ? (
           <Text style={[styles.formError, { color: ERROR_COLOR }]} accessibilityLiveRegion="polite">
             Revisa los campos marcados.
           </Text>

@@ -15,6 +15,7 @@ import {
   type AppointmentState,
 } from '../utils/appointment-status';
 import { changedByNote } from '../utils/audit';
+import { formatClockIn, isForeignTimeZone } from '../../../shared/services/dose-schedule';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -51,6 +52,8 @@ type AppointmentCardProps = {
   onDirections: (appointment: AppointmentData) => void;
   /** Al ver las citas de otra persona sin permiso para gestionarlas: solo lectura. */
   canManage?: boolean;
+  /** Zona horaria del dueño (otra persona): se muestra su hora y la tuya. */
+  ownerTimeZone?: string | null;
 };
 
 function AppointmentCardBase({
@@ -64,6 +67,7 @@ function AppointmentCardBase({
   onChangeAttendance,
   onDirections,
   canManage = true,
+  ownerTimeZone,
 }: Readonly<AppointmentCardProps>) {
   const date = appointmentDate(appointment);
   const state = getAppointmentState(appointment, now);
@@ -74,7 +78,11 @@ function AppointmentCardBase({
   const isPast = state !== 'upcoming';
   const askAttendance = canManage && (state === 'awaiting' || (inProgress && canMarkAttendance(appointment, now)));
   const canChangeAttendance = canManage && (state === 'attended' || state === 'missed');
-  const whenLabel = date ? `${relativeDayLabel(date, now)} · ${formatClock(date)}` : 'Sin fecha';
+  const whenLabel = date
+    ? isForeignTimeZone(ownerTimeZone)
+      ? `${relativeDayLabel(date, now)} · ${formatClockIn(date, ownerTimeZone)} su hora (${formatClock(date)} tuya)`
+      : `${relativeDayLabel(date, now)} · ${formatClock(date)}`
+    : 'Sin fecha';
 
   return (
     <Pressable

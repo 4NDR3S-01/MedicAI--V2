@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { CircleAccessService } from '../circle/circle-access.service';
 import type { PermissionKey } from '../circle/circle.constants';
 import { OwnerQueryDto } from '../circle/dto/owner-query.dto';
+import { CareNotifierService } from '../push/care-notifier.service';
 import { MedicationsService } from './medications.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
 import { LogMedicationActionDto } from './dto/log-medication-action.dto';
@@ -31,7 +32,15 @@ export class MedicationsController {
   constructor(
     private readonly medicationsService: MedicationsService,
     private readonly access: CircleAccessService,
+    private readonly careNotifier: CareNotifierService,
   ) {}
+
+  /** Tras un cambio: los teléfonos del dueño y de sus cuidadores se resincronizan. */
+  private async changed<T>(ownerId: string, actorId: string, reason: string, result: Promise<T>): Promise<T> {
+    const value = await result;
+    this.careNotifier.dataChanged(ownerId, actorId, reason);
+    return value;
+  }
 
   @Get()
   async findAll(@Query() query: OwnerQueryDto, @Request() req: any) {
@@ -59,7 +68,7 @@ export class MedicationsController {
   @Post()
   async create(@Body() dto: CreateMedicationDto, @Query() query: OwnerQueryDto, @Request() req: any) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'addMedications');
-    return this.medicationsService.create(ownerId, dto, req.user?.sub);
+    return this.changed(ownerId, req.user?.sub, 'medication', this.medicationsService.create(ownerId, dto, req.user?.sub));
   }
 
   @Put(':id')
@@ -74,13 +83,13 @@ export class MedicationsController {
     if (touches(DETAIL_FIELDS)) required.push('editMedications');
     if (touches(REMINDER_FIELDS)) required.push('manageReminders');
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, required);
-    return this.medicationsService.update(medicationId, ownerId, dto, req.user?.sub);
+    return this.changed(ownerId, req.user?.sub, 'medication', this.medicationsService.update(medicationId, ownerId, dto, req.user?.sub));
   }
 
   @Delete(':id')
   async delete(@Param('id') medicationId: string, @Query() query: OwnerQueryDto, @Request() req: any) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'deleteMedications');
-    return this.medicationsService.delete(medicationId, ownerId);
+    return this.changed(ownerId, req.user?.sub, 'medication', this.medicationsService.delete(medicationId, ownerId));
   }
 
   @Get(':id/logs')
@@ -98,7 +107,7 @@ export class MedicationsController {
     @Request() req: any,
   ) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'logDoses');
-    return this.medicationsService.deleteLog(medicationId, ownerId, logId);
+    return this.changed(ownerId, req.user?.sub, 'dose', this.medicationsService.deleteLog(medicationId, ownerId, logId));
   }
 
   @Post(':id/logs')
@@ -109,6 +118,6 @@ export class MedicationsController {
     @Request() req: any,
   ) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'logDoses');
-    return this.medicationsService.logAction(medicationId, ownerId, dto.action, dto.scheduledFor, req.user?.sub);
+    return this.changed(ownerId, req.user?.sub, 'dose', this.medicationsService.logAction(medicationId, ownerId, dto.action, dto.scheduledFor, req.user?.sub));
   }
 }

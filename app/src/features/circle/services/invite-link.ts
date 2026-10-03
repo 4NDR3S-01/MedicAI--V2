@@ -45,3 +45,24 @@ export function onCircleInvite(listener: Listener): () => void {
     listeners = listeners.filter((item) => item !== listener);
   };
 }
+
+// ─── Abrir Círculo desde una notificación ────────────────────────────────────
+
+type OpenListener = () => void;
+let openListeners: OpenListener[] = [];
+
+/** Avisos del Círculo (invitación, toma sin registrar…): llevan a esa pestaña. */
+export function requestOpenCircle(): void {
+  openListeners.forEach((listener) => listener());
+}
+
+export function onOpenCircle(listener: OpenListener): () => void {
+  openListeners.push(listener);
+  return () => {
+    openListeners = openListeners.filter((item) => item !== listener);
+  };
+}
+
+/** Tipos de aviso push que se abren en Círculo. */
+export const isCirclePushType = (type: unknown) =>
+  type === 'CIRCLE' || type === 'CIRCLE_INVITE' || type === 'MISSED_DOSE';
