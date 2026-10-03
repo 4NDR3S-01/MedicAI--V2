@@ -85,7 +85,19 @@ const APPOINTMENT_SNOOZE_MINUTES = 10;
 export type MedicationScheduleInput = DoseScheduleInput & {
   name: string;
   dosage: string;
+  /**
+   * Medicamento de otra persona del Círculo cuyos recordatorios recibo:
+   * ALARM = alarma completa (p. ej. un hijo sin teléfono), NOTIFY = solo aviso.
+   */
+  ownerId?: string;
+  ownerName?: string;
+  careMode?: 'ALARM' | 'NOTIFY';
 };
+
+/** Recordatorios de otras personas del Círculo, combinados con los propios. */
+type CareAlarmPlan = { items: MedicationScheduleInput[]; handled: string[] };
+const CARE_PLAN_STORAGE_KEY = 'medicai_care_alarm_plan_v1';
+const CARE_OWNERS_STORAGE_KEY = 'medicai_care_medication_owners_v1';
 
 export type AlarmSyncResult = {
   status: 'scheduled' | 'up-to-date' | 'no-permission';
@@ -102,8 +114,36 @@ const scheduleDoseAlarm = async (
   medication: MedicationScheduleInput,
   dose: Date,
 ): Promise<{ nativeId?: string }> => {
-  const title = medication.name;
-  const body = `Es hora de tu dosis: ${medication.dosage}`;
+  const title = medication.ownerName ? `${medication.ownerName} · ${medication.name}` : medication.name;
+  const body = medication.ownerName
+    ? `Es hora de la dosis de ${medication.ownerName}: ${medication.dosage}`
+    : `Es hora de tu dosis: ${medication.dosage}`;
+
+  // Solo aviso: una notificación normal, sin pantalla de alarma.
+  if (medication.careMode === 'NOTIFY') {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: {
+          id: medication.id,
+          type: SCHEDULE_TYPES.REMINDER,
+          careNotice: true,
+          ownerId: medication.ownerId,
+          scheduledFor: dose.toISOString(),
+          doseAt: dose.toISOString(),
+        },
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: dose,
+        channelId: CHANNELS.MEDICATION_REMINDERS,
+      },
+    });
+    return {};
+  }
 
   if (AlarmNative.isAvailable()) {
     const nativeId = nativeDoseAlarmId(medication.id, dose);
@@ -122,6 +162,7 @@ const scheduleDoseAlarm = async (
       data: {
         id: medication.id,
         type: SCHEDULE_TYPES.DOSE_ALARM,
+        ownerId: medication.ownerId,
         scheduledFor: dose.toISOString(),
         doseAt: dose.toISOString(),
       },
@@ -414,7 +455,16 @@ const buildPlanSignature = (medications: MedicationScheduleInput[], leadMinutes:
     leadMinutes,
     meds: medications
       .filter((med) => med.active)
-      .map((med) => [med.id, med.name, med.dosage, [...med.times].sort(), med.activeSince, med.customEndDate])
+      .map((med) => [
+        med.id,
+        med.name,
+        med.dosage,
+        [...med.times].sort(),
+        med.activeSince,
+        med.customEndDate,
+        med.ownerName ?? null,
+        med.careMode ?? null,
+      ])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
   });
 
@@ -461,9 +511,19 @@ export function syncMedicationAlarms(
 }
 
 async function runMedicationAlarmSync(
-  medications: MedicationScheduleInput[],
-  { force = false, handledDoseKeys }: { force?: boolean; handledDoseKeys?: Set<string> },
+  ownMedications: MedicationScheduleInput[],
+  { force = false, handledDoseKeys: ownHandled }: { force?: boolean; handledDoseKeys?: Set<string> },
 ): Promise<AlarmSyncResult> {
+  // Un solo plan (y un solo presupuesto) para lo propio y lo de las personas
+  // que cuido: así ninguna llamada borra las alarmas de la otra.
+  const care = await readJson<CareAlarmPlan>(CARE_PLAN_STORAGE_KEY);
+  const ownIds = new Set(ownMedications.map((medication) => medication.id));
+  const medications = [
+    ...ownMedications,
+    ...(care?.items ?? []).filter((medication) => !ownIds.has(medication.id)),
+  ];
+  const handledDoseKeys = new Set([...(ownHandled ?? []), ...(care?.handled ?? [])]);
+
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') {
     return { status: 'no-permission', scheduled: 0, failed: 0 };
@@ -496,17 +556,24 @@ async function runMedicationAlarmSync(
   }
 
   const lookaheadEnd = new Date(now.getTime() + PLAN_LOOKAHEAD_DAYS * 86_400_000);
-  const allDoses = medications
-    .flatMap((medication) =>
-      getDoseDatesBetween(medication, new Date(now.getTime() + 1000), lookaheadEnd).map((dose) => ({
-        medication,
-        dose,
-      })),
-    )
-    .filter(({ medication, dose }) => !handledDoseKeys?.has(doseKey(medication.id, dose)))
-    .sort((a, b) => a.dose.getTime() - b.dose.getTime());
+  const dosesOf = (list: MedicationScheduleInput[]) =>
+    list
+      .flatMap((medication) =>
+        getDoseDatesBetween(medication, new Date(now.getTime() + 1000), lookaheadEnd).map((dose) => ({
+          medication,
+          dose,
+        })),
+      )
+      .filter(({ medication, dose }) => !handledDoseKeys?.has(doseKey(medication.id, dose)))
+      .sort((a, b) => a.dose.getTime() - b.dose.getTime());
 
-  const plannedDoses = allDoses.slice(0, doseBudget);
+  // Las tomas propias tienen prioridad: un cuidador con muchas personas no
+  // puede quedarse sin sus propias alarmas por falta de cupo.
+  const ownDoses = dosesOf(medications.filter((medication) => !medication.ownerId));
+  const careDoses = dosesOf(medications.filter((medication) => medication.ownerId));
+  const plannedOwn = ownDoses.slice(0, doseBudget);
+  const plannedCare = careDoses.slice(0, Math.max(0, doseBudget - plannedOwn.length));
+  const plannedDoses = [...plannedOwn, ...plannedCare];
   if (Platform.OS === 'ios') {
     reminderBudget = Math.max(0, doseBudget - plannedDoses.length);
   }
@@ -520,6 +587,8 @@ async function runMedicationAlarmSync(
   const reminders =
     leadMinutes > 0
       ? plannedDoses
+        // El aviso previo es solo para las tomas propias.
+        .filter(({ medication }) => !medication.ownerId)
         .filter(({ dose }) => dose.getTime() - now.getTime() <= REMINDER_HORIZON_MS)
         .map(({ medication, dose }) => ({
           medication,
@@ -533,11 +602,13 @@ async function runMedicationAlarmSync(
     scheduleDoseReminder(medication, dose, reminderAt),
   );
 
-  // Si el presupuesto no alcanzó para todo, el plan cubre hasta la última toma programada.
-  const horizonEnd =
-    plannedDoses.length < allDoses.length && plannedDoses.length > 0
-      ? plannedDoses[plannedDoses.length - 1].dose.getTime()
+  // Si el presupuesto no alcanzó para todo, el plan cubre hasta la última toma
+  // programada de la lista que se quedó corta.
+  const coveredUntil = (planned: typeof ownDoses, all: typeof ownDoses) =>
+    planned.length < all.length
+      ? planned.length > 0 ? planned[planned.length - 1].dose.getTime() : now.getTime()
       : lookaheadEnd.getTime();
+  const horizonEnd = Math.min(coveredUntil(plannedOwn, ownDoses), coveredUntil(plannedCare, careDoses));
 
   await appStorage.setItem(NATIVE_IDS_STORAGE_KEY, JSON.stringify(nativeIds));
   await appStorage.setItem(
@@ -881,4 +952,105 @@ async function runAppointmentReminderSync(
     });
     if (!upToDate) await scheduleAppointmentReminder(appointment);
   }
+}
+
+
+// ─── Recordatorios de personas que cuido (Círculo) ───────────────────────────
+
+/**
+ * Guarda los medicamentos de otras personas cuyos recordatorios recibo; el
+ * siguiente syncMedicationAlarms los programa junto con los propios.
+ */
+export async function setCareAlarmPlan(items: MedicationScheduleInput[], handled: Set<string>): Promise<void> {
+  await appStorage.setItem(CARE_PLAN_STORAGE_KEY, JSON.stringify({ items, handled: [...handled] } satisfies CareAlarmPlan));
+  const owners = Object.fromEntries(items.filter((item) => item.ownerId).map((item) => [item.id, item.ownerId]));
+  await appStorage.setItem(CARE_OWNERS_STORAGE_KEY, JSON.stringify(owners));
+}
+
+/**
+ * De quién es un medicamento que sonó en este teléfono (undefined si es
+ * propio). Necesario para registrar la toma desde la alarma.
+ */
+export async function getCareMedicationOwner(medicationId: string): Promise<string | undefined> {
+  const owners = await readJson<Record<string, string>>(CARE_OWNERS_STORAGE_KEY);
+  return owners?.[medicationId];
+}
+
+const CARE_APPOINTMENT_TYPE = 'CARE_APPOINTMENT';
+let careAppointmentChain: Promise<unknown> = Promise.resolve();
+
+export type CareAppointmentInput = AppointmentReminderInput & { ownerId: string; ownerName: string };
+
+/**
+ * Avisos (antes y a la hora) de las citas de personas que cuido. Van aparte
+ * de las propias para que cada sincronización solo toque lo suyo.
+ */
+export function syncCareAppointmentReminders(appointments: CareAppointmentInput[]): Promise<void> {
+  const run = careAppointmentChain.then(() => runCareAppointmentSync(appointments));
+  careAppointmentChain = run.catch(() => undefined);
+  return run;
+}
+
+async function runCareAppointmentSync(appointments: CareAppointmentInput[]): Promise<void> {
+  const leadMinutes = await getAppointmentReminderLeadMinutes();
+  const now = Date.now();
+  const wanted = new Map<string, { appointment: CareAppointmentInput; at: Date; kind: 'LEAD' | 'TIME' }>();
+  for (const appointment of appointments) {
+    if (appointment.active === false || (appointment.attendanceStatus && appointment.attendanceStatus !== 'PENDING')) continue;
+    const date = new Date(appointment.scheduledAt);
+    if (Number.isNaN(date.getTime())) continue;
+    const lead = new Date(date.getTime() - leadMinutes * 60_000);
+    if (lead.getTime() > now) wanted.set(`${appointment.id}|LEAD|${lead.getTime()}`, { appointment, at: lead, kind: 'LEAD' });
+    if (date.getTime() > now) wanted.set(`${appointment.id}|TIME|${date.getTime()}`, { appointment, at: date, kind: 'TIME' });
+  }
+
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const existing = new Set<string>();
+  for (const notification of scheduled) {
+    const data = notification.content.data as { type?: string; id?: string; kind?: string; at?: number } | undefined;
+    if (data?.type !== CARE_APPOINTMENT_TYPE) continue;
+    const key = `${data.id}|${data.kind}|${data.at}`;
+    if (wanted.has(key)) existing.add(key);
+    else await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+  }
+
+  const permission = wanted.size ? await registerForPushNotificationsAsync() : 'granted';
+  if (permission !== 'granted') return;
+
+  for (const [key, { appointment, at, kind }] of wanted) {
+    if (existing.has(key)) continue;
+    const doctor = appointment.doctorName ? ` con ${appointment.doctorName}` : '';
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: kind === 'LEAD' ? `Próxima cita de ${appointment.ownerName}` : `${appointment.ownerName} tiene una cita ahora`,
+        body: kind === 'LEAD'
+          ? `${appointment.title}${doctor} en ${formatLeadMinutes(leadMinutes)}.`
+          : `${appointment.title}${doctor}.`,
+        data: { type: CARE_APPOINTMENT_TYPE, id: appointment.id, ownerId: appointment.ownerId, kind, at: at.getTime() },
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: CHANNELS.APPOINTMENTS },
+    });
+  }
+}
+
+
+/**
+ * Al cerrar sesión: cancela TODO lo programado en este teléfono (alarmas
+ * nativas, notificaciones, recordatorios de citas y de personas que cuido) y
+ * borra los planes guardados, para que no suene nada del usuario anterior.
+ */
+export async function cancelAllUserReminders(): Promise<void> {
+  const nativeIds = (await readJson<string[]>(NATIVE_IDS_STORAGE_KEY)) ?? [];
+  if (AlarmNative.isAvailable()) {
+    await runLimited(nativeIds, (id) => AlarmNative.cancelAlarm(id).then(() => undefined));
+    await AlarmNative.stopAlarm().catch(() => undefined);
+  }
+  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
+  await Promise.all(
+    [NATIVE_IDS_STORAGE_KEY, PLAN_STORAGE_KEY, CARE_PLAN_STORAGE_KEY, CARE_OWNERS_STORAGE_KEY].map((key) =>
+      appStorage.removeItem(key).catch(() => undefined),
+    ),
+  );
 }

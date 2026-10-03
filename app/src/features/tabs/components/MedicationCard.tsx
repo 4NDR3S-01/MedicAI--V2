@@ -6,6 +6,7 @@ import type { AppTheme } from '../../../shared/theme';
 import { isTreatmentFinished } from '../../../shared/services/dose-schedule';
 import type { MedicationData } from '../services/medications.service';
 import type { DoseSlot, DoseState } from '../utils/dose-status';
+import { changedByNote } from '../utils/audit';
 import { frequencyLabel } from '../utils/medication-form';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -194,6 +195,13 @@ function MedicationCardBase({
         </View>
       ) : null}
 
+      {changedByNote(medication, { masculine: true }) ? (
+        <View style={styles.auditRow}>
+          <MaterialCommunityIcons name="account-edit-outline" size={13} color={theme.colors.textMuted} />
+          <Text style={[styles.auditText, { color: theme.colors.textMuted }]}>{changedByNote(medication, { masculine: true })}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.cardFooter}>
         <View style={[styles.statusPill, { backgroundColor: accentBg }]}>
           <MaterialCommunityIcons
@@ -282,6 +290,8 @@ const styles = StyleSheet.create({
   expandChipText: { fontSize: 11, fontWeight: '800' },
   notesRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
   notesText: { fontSize: 11, fontWeight: '600', flex: 1 },
+  auditRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  auditText: { fontSize: 11.5, fontWeight: '600' },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20 },
   statusPillText: { fontSize: 11, fontWeight: '800' },

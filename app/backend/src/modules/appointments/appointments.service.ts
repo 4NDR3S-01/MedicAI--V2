@@ -5,6 +5,13 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
+
+/** Quién agregó o cambió el registro (para mostrar "Agregado por Ana"). */
+const AUDIT_INCLUDE = {
+  createdBy: { select: { id: true, fullName: true } },
+  updatedBy: { select: { id: true, fullName: true } },
+} as const;
+
 @Injectable()
 export class AppointmentsService {
   private readonly logger = new Logger(AppointmentsService.name);
@@ -15,6 +22,7 @@ export class AppointmentsService {
     return this.prisma.appointment.findMany({
       where: { userId, active: true },
       orderBy: { scheduledAt: 'asc' },
+      include: AUDIT_INCLUDE,
     });
   }
 
@@ -30,10 +38,14 @@ export class AppointmentsService {
     return appointment;
   }
 
-  async create(userId: string, dto: CreateAppointmentDto) {
+  /** `actorId`: quien hace el cambio (el dueño o alguien de su Círculo). */
+  async create(userId: string, dto: CreateAppointmentDto, actorId: string = userId) {
     const appointment = await this.prisma.appointment.create({
+      include: AUDIT_INCLUDE,
       data: {
         userId,
+        createdById: actorId,
+        updatedById: actorId,
         title: dto.title.trim(),
         doctorName: dto.doctorName.trim(),
         scheduledAt: dto.scheduledAt,
@@ -48,7 +60,7 @@ export class AppointmentsService {
     return appointment;
   }
 
-  async update(appointmentId: string, userId: string, dto: UpdateAppointmentDto) {
+  async update(appointmentId: string, userId: string, dto: UpdateAppointmentDto, actorId: string = userId) {
     // Un único UPDATE filtrado por dueño: los campos `undefined` no se tocan.
     // Reprogramar la cita (nuevo scheduledAt) reinicia la asistencia.
     const attendanceStatus = dto.attendanceStatus
@@ -72,7 +84,9 @@ export class AppointmentsService {
           active: dto.active,
           attendanceStatus,
           attendanceMarkedAt,
+          updatedById: actorId,
         },
+        include: AUDIT_INCLUDE,
       });
 
       this.logger.log('Appointment updated', { userId, appointmentId: updated.id });

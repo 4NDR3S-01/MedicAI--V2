@@ -17,6 +17,8 @@ type AppointmentData = {
   active: boolean;
   attendanceStatus: AppointmentAttendanceStatus;
   attendanceMarkedAt: string | null;
+  createdBy?: { id: string; fullName: string | null } | null;
+  updatedBy?: { id: string; fullName: string | null } | null;
   createdAt: string;
   updatedAt: string;
 };

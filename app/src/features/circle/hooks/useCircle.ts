@@ -6,7 +6,8 @@ import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
 import type { CircleInvitation, CircleMember, CircleOverview } from '../services/circle.service';
 
-const cacheKey = (ownerId?: string) => `medicai_circle_cache_v1${ownerId ? `_${ownerId}` : ''}`;
+// v2: incluye grupos y recordatorios (una caché v1 no tiene esos campos).
+const cacheKey = (ownerId?: string) => `medicai_circle_cache_v2${ownerId ? `_${ownerId}` : ''}`;
 
 export const withToken = async () => {
   const session = await getStoredSession();

@@ -112,32 +112,73 @@ export class MailService {
   async sendCircleInvitationEmail(params: {
     to: string;
     inviterName: string;
+    /** Si se invita en nombre de un perfil a cargo: quién envía la invitación. */
+    onBehalfOf?: string | null;
     relation: string;
     code: string;
     inviteUrl: string;
   }) {
+    const sender = params.onBehalfOf ?? params.inviterName;
+    const title = params.onBehalfOf
+      ? `${params.onBehalfOf} te invita a cuidar a ${params.inviterName}`
+      : `${params.inviterName} te invitó a su Círculo`;
+    const intro = params.onBehalfOf
+      ? `${params.onBehalfOf} cuida a ${params.inviterName} en MedicAI y quiere que también le ayudes con sus medicamentos y citas. Antes de aceptar verás exactamente qué podrás ver y hacer.`
+      : `${params.inviterName} (se presenta como tu ${params.relation}) quiere que se acompañen en MedicAI con sus medicamentos y citas. Antes de aceptar podrás ver qué podrá hacer cada uno y decidir qué compartes tú.`;
+
     const template = this.buildActionEmailTemplate({
-      preview: `${params.inviterName} te invitó a su Círculo en MedicAI.`,
+      preview: `${title} en MedicAI.`,
       eyebrow: 'Invitación al Círculo',
-      title: `${params.inviterName} te invitó a su Círculo`,
+      title,
       greeting: '',
-      intro: `${params.inviterName} (se presenta como tu ${params.relation}) quiere que se acompañen en MedicAI con sus medicamentos y citas. Antes de aceptar podrás ver qué podrá hacer cada uno y decidir qué compartes tú.`,
+      intro,
       actionLabel: 'Ver la invitación',
       actionUrl: params.inviteUrl,
       securityNote: `Si ya tienes la app, también puedes abrir Círculo → "Tengo un código" y escribir: ${params.code}. Si aún no tienes cuenta, regístrate con este mismo correo y la invitación te estará esperando.`,
       expiresIn: 'La invitación estará disponible durante 7 días.',
       helpText: 'Nadie verá tu información hasta que aceptes, y podrás cambiar o quitar los permisos cuando quieras.',
-      ignoreText: 'Si no conoces a esta persona, ignora este mensaje: no se compartirá nada.',
+      ignoreText: `Si no conoces a ${sender}, ignora este mensaje: no se compartirá nada.`,
     });
 
     await this.resend.emails.send({
       from: this.fromEmail,
       to: params.to,
-      subject: `${params.inviterName} te invitó a su Círculo de MedicAI`,
+      subject: `${title} en MedicAI`,
       html: template.html,
       text: template.text,
     });
     this.logger.log('Circle invitation email sent', { recipientDomain: this.getEmailDomain(params.to) });
+  }
+
+  /** "Entregar la cuenta" de un perfil a cargo: la persona crea su contraseña. */
+  async sendAccountHandoverEmail(params: {
+    to: string;
+    fullName?: string | null;
+    tutorName: string;
+    activationUrl: string;
+  }) {
+    const template = this.buildActionEmailTemplate({
+      preview: 'Ya puedes usar MedicAI con tu propia cuenta.',
+      eyebrow: 'Tu cuenta de MedicAI',
+      title: 'Ya puedes usar tu propia cuenta',
+      greeting: params.fullName?.trim() || '',
+      intro: `${params.tutorName} ha gestionado tus medicamentos y citas en MedicAI. Ahora puedes usar la app tú mismo: crea tu contraseña y tendrás acceso a toda tu información.`,
+      actionLabel: 'Crear mi contraseña',
+      actionUrl: params.activationUrl,
+      securityNote: 'Al crear tu contraseña, la cuenta pasa a ser tuya. Desde Círculo podrás decidir qué sigue viendo o gestionando cada persona.',
+      expiresIn: 'Este enlace estará disponible durante 7 días.',
+      helpText: 'Inicia sesión con este correo y la contraseña que elijas.',
+      ignoreText: 'Si no esperabas este correo, puedes ignorarlo: nada cambiará.',
+    });
+
+    await this.resend.emails.send({
+      from: this.fromEmail,
+      to: params.to,
+      subject: 'Crea tu contraseña de MedicAI',
+      html: template.html,
+      text: template.text,
+    });
+    this.logger.log('Account handover email sent', { recipientDomain: this.getEmailDomain(params.to) });
   }
 
   private buildActionEmailTemplate(params: ActionEmailTemplateParams) {

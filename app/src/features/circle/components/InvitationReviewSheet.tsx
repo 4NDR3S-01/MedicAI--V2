@@ -6,7 +6,7 @@ import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FormSheet } from '../../../shared/ui';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
-import type { CircleInvitation, CircleMember } from '../services/circle.service';
+import type { CircleGroup, CircleInvitation, CircleMember } from '../services/circle.service';
 import { hasAnyPermission, normalizePermissions, type PermissionSet } from '../utils/permissions';
 import {
   careSummary,
@@ -18,6 +18,7 @@ import {
   type RelationCode,
 } from '../utils/relations';
 import { Avatar, Badge, InfoNote, PermissionEditor, PermissionList, RelationPicker, SectionTitle } from './CircleParts';
+import { GroupPicker } from './CircleGroups';
 
 const STATE_MESSAGES: Record<Exclude<CircleInvitation['state'], 'PENDING'>, { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }> = {
   ACCEPTED: { icon: 'check-circle-outline', text: 'Ya aceptaste esta invitación. La persona está en tu Círculo.' },
@@ -32,6 +33,8 @@ export type InvitationReviewSheetProps = {
   onClose: () => void;
   onAccepted: (member: CircleMember, invitation: CircleInvitation) => void;
   onDeclined: (invitation: CircleInvitation) => void;
+  groups?: CircleGroup[];
+  onGroupCreated?: (group: CircleGroup) => void;
 };
 
 /**
@@ -39,7 +42,16 @@ export type InvitationReviewSheetProps = {
  * podrá hacer ella y qué le piden; responde "¿Qué eres para esta persona?" y
  * decide qué permisos concede (por defecto, lo solicitado).
  */
-export function InvitationReviewSheet({ theme, invitation, onClose, onAccepted, onDeclined }: Readonly<InvitationReviewSheetProps>) {
+export function InvitationReviewSheet({
+  theme,
+  invitation,
+  onClose,
+  onAccepted,
+  onDeclined,
+  groups = [],
+  onGroupCreated,
+}: Readonly<InvitationReviewSheetProps>) {
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   // Mantiene el contenido mientras el panel se cierra.
   const last = useRef(invitation);
   if (invitation) last.current = invitation;
@@ -58,12 +70,16 @@ export function InvitationReviewSheet({ theme, invitation, onClose, onAccepted, 
     setRelationText('');
     setGranted(normalizePermissions(invitation.requested));
     setShowErrors(false);
+    setGroupIds([]);
   }, [invitation]);
 
   if (!shown) return null;
 
   const inviterName = displayName(shown.inviter);
   const inviterFirst = firstName(shown.inviter);
+  // Invitación para cuidar a un perfil a cargo (p. ej. el hijo de quien invita).
+  const forDependent = Boolean(shown.inviter.isManaged);
+  const senderFirst = firstName(shown.createdBy);
   const pending = shown.state === 'PENDING';
   const careLine = careSummary(flipCare(shown.care), inviterFirst);
   const relationError = showErrors
@@ -88,7 +104,8 @@ export function InvitationReviewSheet({ theme, invitation, onClose, onAccepted, 
       const member = await circleAPI.acceptInvitation(await withToken(), shown.id, {
         relation,
         relationLabel: relation === 'OTHER' ? relationText.trim() : undefined,
-        granted,
+        granted: forDependent ? normalizePermissions(null) : granted,
+        groupIds,
       });
       onAccepted(member, shown);
     } catch (error) {
@@ -147,9 +164,15 @@ export function InvitationReviewSheet({ theme, invitation, onClose, onAccepted, 
         <Avatar name={inviterName} seed={shown.inviter.id} size={56} />
         <View style={styles.flex}>
           <Text style={[styles.inviterName, { color: theme.colors.textPrimary }]}>{inviterName}</Text>
-          <Text style={[styles.inviterEmail, { color: theme.colors.textMuted }]} numberOfLines={1}>{shown.inviter.email}</Text>
+          <Text style={[styles.inviterEmail, { color: theme.colors.textMuted }]} numberOfLines={1}>
+            {forDependent ? `Perfil a cargo de ${senderFirst}` : shown.inviter.email}
+          </Text>
           <View style={styles.badges}>
-            <Badge label={`Dice ser ${relationToMe(shown.inviterRelation).toLowerCase()}`} color={theme.colors.accentSecondary} icon="account-heart-outline" />
+            <Badge
+              label={forDependent ? `Sería ${relationToMe(shown.inviterRelation).toLowerCase()}` : `Dice ser ${relationToMe(shown.inviterRelation).toLowerCase()}`}
+              color={theme.colors.accentSecondary}
+              icon="account-heart-outline"
+            />
             {careLine ? <Badge label={careLine} color={theme.colors.accentPrimary} icon="hand-heart-outline" /> : null}
           </View>
         </View>
@@ -162,7 +185,9 @@ export function InvitationReviewSheet({ theme, invitation, onClose, onAccepted, 
       ) : (
         <>
           <Text style={[styles.lead, { color: theme.colors.textSecondary }]}>
-            {inviterFirst} te invita a su Círculo para acompañarse con medicamentos y citas. Revisa qué compartirá cada uno antes de aceptar.
+            {forDependent
+              ? `${senderFirst} te invita a cuidar de ${inviterFirst} con medicamentos y citas. ${inviterFirst} no usa la app: su información la gestionan sus cuidadores. Recibirás sus alarmas en tu teléfono (puedes desactivarlas).`
+              : `${inviterFirst} te invita a su Círculo para acompañarse con medicamentos y citas. Revisa qué compartirá cada uno antes de aceptar.`}
           </Text>
 
           <SectionTitle theme={theme} title={`¿Qué eres para ${inviterFirst}?`} />
@@ -176,15 +201,31 @@ export function InvitationReviewSheet({ theme, invitation, onClose, onAccepted, 
             error={relationError}
           />
 
-          <SectionTitle theme={theme} title="Tú podrás" hint={`Lo decidió ${inviterFirst}.`} />
+          <SectionTitle theme={theme} title="Tú podrás" hint={forDependent ? `Lo decidió ${senderFirst}.` : `Lo decidió ${inviterFirst}.`} />
           <PermissionList theme={theme} value={shown.granted} perspective="iCan" emptyText={`No verás la información de ${inviterFirst}`} />
 
-          <SectionTitle
+          {!forDependent ? (
+            <>
+              <SectionTitle
+                theme={theme}
+                title={`${inviterFirst} podrá hacer con tu información`}
+                hint={hasAnyPermission(shown.requested) ? 'Es lo que pidió. Ajústalo si quieres: tú decides.' : 'No pidió acceso. Puedes darle alguno si quieres.'}
+              />
+              <PermissionEditor theme={theme} value={granted} onChange={setGranted} />
+            </>
+          ) : null}
+
+          <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
+          <GroupPicker
             theme={theme}
-            title={`${inviterFirst} podrá hacer con tu información`}
-            hint={hasAnyPermission(shown.requested) ? `Es lo que pidió. Ajústalo si quieres: tú decides.` : 'No pidió acceso. Puedes darle alguno si quieres.'}
+            groups={groups}
+            value={groupIds}
+            onChange={setGroupIds}
+            onCreate={(group, next) => {
+              onGroupCreated?.(group);
+              setGroupIds(next);
+            }}
           />
-          <PermissionEditor theme={theme} value={granted} onChange={setGranted} />
 
           <InfoNote theme={theme} icon="shield-check-outline">
             Podrás cambiar estos permisos o salir del Círculo en cualquier momento desde el detalle de {inviterFirst}.

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEmail, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 
 import { CARE_VALUES, RELATION_CODES, RELATION_LABEL_MAX, type CareValue, type RelationCode } from '../circle.constants';
 import { PermissionsDto } from './permissions.dto';
@@ -39,6 +39,13 @@ export class CreateInvitationDto {
   @ValidateNested()
   @Type(() => PermissionsDto)
   requested!: PermissionsDto;
+
+  /** Grupos propios a los que añadir a esta persona (organización privada). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  groupIds?: string[];
 
   /** Invitar en nombre de otra persona (requiere administrar su Círculo). */
   @IsOptional()

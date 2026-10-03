@@ -61,14 +61,13 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
-  @UseGuards(JwtAuthGuard)
+  /**
+   * Basta el refresh token (que ya identifica la sesión): así el cierre de
+   * sesión funciona aunque el access token haya vencido.
+   */
   @Post('logout')
-  logout(@Body() dto: RefreshTokenDto, @Request() req: any) {
-    const userId = req.user?.sub;
-    if (!userId) {
-      throw new UnauthorizedException('Token inválido.');
-    }
-    return this.authService.logout(userId, dto.refreshToken);
+  logout(@Body() dto: RefreshTokenDto) {
+    return this.authService.logout(dto.refreshToken);
   }
 
   @Post('verify-email')

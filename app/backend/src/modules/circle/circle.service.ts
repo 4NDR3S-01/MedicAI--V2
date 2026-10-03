@@ -9,16 +9,19 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type CircleInvitation, type CircleLink } from '@prisma/client';
-import { randomInt } from 'crypto';
+import { createHash, randomBytes, randomInt } from 'crypto';
 
 import { MailService } from '../../infrastructure/mail/mail.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CircleAccessService } from './circle-access.service';
 import {
+  HANDOVER_TTL_MS,
   INVITATION_TTL_MS,
   INVITE_CODE_ALPHABET,
   INVITE_CODE_LENGTH,
+  MANAGED_EMAIL_DOMAIN,
   MAX_PENDING_INVITATIONS,
+  PERMISSION_KEYS,
   RELATION_LABELS,
   careFromFlags,
   flagsFromCare,
@@ -27,13 +30,16 @@ import {
   type CareValue,
   type CirclePermissions,
   type RelationCode,
+  type ReminderMode,
 } from './circle.constants';
 import type { AcceptInvitationDto } from './dto/accept-invitation.dto';
+import type { CreateDependentDto } from './dto/create-dependent.dto';
 import type { CreateInvitationDto } from './dto/create-invitation.dto';
+import type { UpdateDependentDto } from './dto/update-dependent.dto';
 import type { UpdateLinkDto } from './dto/update-link.dto';
 import type { UpdatePermissionsDto } from './dto/update-permissions.dto';
 
-const PERSON_SELECT = { id: true, fullName: true, email: true } satisfies Prisma.UserSelect;
+const PERSON_SELECT = { id: true, fullName: true, email: true, isManaged: true } satisfies Prisma.UserSelect;
 type Person = Prisma.UserGetPayload<{ select: typeof PERSON_SELECT }>;
 
 const LINK_INCLUDE = {
@@ -42,6 +48,28 @@ const LINK_INCLUDE = {
   grants: true,
 } satisfies Prisma.CircleLinkInclude;
 type LinkWithPeople = Prisma.CircleLinkGetPayload<{ include: typeof LINK_INCLUDE }>;
+
+const INVITATION_INCLUDE = {
+  inviter: { select: PERSON_SELECT },
+  createdBy: { select: PERSON_SELECT },
+} satisfies Prisma.CircleInvitationInclude;
+type InvitationWithPeople = Prisma.CircleInvitationGetPayload<{ include: typeof INVITATION_INCLUDE }>;
+
+const ALL_PERMISSIONS = Object.fromEntries(PERMISSION_KEYS.map((key) => [key, true])) as CirclePermissions;
+const MAX_DEPENDENTS = 20;
+const MAX_GROUPS = 30;
+/** Ventana de citas para el seguimiento: algo de historial y lo próximo. */
+const CARE_APPOINTMENTS_PAST_MS = 14 * 24 * 60 * 60 * 1000;
+const CARE_APPOINTMENTS_FUTURE_MS = 60 * 24 * 60 * 60 * 1000;
+const PERSON_NAME_SELECT = { id: true, fullName: true } as const;
+
+/** El correo interno de un perfil a cargo nunca se muestra. */
+const publicPerson = (person: Person) => ({
+  id: person.id,
+  fullName: person.fullName,
+  email: person.email.endsWith(`@${MANAGED_EMAIL_DOMAIN}`) ? '' : person.email,
+  isManaged: person.isManaged,
+});
 
 type InvitationState = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELED' | 'EXPIRED';
 
@@ -88,7 +116,7 @@ export class CircleService {
       targetId === actorId
         ? this.prisma.circleInvitation.findMany({
           where: { status: 'PENDING', expiresAt: { gt: now }, ...this.inviteeFilter(target) },
-          include: { inviter: { select: PERSON_SELECT } },
+          include: INVITATION_INCLUDE,
           orderBy: { createdAt: 'desc' },
         })
         : Promise.resolve([]),
@@ -98,16 +126,31 @@ export class CircleService {
           status: { in: ['PENDING', 'DECLINED'] },
           updatedAt: { gt: new Date(now.getTime() - SENT_HISTORY_MS) },
         },
-        include: { inviter: { select: PERSON_SELECT } },
+        include: INVITATION_INCLUDE,
         orderBy: { createdAt: 'desc' },
       }),
     ]);
 
     const sentWithAccounts = await this.markAccounts(sent);
+    // Los grupos son privados: solo se ven en el propio Círculo.
+    const activeLinkIds = new Set(links.map((link) => link.id));
+    const groups = targetId === actorId
+      ? await this.prisma.circleGroup.findMany({
+        where: { ownerId: targetId },
+        include: { members: { select: { linkId: true } } },
+        orderBy: { createdAt: 'asc' },
+      })
+      : [];
 
     return {
-      owner: target,
+      owner: publicPerson(target),
       isSelf: targetId === actorId,
+      groups: groups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        icon: group.icon,
+        linkIds: group.members.map((member) => member.linkId).filter((linkId) => activeLinkIds.has(linkId)),
+      })),
       members: links.map((link) => this.toMember(link, targetId)),
       invitations: {
         received: received.map((invitation) => this.toInvitation(invitation, now)),
@@ -162,6 +205,8 @@ export class CircleService {
     }
 
     const care = flagsFromCare(dto.care);
+    // Solo grupos propios, y solo si invito en mi nombre.
+    const inviterGroupIds = inviterId === actorId ? await this.ownGroupIds(actorId, dto.groupIds) : [];
     const invitation = await this.createWithUniqueCode((code) =>
       this.prisma.circleInvitation.create({
         data: {
@@ -175,15 +220,16 @@ export class CircleService {
           inviterRelationLabel: relationLabel,
           inviterCaresForInvitee: care.iCare,
           inviteeCaresForInviter: care.caresForMe,
+          inviterGroupIds,
           grantedPermissions: normalizePermissions(dto.granted as Record<string, unknown>),
           requestedPermissions: normalizePermissions(dto.requested as Record<string, unknown>),
           expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
         },
-        include: { inviter: { select: PERSON_SELECT } },
+        include: INVITATION_INCLUDE,
       }),
     );
 
-    if (email) this.sendInvitationEmail(invitation, inviter);
+    if (email) this.sendInvitationEmail(invitation);
     this.logger.log('Circle invitation created', { inviterId, actorId, invitationId: invitation.id, byEmail: Boolean(email) });
     return this.toInvitation(invitation, new Date(), inviteeUserId ? true : email ? false : null);
   }
@@ -198,7 +244,7 @@ export class CircleService {
     const actor = await this.findPerson(actorId, true);
     const invitation = await this.prisma.circleInvitation.findUnique({
       where: { code },
-      include: { inviter: { select: PERSON_SELECT } },
+      include: INVITATION_INCLUDE,
     });
     if (!invitation || invitation.status === 'CANCELED') {
       throw new NotFoundException('No encontramos una invitación con ese código. Revisa que esté bien escrito.');
@@ -227,6 +273,7 @@ export class CircleService {
     }
 
     const care = { aCaresForB: invitation.inviterCaresForInvitee, bCaresForA: invitation.inviteeCaresForInviter };
+    const inviterIsManaged = (await this.findPerson(invitation.inviterId)).isManaged;
     try {
       const link = await this.prisma.$transaction(async (tx) => {
         // Solo una respuesta gana aunque se acepte dos veces a la vez.
@@ -255,15 +302,28 @@ export class CircleService {
               ownerId: invitation.inviterId,
               granteeId: actorId,
               ...normalizePermissions(invitation.grantedPermissions as Record<string, unknown>),
+              // Quien acepta cuidar a un perfil a cargo recibe sus alarmas (puede cambiarlo).
+              reminderMode: inviterIsManaged ? 'ALARM' : 'OFF',
             },
             {
               linkId: created.id,
               ownerId: actorId,
               granteeId: invitation.inviterId,
-              ...normalizePermissions(dto.granted as Record<string, unknown>),
+              // Un perfil a cargo no usa la app: no tiene sentido darle permisos.
+              ...normalizePermissions(inviterIsManaged ? null : (dto.granted as Record<string, unknown>)),
             },
           ],
         });
+        const groupIds = [
+          ...(await this.ownGroupIds(invitation.inviterId, invitation.inviterGroupIds)),
+          ...(await this.ownGroupIds(actorId, dto.groupIds)),
+        ];
+        if (groupIds.length) {
+          await tx.circleGroupMember.createMany({
+            data: groupIds.map((groupId) => ({ groupId, linkId: created.id })),
+            skipDuplicates: true,
+          });
+        }
         return tx.circleLink.findUniqueOrThrow({
           where: { id: created.id },
           include: LINK_INCLUDE,
@@ -319,9 +379,9 @@ export class CircleService {
         inviteeUserId: invitation.inviteeEmail ? invitation.inviteeUserId : null,
         expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
       },
-      include: { inviter: { select: PERSON_SELECT } },
+      include: INVITATION_INCLUDE,
     });
-    if (updated.inviteeEmail) this.sendInvitationEmail(updated, updated.inviter);
+    if (updated.inviteeEmail) this.sendInvitationEmail(updated);
     const [{ hasAccount }] = await this.markAccounts([updated]);
     return this.toInvitation(updated, new Date(), hasAccount);
   }
@@ -393,6 +453,7 @@ export class CircleService {
     const targetId = await this.access.resolveOwner(actorId, ownerId, 'manageCircle');
     const link = await this.findActiveLinkById(linkId);
     if (!this.sideOf(link, targetId)) throw new NotFoundException('Vínculo no encontrado.');
+    await this.assertNotLastGuardian(link);
 
     await this.prisma.$transaction([
       this.prisma.circleGrant.deleteMany({ where: { linkId: link.id } }),
@@ -423,6 +484,288 @@ export class CircleService {
     });
     if (!user) throw new NotFoundException('Persona no encontrada.');
     return user;
+  }
+
+  // ─── Grupos (privados, solo organizan) ─────────────────────────────────────
+
+  async createGroup(actorId: string, name: string, icon?: string) {
+    const count = await this.prisma.circleGroup.count({ where: { ownerId: actorId } });
+    if (count >= MAX_GROUPS) throw new BadRequestException('Llegaste al máximo de grupos.');
+    const group = await this.prisma.circleGroup.create({
+      data: { ownerId: actorId, name: name.trim(), icon: icon ?? 'account-group' },
+    });
+    return { id: group.id, name: group.name, icon: group.icon, linkIds: [] as string[] };
+  }
+
+  async updateGroup(actorId: string, groupId: string, data: { name?: string; icon?: string }) {
+    const { count } = await this.prisma.circleGroup.updateMany({
+      where: { id: groupId, ownerId: actorId },
+      data: { name: data.name?.trim(), icon: data.icon },
+    });
+    if (!count) throw new NotFoundException('Grupo no encontrado.');
+    return { message: 'Grupo actualizado.' };
+  }
+
+  /** Borra el grupo; las personas siguen en el Círculo. */
+  async deleteGroup(actorId: string, groupId: string) {
+    const { count } = await this.prisma.circleGroup.deleteMany({ where: { id: groupId, ownerId: actorId } });
+    if (!count) throw new NotFoundException('Grupo no encontrado.');
+    return { message: 'Grupo eliminado. Las personas siguen en tu Círculo.' };
+  }
+
+  /** Define en qué grupos propios está la otra persona de un vínculo. */
+  async setLinkGroups(actorId: string, linkId: string, groupIds: string[]) {
+    const link = await this.findActiveLinkById(linkId);
+    if (!this.sideOf(link, actorId)) throw new NotFoundException('Vínculo no encontrado.');
+    const valid = await this.ownGroupIds(actorId, groupIds);
+    await this.prisma.$transaction([
+      this.prisma.circleGroupMember.deleteMany({ where: { linkId, group: { ownerId: actorId } } }),
+      this.prisma.circleGroupMember.createMany({ data: valid.map((groupId) => ({ groupId, linkId })) }),
+    ]);
+    return { linkId, groupIds: valid };
+  }
+
+  private async ownGroupIds(ownerId: string, groupIds: string[] | undefined | null) {
+    if (!groupIds?.length) return [];
+    const groups = await this.prisma.circleGroup.findMany({
+      where: { ownerId, id: { in: [...new Set(groupIds)] } },
+      select: { id: true },
+    });
+    return groups.map((group) => group.id);
+  }
+
+  // ─── Seguimiento (varias personas en una sola petición) ────────────────────
+
+  /**
+   * Medicamentos, tomas desde `since` y citas cercanas de TODAS las personas
+   * que comparten esa información con el actor. Pensado para cuidadores y
+   * profesionales con muchas personas: una petición en vez de una por persona.
+   */
+  async careData(actorId: string, since: Date) {
+    const grants = await this.prisma.circleGrant.findMany({
+      where: {
+        granteeId: actorId,
+        link: { status: 'ACTIVE' },
+        OR: [{ viewMedications: true }, { viewAppointments: true }],
+      },
+      select: { ownerId: true, viewMedications: true, viewAppointments: true },
+    });
+    const medOwners = grants.filter((grant) => grant.viewMedications).map((grant) => grant.ownerId);
+    const apptOwners = grants.filter((grant) => grant.viewAppointments).map((grant) => grant.ownerId);
+    const now = Date.now();
+
+    const [medications, logs, appointments] = await Promise.all([
+      medOwners.length
+        ? this.prisma.medication.findMany({
+          where: { userId: { in: medOwners } },
+          orderBy: { createdAt: 'desc' },
+          include: { createdBy: { select: PERSON_NAME_SELECT }, updatedBy: { select: PERSON_NAME_SELECT } },
+        })
+        : Promise.resolve([]),
+      medOwners.length
+        ? this.prisma.medicationLog.findMany({
+          where: {
+            medication: { userId: { in: medOwners } },
+            OR: [{ takenAt: { gte: since } }, { scheduledFor: { gte: since } }],
+          },
+          include: { loggedBy: { select: PERSON_NAME_SELECT }, medication: { select: { userId: true } } },
+          orderBy: { takenAt: 'desc' },
+          take: 5000,
+        })
+        : Promise.resolve([]),
+      apptOwners.length
+        ? this.prisma.appointment.findMany({
+          where: {
+            userId: { in: apptOwners },
+            active: true,
+            scheduledAt: { gte: new Date(now - CARE_APPOINTMENTS_PAST_MS), lte: new Date(now + CARE_APPOINTMENTS_FUTURE_MS) },
+          },
+          orderBy: { scheduledAt: 'asc' },
+          include: { createdBy: { select: PERSON_NAME_SELECT }, updatedBy: { select: PERSON_NAME_SELECT } },
+        })
+        : Promise.resolve([]),
+    ]);
+
+    return grants.map((grant) => ({
+      ownerId: grant.ownerId,
+      medications: grant.viewMedications ? medications.filter((item) => item.userId === grant.ownerId) : null,
+      logs: grant.viewMedications
+        ? logs.filter((log) => log.medication.userId === grant.ownerId).map(({ medication: _medication, ...log }) => log)
+        : null,
+      appointments: grant.viewAppointments ? appointments.filter((item) => item.userId === grant.ownerId) : null,
+    }));
+  }
+
+  // ─── Recordatorios para cuidadores ─────────────────────────────────────────
+
+  /** Recibir (o no) en mi teléfono los recordatorios de la otra persona del vínculo. */
+  async updateReminders(actorId: string, linkId: string, mode: ReminderMode) {
+    const link = await this.findActiveLinkById(linkId);
+    const side = this.sideOf(link, actorId);
+    if (!side) throw new NotFoundException('Vínculo no encontrado.');
+    const otherId = side === 'A' ? link.userBId : link.userAId;
+
+    const grant = await this.prisma.circleGrant.findUnique({ where: { linkId_ownerId: { linkId: link.id, ownerId: otherId } } });
+    if (mode !== 'OFF' && !(grant?.viewMedications || grant?.viewAppointments)) {
+      throw new BadRequestException('Para recibir sus recordatorios, esta persona debe permitirte ver sus medicamentos o sus citas.');
+    }
+    if (grant) await this.prisma.circleGrant.update({ where: { id: grant.id }, data: { reminderMode: mode } });
+
+    const updated = await this.prisma.circleLink.findUniqueOrThrow({ where: { id: link.id }, include: LINK_INCLUDE });
+    return this.toMember(updated, actorId);
+  }
+
+  // ─── Perfiles a cargo ──────────────────────────────────────────────────────
+
+  /**
+   * Crea una persona sin cuenta propia (p. ej. un hijo pequeño) a cargo del
+   * actor: el actor recibe todos los permisos sobre su información, incluido
+   * administrar su Círculo (para añadir a otro tutor), y sus alarmas.
+   */
+  async createDependent(actorId: string, dto: CreateDependentDto) {
+    const actor = await this.findPerson(actorId);
+    if (actor.isManaged) throw new ForbiddenException('Esta cuenta no puede crear perfiles.');
+
+    const count = await this.prisma.user.count({ where: { managedById: actorId, isManaged: true } });
+    if (count >= MAX_DEPENDENTS) {
+      throw new BadRequestException('Llegaste al máximo de perfiles a cargo.');
+    }
+
+    const relationLabel = this.relationLabel(dto.relation, dto.relationLabel);
+    const myRelationLabel = this.relationLabel(dto.myRelation, dto.myRelationLabel);
+
+    const link = await this.prisma.$transaction(async (tx) => {
+      const dependent = await tx.user.create({
+        data: {
+          email: `${randomBytes(12).toString('hex')}@${MANAGED_EMAIL_DOMAIN}`,
+          // Hash imposible: nadie puede iniciar sesión hasta entregar la cuenta.
+          passwordHash: `!managed:${randomBytes(16).toString('hex')}`,
+          fullName: dto.fullName.trim(),
+          birthDate: dto.birthDate || null,
+          allergies: dto.allergies?.trim() || null,
+          conditions: dto.conditions?.trim() || null,
+          isManaged: true,
+          managedById: actorId,
+        },
+      });
+      const created = await tx.circleLink.create({
+        data: {
+          userAId: actorId,
+          userBId: dependent.id,
+          relationA: dto.myRelation,
+          relationALabel: myRelationLabel,
+          relationB: dto.relation,
+          relationBLabel: relationLabel,
+          aCaresForB: true,
+          bCaresForA: false,
+        },
+      });
+      await tx.circleGrant.createMany({
+        data: [
+          { linkId: created.id, ownerId: dependent.id, granteeId: actorId, ...ALL_PERMISSIONS, reminderMode: 'ALARM' },
+          { linkId: created.id, ownerId: actorId, granteeId: dependent.id },
+        ],
+      });
+      return tx.circleLink.findUniqueOrThrow({ where: { id: created.id }, include: LINK_INCLUDE });
+    });
+
+    this.logger.log('Dependent profile created', { actorId, dependentId: link.userBId });
+    return this.toMember(link, actorId);
+  }
+
+  async updateDependent(actorId: string, dependentId: string, dto: UpdateDependentDto) {
+    await this.assertManagesDependent(actorId, dependentId);
+    await this.prisma.user.update({
+      where: { id: dependentId },
+      data: {
+        fullName: dto.fullName?.trim(),
+        birthDate: dto.birthDate === undefined ? undefined : dto.birthDate || null,
+        allergies: dto.allergies === undefined ? undefined : dto.allergies.trim() || null,
+        conditions: dto.conditions === undefined ? undefined : dto.conditions.trim() || null,
+      },
+    });
+    const link = await this.prisma.circleLink.findFirstOrThrow({
+      where: {
+        status: 'ACTIVE',
+        OR: [
+          { userAId: actorId, userBId: dependentId },
+          { userAId: dependentId, userBId: actorId },
+        ],
+      },
+      include: LINK_INCLUDE,
+    });
+    return this.toMember(link, actorId);
+  }
+
+  /** Borra el perfil y TODA su información (medicamentos, citas, vínculos). */
+  async deleteDependent(actorId: string, dependentId: string) {
+    await this.assertManagesDependent(actorId, dependentId);
+    await this.prisma.user.delete({ where: { id: dependentId } });
+    this.logger.log('Dependent profile deleted', { actorId, dependentId });
+    return { message: 'Perfil eliminado.' };
+  }
+
+  /**
+   * "Entregar la cuenta": la persona recibe un enlace en su correo para crear
+   * su contraseña. Al hacerlo, la cuenta deja de estar a cargo y pasa a ser
+   * suya; los tutores conservan sus permisos hasta que ella decida otra cosa.
+   */
+  async handoverDependent(actorId: string, dependentId: string, rawEmail: string) {
+    await this.assertManagesDependent(actorId, dependentId);
+    const email = rawEmail.trim().toLowerCase();
+    const taken = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (taken && taken.id !== dependentId) {
+      throw new ConflictException('Ese correo ya tiene una cuenta en MedicAI. Usa otro correo.');
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const dependent = await this.prisma.$transaction(async (tx) => {
+      await tx.passwordResetToken.deleteMany({ where: { userId: dependentId, consumedAt: null } });
+      await tx.passwordResetToken.create({
+        data: {
+          userId: dependentId,
+          tokenHash: createHash('sha256').update(token).digest('hex'),
+          expiresAt: new Date(Date.now() + HANDOVER_TTL_MS),
+        },
+      });
+      return tx.user.update({ where: { id: dependentId }, data: { email }, select: PERSON_SELECT });
+    });
+    const tutor = await this.findPerson(actorId);
+
+    const base = this.config.getOrThrow<string>('APP_BASE_URL').replace(/\/$/, '');
+    await this.mail.sendAccountHandoverEmail({
+      to: email,
+      fullName: dependent.fullName,
+      tutorName: tutor.fullName?.trim() || tutor.email,
+      activationUrl: `${base}/auth/reset-password?token=${encodeURIComponent(token)}`,
+    });
+    this.logger.log('Dependent handover started', { actorId, dependentId });
+    return { message: `Enviamos un enlace a ${email} para que cree su contraseña.` };
+  }
+
+  private async assertManagesDependent(actorId: string, dependentId: string) {
+    await this.access.resolveOwner(actorId, dependentId, 'manageCircle');
+    if (dependentId === actorId) throw new ForbiddenException('Acción no permitida.');
+    const dependent = await this.findPerson(dependentId);
+    if (!dependent.isManaged) {
+      throw new ForbiddenException('Esta persona ya gestiona su propia cuenta.');
+    }
+  }
+
+  /** Un perfil a cargo no puede quedarse sin nadie que lo administre. */
+  private async assertNotLastGuardian(link: CircleLink) {
+    const [a, b] = await Promise.all([this.findPerson(link.userAId), this.findPerson(link.userBId)]);
+    const dependent = a.isManaged ? a : b.isManaged ? b : null;
+    if (!dependent) return;
+    const others = await this.prisma.circleGrant.count({
+      where: { ownerId: dependent.id, manageCircle: true, linkId: { not: link.id }, link: { status: 'ACTIVE' } },
+    });
+    if (!others) {
+      const name = dependent.fullName?.trim() || 'esta persona';
+      throw new BadRequestException(
+        `Nadie más administra a ${name}. Agrega a otro cuidador con permiso para administrar su Círculo, o elimina su perfil.`,
+      );
+    }
   }
 
   // ─── Ayudantes ─────────────────────────────────────────────────────────────
@@ -569,7 +912,7 @@ export class CircleService {
   }
 
   private toInvitation(
-    invitation: CircleInvitation & { inviter: Person },
+    invitation: InvitationWithPeople,
     now: Date,
     inviteeHasAccount: boolean | null = null,
   ) {
@@ -578,7 +921,9 @@ export class CircleService {
       code: this.formatCode(invitation.code),
       link: this.inviteUrl(invitation.code),
       state: this.stateOf(invitation, now),
-      inviter: invitation.inviter,
+      inviter: publicPerson(invitation.inviter),
+      /** Quien la creó: distinto del inviter si se invita en nombre de otra persona. */
+      createdBy: publicPerson(invitation.createdBy),
       inviteeEmail: invitation.inviteeEmail,
       inviteeName: invitation.inviteeName,
       inviteeHasAccount,
@@ -599,9 +944,10 @@ export class CircleService {
     const grantFor = (ownerId: string): CirclePermissions =>
       pickPermissions(link.grants.find((grant) => grant.ownerId === ownerId) ?? null);
 
+    const theirGrant = link.grants.find((grant) => grant.ownerId === other.id);
     return {
       linkId: link.id,
-      person: other,
+      person: publicPerson(other),
       /** Lo que la otra persona es para mí. */
       relation: viewerIsA
         ? { code: link.relationB, label: link.relationBLabel }
@@ -617,19 +963,24 @@ export class CircleService {
       theyCan: grantFor(viewerId),
       /** Lo que yo puedo hacer con la información de la otra persona. */
       iCan: grantFor(other.id),
+      /** Si recibo en mi teléfono sus recordatorios (y cómo). */
+      reminders: (theirGrant?.reminderMode ?? 'OFF') as ReminderMode,
       since: link.createdAt,
     };
   }
 
-  private sendInvitationEmail(invitation: CircleInvitation, inviter: Person) {
+  private sendInvitationEmail(invitation: InvitationWithPeople) {
     if (!invitation.inviteeEmail) return;
     const relation = invitation.inviterRelation === 'OTHER'
       ? invitation.inviterRelationLabel ?? RELATION_LABELS.OTHER
       : RELATION_LABELS[invitation.inviterRelation as RelationCode] ?? RELATION_LABELS.OTHER;
+    const nameOf = (person: Person) => person.fullName?.trim() || person.email;
     void this.mail
       .sendCircleInvitationEmail({
         to: invitation.inviteeEmail,
-        inviterName: inviter.fullName?.trim() || inviter.email,
+        inviterName: nameOf(invitation.inviter),
+        // Perfil a cargo: la invitación la envía su tutor para que le ayudes a cuidarlo.
+        onBehalfOf: invitation.inviter.isManaged ? nameOf(invitation.createdBy) : null,
         relation,
         code: this.formatCode(invitation.code),
         inviteUrl: this.inviteUrl(invitation.code),
@@ -638,5 +989,6 @@ export class CircleService {
         this.logger.error('Circle invitation email failed', error as Error, { invitationId: invitation.id });
       });
   }
+
 }
 

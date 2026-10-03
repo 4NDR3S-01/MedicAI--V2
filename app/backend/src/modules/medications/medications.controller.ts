@@ -59,7 +59,7 @@ export class MedicationsController {
   @Post()
   async create(@Body() dto: CreateMedicationDto, @Query() query: OwnerQueryDto, @Request() req: any) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'addMedications');
-    return this.medicationsService.create(ownerId, dto);
+    return this.medicationsService.create(ownerId, dto, req.user?.sub);
   }
 
   @Put(':id')
@@ -74,7 +74,7 @@ export class MedicationsController {
     if (touches(DETAIL_FIELDS)) required.push('editMedications');
     if (touches(REMINDER_FIELDS)) required.push('manageReminders');
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, required);
-    return this.medicationsService.update(medicationId, ownerId, dto);
+    return this.medicationsService.update(medicationId, ownerId, dto, req.user?.sub);
   }
 
   @Delete(':id')
@@ -109,6 +109,6 @@ export class MedicationsController {
     @Request() req: any,
   ) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'logDoses');
-    return this.medicationsService.logAction(medicationId, ownerId, dto.action, dto.scheduledFor);
+    return this.medicationsService.logAction(medicationId, ownerId, dto.action, dto.scheduledFor, req.user?.sub);
   }
 }

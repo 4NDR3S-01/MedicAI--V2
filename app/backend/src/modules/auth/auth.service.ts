@@ -16,6 +16,7 @@ import { MailService } from '../../infrastructure/mail/mail.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { MANAGED_EMAIL_DOMAIN } from '../circle/circle.constants';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const EMAIL_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
@@ -218,6 +219,12 @@ export class AuthService {
       throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
 
+    // Perfil a cargo de otra persona: aún no tiene contraseña propia.
+    if (user.isManaged) {
+      this.logger.warn('Login rejected', { reason: 'managed_profile', userId: user.id });
+      throw new UnauthorizedException('Esta cuenta todavía no está activada. Usa el enlace que te enviaron por correo para crear tu contraseña.');
+    }
+
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       this.logger.warn('Login rejected', {
@@ -274,15 +281,21 @@ export class AuthService {
     return tokens;
   }
 
-  async logout(userId: string, refreshToken: string) {
-    if (!userId) {
-      throw new UnauthorizedException('Usuario no autenticado.');
-    }
-
+  async logout(refreshToken: string) {
     const payload = await this.verifyRefreshToken(refreshToken);
+    const presentedHash = this.hashToken(refreshToken);
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, refreshTokenHash: true },
+    });
 
-    if (payload.sub !== userId) {
-      throw new UnauthorizedException('Token no pertenece al usuario autenticado.');
+    // Solo el refresh token vigente cierra la sesión: uno antiguo (ya rotado)
+    // no puede usarse para echar al usuario de su sesión actual.
+    const isCurrent = Boolean(
+      user?.refreshTokenHash && (await this.matchesRefreshTokenHash(refreshToken, presentedHash, user.refreshTokenHash)),
+    );
+    if (!isCurrent) {
+      return { message: 'Sesión cerrada correctamente.' };
     }
 
     await this.prisma.user.update({
@@ -373,7 +386,8 @@ export class AuthService {
     const email = emailRaw.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
 
-    if (!user) {
+    // Los perfiles a cargo sin correo real (dominio reservado) no reciben nada.
+    if (!user || user.email.endsWith(`@${MANAGED_EMAIL_DOMAIN}`)) {
       return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
     }
 
@@ -414,6 +428,10 @@ export class AuthService {
         data: {
           passwordHash,
           refreshTokenHash: null,
+          // Perfil a cargo que recibe su cuenta ("entregar cuenta"): crear la
+          // contraseña con el enlace del correo confirma ese correo y lo activa.
+          isManaged: false,
+          isEmailVerified: true,
         },
       }),
       this.prisma.passwordResetToken.update({
