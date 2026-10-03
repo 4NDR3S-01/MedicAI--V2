@@ -5,7 +5,7 @@ import { Alert, Animated, AppState, Linking, Modal, Pressable, StyleSheet, Text,
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import { LOGO_SOURCE } from '../shared/ui';
+import { LOGO_SOURCE, PortalProvider } from '../shared/ui';
 import {
   AuthActionStatusScreen,
   clearRegisterDraft,
@@ -42,6 +42,7 @@ import {
   snoozeAppointmentReminder,
 } from '../shared/services/notifications.service';
 import { emitDoseAction } from '../shared/services/dose-refresh-bus';
+import { parseCircleInviteCode, setPendingCircleInvite } from '../features/circle';
 import AlarmNative from '../shared/native/AlarmNative';
 import { logMedicationAction, fetchMedications } from '../features/tabs/services/medications.service';
 
@@ -397,6 +398,14 @@ export function AppRoot() {
 
   useEffect(() => {
     const handleAuthCallbackUrl = async (url: string) => {
+      // Invitación al Círculo: se guarda y la abre la pantalla Círculo
+      // (aunque haya que iniciar sesión antes).
+      const circleCode = parseCircleInviteCode(url);
+      if (circleCode) {
+        void setPendingCircleInvite(circleCode);
+        return;
+      }
+
       let parsedUrl: URL;
       try {
         parsedUrl = new URL(url);
@@ -1263,6 +1272,9 @@ export function AppRoot() {
 
   return (
     <SafeAreaProvider>
+      {/* Capa para paneles propios (FormSheet): cubre toda la pantalla y, a
+          diferencia de <Modal>, gestiona bien el teclado en Android. */}
+      <PortalProvider>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <StatusBar style={statusBarStyle} />
         <View style={{ flex: 1 }}>
@@ -1328,6 +1340,7 @@ export function AppRoot() {
           </View>
         </Modal>
       </SafeAreaView>
+      </PortalProvider>
     </SafeAreaProvider>
   );
 }

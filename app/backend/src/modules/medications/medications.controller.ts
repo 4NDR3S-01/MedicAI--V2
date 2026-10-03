@@ -1,21 +1,42 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Request, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Request, UseGuards } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+import { CircleAccessService } from '../circle/circle-access.service';
+import type { PermissionKey } from '../circle/circle.constants';
+import { OwnerQueryDto } from '../circle/dto/owner-query.dto';
 import { MedicationsService } from './medications.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
 import { LogMedicationActionDto } from './dto/log-medication-action.dto';
 import { MedicationLogsQueryDto } from './dto/medication-logs-query.dto';
 import { UpdateMedicationDto } from './dto/update-medication.dto';
 
+/** Campos que cambian los horarios o las alarmas (no la ficha del medicamento). */
+const REMINDER_FIELDS: (keyof UpdateMedicationDto)[] = [
+  'frequency',
+  'firstDoseTime',
+  'times',
+  'customIntervalHours',
+  'customEndDate',
+  'active',
+];
+const DETAIL_FIELDS: (keyof UpdateMedicationDto)[] = ['name', 'dosage', 'notes'];
+
+/**
+ * Todas las rutas aceptan `?ownerId=` para actuar sobre los medicamentos de
+ * otra persona del Círculo; CircleAccessService comprueba el permiso concreto.
+ */
 @Controller('medications')
 @UseGuards(JwtAuthGuard)
 export class MedicationsController {
-  constructor(private readonly medicationsService: MedicationsService) {}
+  constructor(
+    private readonly medicationsService: MedicationsService,
+    private readonly access: CircleAccessService,
+  ) {}
 
   @Get()
-  findAll(@Request() req: any) {
-    const userId = req.user?.sub;
-    return this.medicationsService.findAll(userId);
+  async findAll(@Query() query: OwnerQueryDto, @Request() req: any) {
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'viewMedications');
+    return this.medicationsService.findAll(ownerId);
   }
 
   /**
@@ -24,58 +45,70 @@ export class MedicationsController {
    * Debe declararse antes de `:id` para que Express no lo capture como id.
    */
   @Get('logs')
-  findLogsSince(@Query() query: MedicationLogsQueryDto, @Request() req: any) {
-    const userId = req.user?.sub;
-    if (!userId) throw new UnauthorizedException();
-    return this.medicationsService.findLogsSince(userId, new Date(query.since));
+  async findLogsSince(@Query() query: MedicationLogsQueryDto, @Request() req: any) {
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'viewMedications');
+    return this.medicationsService.findLogsSince(ownerId, new Date(query.since));
   }
 
   @Get(':id')
-  findById(@Param('id') medicationId: string, @Request() req: any) {
-    const userId = req.user?.sub;
-    return this.medicationsService.findById(medicationId, userId);
+  async findById(@Param('id') medicationId: string, @Query() query: OwnerQueryDto, @Request() req: any) {
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'viewMedications');
+    return this.medicationsService.findById(medicationId, ownerId);
   }
 
   @Post()
-  create(@Body() dto: CreateMedicationDto, @Request() req: any) {
-    const userId = req.user?.sub;
-    return this.medicationsService.create(userId, dto);
+  async create(@Body() dto: CreateMedicationDto, @Query() query: OwnerQueryDto, @Request() req: any) {
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'addMedications');
+    return this.medicationsService.create(ownerId, dto);
   }
 
   @Put(':id')
-  update(
+  async update(
     @Param('id') medicationId: string,
     @Body() dto: UpdateMedicationDto,
+    @Query() query: OwnerQueryDto,
     @Request() req: any,
   ) {
-    const userId = req.user?.sub;
-    return this.medicationsService.update(medicationId, userId, dto);
+    const touches = (fields: (keyof UpdateMedicationDto)[]) => fields.some((field) => dto[field] !== undefined);
+    const required: PermissionKey[] = ['viewMedications'];
+    if (touches(DETAIL_FIELDS)) required.push('editMedications');
+    if (touches(REMINDER_FIELDS)) required.push('manageReminders');
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, required);
+    return this.medicationsService.update(medicationId, ownerId, dto);
   }
 
   @Delete(':id')
-  delete(@Param('id') medicationId: string, @Request() req: any) {
-    const userId = req.user?.sub;
-    return this.medicationsService.delete(medicationId, userId);
+  async delete(@Param('id') medicationId: string, @Query() query: OwnerQueryDto, @Request() req: any) {
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'deleteMedications');
+    return this.medicationsService.delete(medicationId, ownerId);
   }
 
   @Get(':id/logs')
-  getLogs(
+  async getLogs(@Param('id') medicationId: string, @Query() query: OwnerQueryDto, @Request() req: any) {
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'viewMedications');
+    return this.medicationsService.getLogs(medicationId, ownerId);
+  }
+
+  /** Deshace un registro de toma (p. ej. marcado por error). */
+  @Delete(':id/logs/:logId')
+  async deleteLog(
     @Param('id') medicationId: string,
+    @Param('logId') logId: string,
+    @Query() query: OwnerQueryDto,
     @Request() req: any,
   ) {
-    const userId = req.user?.sub;
-    if (!userId) throw new UnauthorizedException();
-    return this.medicationsService.getLogs(medicationId, userId);
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'logDoses');
+    return this.medicationsService.deleteLog(medicationId, ownerId, logId);
   }
 
   @Post(':id/logs')
-  logAction(
+  async logAction(
     @Param('id') medicationId: string,
     @Body() dto: LogMedicationActionDto,
+    @Query() query: OwnerQueryDto,
     @Request() req: any,
   ) {
-    const userId = req.user?.sub;
-    if (!userId) throw new UnauthorizedException();
-    return this.medicationsService.logAction(medicationId, userId, dto.action, dto.scheduledFor);
+    const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'logDoses');
+    return this.medicationsService.logAction(medicationId, ownerId, dto.action, dto.scheduledFor);
   }
 }

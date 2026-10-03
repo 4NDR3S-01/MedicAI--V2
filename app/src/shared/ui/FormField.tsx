@@ -10,7 +10,7 @@ import {
   type TextInputProps,
 } from "react-native";
 
-import type { AppTheme } from "../../../../shared/theme";
+import type { AppTheme } from "../theme";
 
 export const ERROR_COLOR = "#D64545";
 

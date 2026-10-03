@@ -39,7 +39,7 @@ import type {
   PersonalErrors,
   PersonalField,
 } from "../../utils/register.validation";
-import { FieldShell, TextField, useFieldColors } from "./FormField";
+import { FieldShell, TextField, useFieldColors } from "../../../../shared/ui/FormField";
 import { MedicalMultiSelect } from "./MedicalMultiSelect";
 
 export type EmailStatus = "idle" | "checking" | "available" | "taken" | "error";

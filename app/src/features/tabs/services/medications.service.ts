@@ -3,6 +3,7 @@ import {
   parseApiErrorMessage,
   readResponseBody,
   requestWithAutoRefresh,
+  withOwner,
 } from './http';
 
 type MedicationData = {
@@ -17,6 +18,8 @@ type MedicationData = {
   customIntervalHours?: number | null;
   customEndDate?: string | null;
   active: boolean;
+  /** Última activación: las tomas anteriores no cuentan. */
+  activeSince?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,10 +35,10 @@ type CreateMedicationPayload = {
   customEndDate?: string | null;
 };
 
-export async function fetchMedications(accessToken: string): Promise<MedicationData[]> {
+export async function fetchMedications(accessToken: string, ownerId?: string): Promise<MedicationData[]> {
   ensureApiBaseUrl();
 
-  const response = await requestWithAutoRefresh('/medications', 'GET', accessToken);
+  const response = await requestWithAutoRefresh(withOwner('/medications', ownerId), 'GET', accessToken);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudieron cargar los medicamentos'));
@@ -47,10 +50,11 @@ export async function fetchMedications(accessToken: string): Promise<MedicationD
 export async function createMedication(
   accessToken: string,
   payload: CreateMedicationPayload,
+  ownerId?: string,
 ): Promise<MedicationData> {
   ensureApiBaseUrl();
 
-  const response = await requestWithAutoRefresh('/medications', 'POST', accessToken, payload);
+  const response = await requestWithAutoRefresh(withOwner('/medications', ownerId), 'POST', accessToken, payload);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo crear el medicamento'));
@@ -63,11 +67,12 @@ export async function updateMedication(
   medicationId: string,
   accessToken: string,
   payload: Partial<CreateMedicationPayload> & { active?: boolean },
+  ownerId?: string,
 ): Promise<MedicationData> {
   ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh(
-    `/medications/${medicationId}`,
+    withOwner(`/medications/${medicationId}`, ownerId),
     'PUT',
     accessToken,
     payload,
@@ -80,10 +85,10 @@ export async function updateMedication(
   return readResponseBody<MedicationData>(response);
 }
 
-export async function deleteMedication(medicationId: string, accessToken: string): Promise<void> {
+export async function deleteMedication(medicationId: string, accessToken: string, ownerId?: string): Promise<void> {
   ensureApiBaseUrl();
 
-  const response = await requestWithAutoRefresh(`/medications/${medicationId}`, 'DELETE', accessToken);
+  const response = await requestWithAutoRefresh(withOwner(`/medications/${medicationId}`, ownerId), 'DELETE', accessToken);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo eliminar el medicamento'));
@@ -96,7 +101,7 @@ export async function deleteMedication(medicationId: string, accessToken: string
  * Desde el inicio del día local o del día UTC, el que sea anterior: quienes
  * consumen estos logs filtran "hoy" en una u otra referencia.
  */
-export async function fetchTodayMedicationLogs(accessToken: string): Promise<MedicationLog[]> {
+export async function fetchTodayMedicationLogs(accessToken: string, ownerId?: string): Promise<MedicationLog[]> {
   ensureApiBaseUrl();
 
   const localStart = new Date();
@@ -106,7 +111,7 @@ export async function fetchTodayMedicationLogs(accessToken: string): Promise<Med
   const since = new Date(Math.min(localStart.getTime(), utcStart.getTime())).toISOString();
 
   const response = await requestWithAutoRefresh(
-    `/medications/logs?since=${encodeURIComponent(since)}`,
+    withOwner(`/medications/logs?since=${encodeURIComponent(since)}`, ownerId),
     'GET',
     accessToken,
   );
@@ -123,7 +128,8 @@ export async function logMedicationAction(
   accessToken: string,
   action: 'TAKEN' | 'SKIPPED' | 'SNOOZED',
   scheduledFor?: string,
-): Promise<void> {
+  ownerId?: string,
+): Promise<MedicationLog> {
   ensureApiBaseUrl();
 
   const body: Record<string, unknown> = { action };
@@ -132,15 +138,36 @@ export async function logMedicationAction(
   }
 
   const response = await requestWithAutoRefresh(
-    `/medications/${medicationId}/logs`,
+    withOwner(`/medications/${medicationId}/logs`, ownerId),
     'POST',
     accessToken,
     body,
   );
 
   if (!response.ok) {
-    const errorMsg = await parseApiErrorMessage(response, 'No se pudo registrar la accion');
+    const errorMsg = await parseApiErrorMessage(response, 'No se pudo registrar la acción');
     throw new Error(errorMsg);
+  }
+
+  return readResponseBody<MedicationLog>(response);
+}
+
+export async function deleteMedicationLog(
+  medicationId: string,
+  logId: string,
+  accessToken: string,
+  ownerId?: string,
+): Promise<void> {
+  ensureApiBaseUrl();
+
+  const response = await requestWithAutoRefresh(
+    withOwner(`/medications/${medicationId}/logs/${logId}`, ownerId),
+    'DELETE',
+    accessToken,
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseApiErrorMessage(response, 'No se pudo deshacer el registro'));
   }
 }
 

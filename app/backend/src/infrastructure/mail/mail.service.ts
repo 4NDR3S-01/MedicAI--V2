@@ -36,7 +36,7 @@ export class MailService {
     fullName?: string | null;
     verificationUrl: string;
   }) {
-    const greeting = params.fullName?.trim() || 'Hola';
+    const greeting = params.fullName?.trim() || '';
     const template = this.buildActionEmailTemplate({
       preview: 'Confirma tu correo para activar tu cuenta de MedicAI.',
       eyebrow: 'Verificación de cuenta',
@@ -75,7 +75,7 @@ export class MailService {
     fullName?: string | null;
     resetUrl: string;
   }) {
-    const greeting = params.fullName?.trim() || 'Hola';
+    const greeting = params.fullName?.trim() || '';
     const template = this.buildActionEmailTemplate({
       preview: 'Usa este enlace para crear una nueva contraseña en MedicAI.',
       eyebrow: 'Seguridad de cuenta',
@@ -107,6 +107,37 @@ export class MailService {
       });
       throw error;
     }
+  }
+
+  async sendCircleInvitationEmail(params: {
+    to: string;
+    inviterName: string;
+    relation: string;
+    code: string;
+    inviteUrl: string;
+  }) {
+    const template = this.buildActionEmailTemplate({
+      preview: `${params.inviterName} te invitó a su Círculo en MedicAI.`,
+      eyebrow: 'Invitación al Círculo',
+      title: `${params.inviterName} te invitó a su Círculo`,
+      greeting: '',
+      intro: `${params.inviterName} (se presenta como tu ${params.relation}) quiere que se acompañen en MedicAI con sus medicamentos y citas. Antes de aceptar podrás ver qué podrá hacer cada uno y decidir qué compartes tú.`,
+      actionLabel: 'Ver la invitación',
+      actionUrl: params.inviteUrl,
+      securityNote: `Si ya tienes la app, también puedes abrir Círculo → "Tengo un código" y escribir: ${params.code}. Si aún no tienes cuenta, regístrate con este mismo correo y la invitación te estará esperando.`,
+      expiresIn: 'La invitación estará disponible durante 7 días.',
+      helpText: 'Nadie verá tu información hasta que aceptes, y podrás cambiar o quitar los permisos cuando quieras.',
+      ignoreText: 'Si no conoces a esta persona, ignora este mensaje: no se compartirá nada.',
+    });
+
+    await this.resend.emails.send({
+      from: this.fromEmail,
+      to: params.to,
+      subject: `${params.inviterName} te invitó a su Círculo de MedicAI`,
+      html: template.html,
+      text: template.text,
+    });
+    this.logger.log('Circle invitation email sent', { recipientDomain: this.getEmailDomain(params.to) });
   }
 
   private buildActionEmailTemplate(params: ActionEmailTemplateParams) {
@@ -151,7 +182,7 @@ export class MailService {
                   <tr>
                     <td style="padding:28px 30px 32px;">
                       <p style="margin:0 0 14px;font-size:16px;line-height:1.7;color:${brandDark};">
-                        Hola ${this.escapeHtml(params.greeting)},
+                        Hola${params.greeting ? ` ${this.escapeHtml(params.greeting)}` : ''},
                       </p>
                       <p style="margin:0 0 18px;font-size:15px;line-height:1.75;color:${brandDark};">
                         ${this.escapeHtml(params.intro)}
@@ -208,7 +239,7 @@ export class MailService {
     const text = [
       `MedicAI`,
       `${params.title}`,
-      `Hola ${params.greeting},`,
+      `Hola${params.greeting ? ` ${params.greeting}` : ''},`,
       params.intro,
       `${params.actionLabel}: ${params.actionUrl}`,
       params.securityNote,

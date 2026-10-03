@@ -73,21 +73,33 @@ export class MedicationsService {
       nextNotes = null;
     }
 
+    const data = {
+      name: dto.name?.trim(),
+      dosage: dto.dosage?.trim(),
+      frequency: dto.frequency?.trim(),
+      firstDoseTime: dto.firstDoseTime,
+      times: dto.times,
+      notes: nextNotes,
+      active: dto.active,
+      customIntervalHours: dto.customIntervalHours,
+      customEndDate: nextCustomEndDate,
+    };
+
     try {
-      const updated = await this.prisma.medication.update({
-        where: { id: medicationId, userId },
-        data: {
-          name: dto.name?.trim(),
-          dosage: dto.dosage?.trim(),
-          frequency: dto.frequency?.trim(),
-          firstDoseTime: dto.firstDoseTime,
-          times: dto.times,
-          notes: nextNotes,
-          active: dto.active,
-          customIntervalHours: dto.customIntervalHours,
-          customEndDate: nextCustomEndDate,
-        },
-      });
+      let updated;
+      if (dto.active === true) {
+        // Reactivación: las tomas anteriores a este momento no cuentan.
+        // El updateMany con active=false solo actúa si de verdad estaba inactivo.
+        [, updated] = await this.prisma.$transaction([
+          this.prisma.medication.updateMany({
+            where: { id: medicationId, userId, active: false },
+            data: { activeSince: new Date() },
+          }),
+          this.prisma.medication.update({ where: { id: medicationId, userId }, data }),
+        ]);
+      } else {
+        updated = await this.prisma.medication.update({ where: { id: medicationId, userId }, data });
+      }
 
       this.logger.log('Medication updated', { userId, medicationId: updated.id });
 
@@ -129,6 +141,17 @@ export class MedicationsService {
       orderBy: { takenAt: 'desc' },
       take: MAX_LOGS_PER_QUERY,
     });
+  }
+
+  async deleteLog(medicationId: string, userId: string, logId: string) {
+    const { count } = await this.prisma.medicationLog.deleteMany({
+      where: { id: logId, medicationId, medication: { userId } },
+    });
+    if (!count) {
+      throw new NotFoundException('Registro no encontrado.');
+    }
+    this.logger.log('Medication action undone', { userId, medicationId, logId });
+    return { message: 'Registro eliminado.' };
   }
 
   async logAction(medicationId: string, userId: string, action: string, scheduledFor?: string) {

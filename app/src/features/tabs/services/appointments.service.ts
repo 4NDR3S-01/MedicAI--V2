@@ -3,6 +3,7 @@ import {
   parseApiErrorMessage,
   readResponseBody,
   requestWithAutoRefresh,
+  withOwner,
 } from './http';
 
 type AppointmentData = {
@@ -35,10 +36,10 @@ type UpdateAppointmentPayload = Partial<CreateAppointmentPayload> & {
   attendanceStatus?: AppointmentAttendanceStatus;
 };
 
-export async function fetchAppointments(accessToken: string): Promise<AppointmentData[]> {
+export async function fetchAppointments(accessToken: string, ownerId?: string): Promise<AppointmentData[]> {
   ensureApiBaseUrl();
 
-  const response = await requestWithAutoRefresh('/appointments', 'GET', accessToken);
+  const response = await requestWithAutoRefresh(withOwner('/appointments', ownerId), 'GET', accessToken);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudieron cargar las citas'));
@@ -50,10 +51,11 @@ export async function fetchAppointments(accessToken: string): Promise<Appointmen
 export async function createAppointment(
   accessToken: string,
   payload: CreateAppointmentPayload,
+  ownerId?: string,
 ): Promise<AppointmentData> {
   ensureApiBaseUrl();
 
-  const response = await requestWithAutoRefresh('/appointments', 'POST', accessToken, payload);
+  const response = await requestWithAutoRefresh(withOwner('/appointments', ownerId), 'POST', accessToken, payload);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo crear la cita'));
@@ -62,10 +64,10 @@ export async function createAppointment(
   return readResponseBody<AppointmentData>(response);
 }
 
-export async function deleteAppointment(appointmentId: string, accessToken: string): Promise<void> {
+export async function deleteAppointment(appointmentId: string, accessToken: string, ownerId?: string): Promise<void> {
   ensureApiBaseUrl();
 
-  const response = await requestWithAutoRefresh(`/appointments/${appointmentId}`, 'DELETE', accessToken);
+  const response = await requestWithAutoRefresh(withOwner(`/appointments/${appointmentId}`, ownerId), 'DELETE', accessToken);
 
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'No se pudo eliminar la cita'));
@@ -76,11 +78,12 @@ export async function updateAppointment(
   appointmentId: string,
   accessToken: string,
   payload: UpdateAppointmentPayload,
+  ownerId?: string,
 ): Promise<AppointmentData> {
   ensureApiBaseUrl();
 
   const response = await requestWithAutoRefresh(
-    `/appointments/${appointmentId}`,
+    withOwner(`/appointments/${appointmentId}`, ownerId),
     'PUT',
     accessToken,
     payload,

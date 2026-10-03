@@ -47,6 +47,10 @@ export function useKeyboardInset() {
 
   const bottomInset =
     Platform.OS === 'ios' ? Math.max(0, keyboardHeight - insets.bottom) : keyboardHeight;
+  // Distancia desde el borde inferior de la PANTALLA hasta el borde superior
+  // del teclado (para capas a pantalla completa, sin SafeAreaView inferior).
+  const screenInset =
+    keyboardHeight > 0 && Platform.OS === 'android' ? keyboardHeight + insets.bottom : keyboardHeight;
 
-  return { keyboardVisible: keyboardHeight > 0, bottomInset };
+  return { keyboardVisible: keyboardHeight > 0, bottomInset, screenInset };
 }

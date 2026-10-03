@@ -31,7 +31,7 @@ import {
   getMedicationReminderLeadMinutes,
   registerForPushNotificationsAsync,
   scheduleAppointmentReminder,
-  scheduleMedicationNotifications,
+  syncMedicationAlarms,
   setAppointmentReminderLeadMinutes,
   setMedicationReminderLeadMinutes,
 } from '../../../shared/services/notifications.service';
@@ -575,9 +575,8 @@ export function ProfileScreen({
           fetchMedications(session.accessToken),
           fetchAppointments(session.accessToken),
         ]);
-        for (const medication of medications) {
-          await scheduleMedicationNotifications(medication);
-        }
+        // Replanifica todas las alarmas de medicamentos con la nueva antelación.
+        await syncMedicationAlarms(medications, { force: true });
         for (const appointment of appointments) {
           await scheduleAppointmentReminder(appointment);
         }

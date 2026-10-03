@@ -8,34 +8,40 @@ datasource db {
 }
 
 model User {
-  id               String                   @id @default(cuid())
-  email            String                   @unique
-  fullName         String?
-  birthDate        String?
-  phone            String?
-  passwordHash     String
-  isEmailVerified  Boolean                  @default(false)
-  refreshTokenHash String?
-  avatar           String?
-  conditions       String?
-  allergies        String?
-  pregnancy        Boolean                  @default(false)
-  lactation        Boolean                  @default(false)
-  recentSurgeries  Boolean                  @default(false)
-  immunosuppression Boolean                 @default(false)
-  anticoagulantTreatment Boolean            @default(false)
-  notificationLeadMinutes Int              @default(5)
+  id                       String    @id @default(cuid())
+  email                    String    @unique
+  fullName                 String?
+  birthDate                String?
+  phone                    String?
+  passwordHash             String
+  isEmailVerified          Boolean   @default(false)
+  refreshTokenHash         String?
+  avatar                   String?
+  conditions               String?
+  allergies                String?
+  pregnancy                Boolean   @default(false)
+  lactation                Boolean   @default(false)
+  recentSurgeries          Boolean   @default(false)
+  immunosuppression        Boolean   @default(false)
+  anticoagulantTreatment   Boolean   @default(false)
+  notificationLeadMinutes  Int       @default(5)
   // Consentimiento explícito (opt-in) para enviar el perfil de salud como
   // contexto al asistente de IA (proveedor externo). Por defecto desactivado.
-  aiHealthContextConsent   Boolean          @default(false)
+  aiHealthContextConsent   Boolean   @default(false)
   aiHealthContextConsentAt DateTime?
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
-  verificationTokens EmailVerificationToken[]
+  verificationTokens  EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
-  medications        Medication[]
-  appointments       Appointment[]
+  medications         Medication[]
+  appointments        Appointment[]
+
+  circleLinksAsA        CircleLink[]       @relation("CircleLinkUserA")
+  circleLinksAsB        CircleLink[]       @relation("CircleLinkUserB")
+  circleGrantsGiven     CircleGrant[]      @relation("CircleGrantOwner")
+  circleGrantsReceived  CircleGrant[]      @relation("CircleGrantGrantee")
+  circleInvitationsSent CircleInvitation[] @relation("CircleInvitationInviter")
 }
 
 model EmailVerificationToken {
@@ -67,21 +73,24 @@ model PasswordResetToken {
 }
 
 model Medication {
-  id                    String   @id @default(cuid())
-  userId                String
-  name                  String
-  dosage                String
-  frequency             String
-  firstDoseTime         String?  // Preserves the user-selected initial dose time (HH:mm)
-  times                 String[] // Array of "HH:mm" strings
-  notes                 String?
-  customIntervalHours   Int?     // For custom frequency (e.g., 6 for every 6 hours)
-  customEndDate         DateTime? // Date when custom alarms should stop
-  active                Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  userId              String
+  name                String
+  dosage              String
+  frequency           String
+  firstDoseTime       String? // Preserves the user-selected initial dose time (HH:mm)
+  times               String[] // Array of "HH:mm" strings
+  notes               String?
+  customIntervalHours Int? // For custom frequency (e.g., 6 for every 6 hours)
+  customEndDate       DateTime? // Date when custom alarms should stop
+  active              Boolean   @default(true)
+  // Momento de la última activación (o de la creación). Las tomas anteriores
+  // a esta fecha no cuentan como pendientes ni como olvidadas.
+  activeSince         DateTime? @default(now())
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   logs MedicationLog[]
 
   @@index([userId])
@@ -89,12 +98,13 @@ model Medication {
 }
 
 model MedicationLog {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   medicationId String
-  action       String   // "TAKEN", "SKIPPED", "SNOOZED"
-  takenAt      DateTime @default(now())
+  action       String // "TAKEN", "SKIPPED", "SNOOZED"
+  takenAt      DateTime   @default(now())
   scheduledFor DateTime? // The originally scheduled time for this dose
-  medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
   // Compuestos: cubren "logs de estos medicamentos desde X" (GET /medications/logs)
   // y, por prefijo, las búsquedas solo por medicationId.
   @@index([medicationId, takenAt])
@@ -102,18 +112,18 @@ model MedicationLog {
 }
 
 model Appointment {
-  id          String   @id @default(cuid())
-  userId      String
-  title       String
-  doctorName  String
-  scheduledAt DateTime
-  location    String?
-  notes       String?
-  active      Boolean  @default(true)
-  attendanceStatus String @default("PENDING") // "PENDING", "ATTENDED", "MISSED"
+  id                 String    @id @default(cuid())
+  userId             String
+  title              String
+  doctorName         String
+  scheduledAt        DateTime
+  location           String?
+  notes              String?
+  active             Boolean   @default(true)
+  attendanceStatus   String    @default("PENDING") // "PENDING", "ATTENDED", "MISSED"
   attendanceMarkedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -122,4 +132,95 @@ model Appointment {
   @@index([attendanceStatus])
   @@index([createdAt])
   @@index([userId, active, scheduledAt])
+}
+
+// ─── Círculo ──────────────────────────────────────────────────────────────────
+//
+// CircleLink: vínculo entre dos personas (una fila por par). Guarda qué es cada
+// una para la otra y quién cuida a quién. Pertenecer al Círculo NO da acceso a
+// nada: el acceso lo definen los CircleGrant.
+//
+// CircleGrant: permisos en UNA dirección, concedidos por el dueño de la
+// información (ownerId) a otra persona (granteeId). Se borran al revocar.
+//
+// CircleInvitation: propuesta de vínculo. Puede ir a un correo (solo esa
+// cuenta puede aceptarla, aunque se registre después) o compartirse por
+// código/enlace (la primera cuenta que la abre queda asociada).
+
+model CircleLink {
+  id             String    @id @default(cuid())
+  userAId        String // quien invitó
+  userBId        String // quien aceptó
+  relationA      String // lo que A es para B (código de relación)
+  relationALabel String? // texto libre cuando relationA = OTHER
+  relationB      String // lo que B es para A
+  relationBLabel String?
+  aCaresForB     Boolean   @default(false)
+  bCaresForA     Boolean   @default(false)
+  status         String    @default("ACTIVE") // ACTIVE | REVOKED
+  revokedAt      DateTime?
+  revokedById    String?
+  invitationId   String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  userA  User          @relation("CircleLinkUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB  User          @relation("CircleLinkUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  grants CircleGrant[]
+
+  @@index([userAId, status])
+  @@index([userBId, status])
+}
+
+model CircleGrant {
+  id                 String   @id @default(cuid())
+  linkId             String
+  ownerId            String // dueño de la información
+  granteeId          String // quien puede actuar sobre ella
+  viewMedications    Boolean  @default(false)
+  addMedications     Boolean  @default(false)
+  editMedications    Boolean  @default(false)
+  deleteMedications  Boolean  @default(false)
+  manageReminders    Boolean  @default(false)
+  logDoses           Boolean  @default(false)
+  viewAppointments   Boolean  @default(false)
+  manageAppointments Boolean  @default(false)
+  viewHealth         Boolean  @default(false)
+  manageCircle       Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  link    CircleLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  owner   User       @relation("CircleGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  grantee User       @relation("CircleGrantGrantee", fields: [granteeId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, ownerId])
+  @@index([granteeId, ownerId])
+}
+
+model CircleInvitation {
+  id                     String    @id @default(cuid())
+  inviterId              String // dueño del Círculo al que se invita
+  createdById            String // quien la creó (el inviter o alguien que administra su Círculo)
+  inviteeEmail           String?
+  inviteeUserId          String?
+  inviteeName            String? // cómo llama quien invita a esta persona
+  code                   String    @unique
+  inviterRelation        String // lo que el inviter es para el invitado
+  inviterRelationLabel   String?
+  inviterCaresForInvitee Boolean   @default(false)
+  inviteeCaresForInviter Boolean   @default(false)
+  grantedPermissions     Json // lo que el invitado podrá hacer con la información del inviter
+  requestedPermissions   Json // lo que el inviter pide sobre la información del invitado
+  status                 String    @default("PENDING") // PENDING | ACCEPTED | DECLINED | CANCELED
+  respondedAt            DateTime?
+  expiresAt              DateTime
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  inviter User @relation("CircleInvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([inviterId, status])
+  @@index([inviteeEmail, status])
+  @@index([inviteeUserId, status])
 }

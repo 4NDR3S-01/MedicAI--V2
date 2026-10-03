@@ -44,7 +44,8 @@ All commands run from `app/backend/`:
 - **Generated native dirs** (`/ios`, `/android`) are gitignored — run `npx expo prebuild` to regenerate.
 - **Custom expo plugin** at `app/plugins/withAlarmModule.js` — modifies native alarm module config.
 - **Backend** runs via pm2 in production (`ecosystem.config.cjs`), `wait_ready: true` + `process.send('ready')`.
-- **Prisma** schema is the single source of truth for the DB (PostgreSQL). Models: User, Medication, MedicationLog, Appointment, EmailVerificationToken, PasswordResetToken.
+- **Prisma** schema is the single source of truth for the DB (PostgreSQL). Models: User, Medication, MedicationLog, Appointment, EmailVerificationToken, PasswordResetToken, CircleLink, CircleGrant, CircleInvitation. Migrations are hand-written idempotent SQL in `prisma/migrations/`.
+- **Círculo** (`app/backend/src/modules/circle`, `app/src/features/circle`): links between people (relation + who cares for whom) and per-direction permissions granted by the data owner. `CircleAccessService.resolveOwner(actor, ownerId, permission)` is the single access check; `/medications` and `/appointments` accept `?ownerId=` to act on another member's data. Revoking a link deletes its grants. Invite links: `${APP_BASE_URL}/circulo/invitacion?code=…` (web page) → `medicai://circle/invite?code=…`.
 - **Backend validation**: NestJS `ValidationPipe` with `whitelist`, `transform`, `forbidNonWhitelisted`.
 - **CORS** configured for `ALLOWED_ORIGINS` env var (default: localhost:8081).
 - **Logging**: Custom `AppLogger` with structured context, level from `LOG_LEVEL` env.

@@ -1,6 +1,6 @@
 import { getStoredSession, refreshStoredSession } from '../../auth';
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -93,3 +93,7 @@ export const requestWithAutoRefresh = async (
 
   return response;
 };
+
+/** Añade `ownerId` para actuar sobre la información de otra persona del Círculo. */
+export const withOwner = (path: string, ownerId?: string | null): string =>
+  ownerId ? `${path}${path.includes('?') ? '&' : '?'}ownerId=${encodeURIComponent(ownerId)}` : path;

@@ -1,8 +1,9 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FLOATING_ACTION_BUTTON_BOTTOM } from '../../app/AppBottomBar';
 import type { AppTheme } from '../theme/types';
+import { PressableScale } from './PressableScale';
 
 type FloatingActionButtonProps = {
   theme: AppTheme;
@@ -23,20 +24,15 @@ export function FloatingActionButton({
 }: Readonly<FloatingActionButtonProps>) {
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <Pressable
+      <PressableScale
         onPress={onPress}
-        style={({ pressed }) => [
-          styles.button,
-          {
-            backgroundColor,
-            transform: [{ scale: pressed ? 0.92 : 1 }],
-          },
-        ]}
+        pressedScale={0.9}
+        style={[styles.button, { backgroundColor }]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
       >
         <MaterialCommunityIcons name={icon} size={24} color={iconColor} />
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }
