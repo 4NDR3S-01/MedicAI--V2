@@ -13,10 +13,12 @@ import { MedicationFormSheet } from '../../tabs/components/MedicationFormSheet';
 import * as appointmentsAPI from '../../tabs/services/appointments.service';
 import type { AppointmentAttendanceStatus, AppointmentData } from '../../tabs/services/appointments.service';
 import * as medicationsAPI from '../../tabs/services/medications.service';
+import { logDose, pendingDoseLogs, removeQueuedDose } from '../../tabs/services/dose-queue';
 import type { MedicationData, MedicationLog } from '../../tabs/services/medications.service';
 import { bucketAppointments } from '../../tabs/utils/appointment-status';
 import { getTodayDoseSlots, type DoseSlot } from '../../tabs/utils/dose-status';
 import { cancelDoseAlarm } from '../../../shared/services/notifications.service';
+import { isForeignTimeZone } from '../../../shared/services/dose-schedule';
 import * as circleAPI from '../services/circle.service';
 import type { CircleMember, HealthInfo } from '../services/circle.service';
 import { firstName, relationToMe } from '../utils/relations';
@@ -81,12 +83,15 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
     try {
       const token = await withToken();
       if (which === 'medications') {
-        const [meds, dayLogs] = await Promise.all([
+        const [meds, dayLogs, pending] = await Promise.all([
           medicationsAPI.fetchMedications(token, ownerId),
           medicationsAPI.fetchTodayMedicationLogs(token, ownerId),
+          pendingDoseLogs(ownerId),
         ]);
-        setMedications(meds ?? []);
-        setLogs(dayLogs ?? []);
+        // Sus horas de toma son de SU zona horaria.
+        setMedications((meds ?? []).map((medication) => ({ ...medication, timeZone: shown?.person.timezone })));
+        // Tomas registradas sin conexión que aún no llegaron al servidor.
+        setLogs([...pending, ...(dayLogs ?? [])]);
       } else if (which === 'appointments') {
         setAppointments((await appointmentsAPI.fetchAppointments(token, ownerId)) ?? []);
       } else {
@@ -174,13 +179,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
     if (!doseTarget) return;
     setDoseBusy(true);
     try {
-      const log = await medicationsAPI.logMedicationAction(
-        doseTarget.medication.id,
-        await withToken(),
-        action,
-        doseTarget.slot.at.toISOString(),
-        ownerId,
-      );
+      const log = await logDose(doseTarget.medication.id, action, doseTarget.slot.at.toISOString(), ownerId);
       setLogs((current) => [log, ...current]);
       // Si sus alarmas suenan en este teléfono, esa toma ya no debe sonar.
       if (doseTarget.slot.at.getTime() > Date.now()) void cancelDoseAlarm(doseTarget.medication.id, doseTarget.slot.at).catch(() => undefined);
@@ -197,7 +196,9 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
     if (!doseTarget || !log) return;
     setDoseBusy(true);
     try {
-      await medicationsAPI.deleteMedicationLog(doseTarget.medication.id, log.id, await withToken(), ownerId);
+      if (!(await removeQueuedDose(log.id))) {
+        await medicationsAPI.deleteMedicationLog(doseTarget.medication.id, log.id, await withToken(), ownerId);
+      }
       setLogs((current) => current.filter((item) => item.id !== log.id));
       setDoseTarget(null);
     } catch (error) {
@@ -318,6 +319,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         now={now}
         busy={busyIds.has(appointment.id)}
         canManage={can.manageAppointments}
+        ownerTimeZone={shown.person.timezone}
         onEdit={(item) => setApptForm({ visible: true, appointment: item })}
         onDelete={deleteAppointment}
         onMarkAttendance={(item, value) => void markAttendance(item, value)}
@@ -401,6 +403,12 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
           <Animated.View style={swap}>{content}</Animated.View>
         )}
 
+        {tab === 'medications' && tabStatus === 'ready' && isForeignTimeZone(shown.person.timezone) ? (
+          <InfoNote theme={theme} icon="earth">
+            {first} está en otra zona horaria ({shown.person.timezone?.split('/').pop()?.replace(/_/g, ' ')}). Las horas son las suyas; «tú» indica la hora para ti.
+          </InfoNote>
+        ) : null}
+
         {tab === 'medications' && tabStatus === 'ready' ? (
           <InfoNote theme={theme} icon="cellphone-check">
             {shown.person.isManaged
@@ -428,6 +436,12 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         medication={medForm.medication}
         ownerId={ownerId}
         canEditDetails={can.editMedications}
+        ownerTimeZone={shown.person.timezone}
+        timeZoneNote={
+          isForeignTimeZone(shown.person.timezone)
+            ? `Las horas son las de ${first}, en su zona horaria (${shown.person.timezone?.split('/').pop()?.replace(/_/g, ' ')}).`
+            : undefined
+        }
         canEditSchedule={can.manageReminders}
         onClose={() => setMedForm((current) => ({ ...current, visible: false }))}
         onSaved={(saved, isNew) =>
@@ -441,6 +455,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         appointment={apptForm.appointment}
         ownerId={ownerId}
         ownerIsDependent={Boolean(shown.person.isManaged)}
+        ownerTimeZone={shown.person.timezone}
         onClose={() => setApptForm((current) => ({ ...current, visible: false }))}
         onSaved={(saved, isNew) =>
           setAppointments((current) => (isNew ? [...current, saved] : current.map((item) => (item.id === saved.id ? saved : item))))

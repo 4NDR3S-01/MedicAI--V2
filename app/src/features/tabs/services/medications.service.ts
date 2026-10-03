@@ -25,6 +25,8 @@ type MedicationData = {
   activeSince?: string | null;
   createdBy?: ActorRef;
   updatedBy?: ActorRef;
+  /** Solo en la app: zona horaria del dueño (si es otra persona del Círculo). */
+  timeZone?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -183,6 +185,8 @@ export type MedicationLog = {
   takenAt: string;
   scheduledFor: string | null;
   loggedBy?: ActorRef;
+  /** Registrada sin conexión: se enviará al servidor cuando vuelva la red. */
+  pending?: boolean;
 };
 
 export type { MedicationData, CreateMedicationPayload };

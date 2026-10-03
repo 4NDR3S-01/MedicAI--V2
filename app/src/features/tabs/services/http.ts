@@ -1,4 +1,7 @@
+import { NetworkError } from '../../../shared/services/network-error';
 import { getStoredSession, refreshStoredSession } from '../../auth';
+
+export { NetworkError };
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -64,7 +67,7 @@ const executeAuthorizedRequest = async (
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error('No hemos podido conectar con nuestros servidores. Por favor verifica tu conexión a internet e inténtalo de nuevo en unos momentos.');
+    throw new NetworkError();
   }
 };
 

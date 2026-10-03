@@ -33,12 +33,17 @@ model User {
   // sus tutores desde el Círculo. Deja de serlo al "entregar la cuenta"
   // (la persona crea su contraseña con el enlace que recibe por correo).
   isManaged                Boolean   @default(false)
+  // Zona horaria IANA (p. ej. "America/Bogota") de su teléfono: las horas de
+  // sus tomas ("08:00") se interpretan en ella, la mire quien la mire.
+  timezone                 String?
   managedById              String?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
   verificationTokens  EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
+  sessions            UserSession[]
+  pushTokens          PushToken[]
   medications         Medication[]
   appointments        Appointment[]
 
@@ -282,4 +287,50 @@ model CircleGroupMember {
 
   @@id([groupId, linkId])
   @@index([linkId])
+}
+
+// Una sesión por dispositivo: iniciar sesión en la tablet no cierra la del
+// teléfono. El refresh token lleva el id de la sesión (sid) y aquí se guarda
+// solo su hash (SHA-256); al renovarlo se rota.
+model UserSession {
+  id               String   @id
+  userId           String
+  refreshTokenHash String   @unique
+  deviceName       String?
+  platform         String?
+  createdAt        DateTime @default(now())
+  lastUsedAt       DateTime @default(now())
+  expiresAt        DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Dispositivo que recibe notificaciones push (token de Expo). Ligado a la
+// sesión: al cerrar sesión en ese dispositivo deja de recibir avisos.
+model PushToken {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  platform   String?
+  sessionId  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+}
+
+// Aviso "no registró su toma" ya enviado para una toma concreta (no se repite).
+model MissedDoseAlert {
+  medicationId String
+  scheduledFor DateTime
+  sentAt       DateTime @default(now())
+
+  @@id([medicationId, scheduledFor])
+  @@index([sentAt])
 }

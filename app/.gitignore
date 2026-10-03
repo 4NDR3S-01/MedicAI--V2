@@ -43,3 +43,7 @@ yarn-error.*
 
 # Readme 
 README.md
+# Clave privada de Firebase (cuenta de servicio). NUNCA se sube al repositorio:
+# se carga en Expo (FCM V1) y en el servidor.
+*firebase-adminsdk*.json
+service-account*.json

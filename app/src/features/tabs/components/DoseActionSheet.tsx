@@ -43,7 +43,8 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
     body = (
       <Text style={[styles.text, { color: theme.colors.textSecondary }]}>
         {state === 'taken' ? 'Registrada como tomada' : 'Registrada como omitida'} a las {formatTime(loggedAt)}
-        {byWhom ? ` ${byWhom}` : ''}. Si fue un error, puedes deshacerlo.
+        {byWhom ? ` ${byWhom}` : ''}.
+        {slot.log.pending ? ' Estás sin conexión: se enviará sola cuando vuelva internet.' : ''} Si fue un error, puedes deshacerlo.
       </Text>
     );
     footer = (
@@ -101,7 +102,7 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
         slot ? (
           <View style={styles.subtitleRow}>
             <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-              Toma de las {slot.time} · {medication?.dosage}
+              Toma de las {slot.time}{slot.viewerTime ? ` (${slot.viewerTime} para ti)` : ''} · {medication?.dosage}
             </Text>
             <View style={[styles.badge, { backgroundColor: `${color}1F` }]}>
               <MaterialCommunityIcons name={meta.icon} size={14} color={color} />

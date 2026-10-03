@@ -46,7 +46,9 @@ async function syncCareReminders(accessToken: string): Promise<void> {
     const ownerName = firstName(member.person);
     const careMode = member.reminders === 'ALARM' ? 'ALARM' : 'NOTIFY';
 
-    for (const medication of data.medications ?? []) {
+    for (const raw of data.medications ?? []) {
+      // Las alarmas suenan cuando son sus 08:00, aunque este teléfono esté en otra zona.
+      const medication = { ...raw, timeZone: member.person.timezone };
       items.push({ ...medication, ownerId, ownerName, careMode });
       const slots = getTodayDoseSlots(medication, data.logs ?? [], now);
       getHandledDoseKeys(slots, now).forEach((key) => handled.add(key));

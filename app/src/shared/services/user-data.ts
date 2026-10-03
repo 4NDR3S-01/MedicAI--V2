@@ -13,6 +13,12 @@ const USER_DATA_KEYS = [
   'medicai_appointments_cache_v1',
   'medicai_circle_cache_v2',
   'medicai_pending_circle_invite_v1',
+  // Tomas pendientes de enviar: son del usuario que cierra sesión.
+  'medicai_pending_dose_actions_v1',
+  // Zona horaria informada: el siguiente usuario debe informarla de nuevo.
+  'medicai_reported_timezone_v1',
+  // El dispositivo se vuelve a registrar para notificaciones con la nueva cuenta.
+  'medicai_registered_push_token_v1',
 ];
 const LEGACY_AVATAR_KEY = 'user_avatar_data';
 

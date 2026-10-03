@@ -25,6 +25,7 @@ import {
 } from '../../auth/services/auth.service';
 import { getStoredSession, MedicalInfoEditor } from '../../auth';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
+import { SessionsSheet } from '../components/SessionsSheet';
 import { fetchMedications } from '../services/medications.service';
 import { fetchAppointments } from '../services/appointments.service';
 import {
@@ -401,6 +402,7 @@ export function ProfileScreen({
   onAccountDeleted,
 }: Readonly<ProfileScreenProps>) {
   const [deleteVisible, setDeleteVisible] = useState(false);
+  const [sessionsVisible, setSessionsVisible] = useState(false);
   const [profile, setProfile] = useState<Partial<ProfileUser>>({
     fullName: userFullName,
     email: userEmail ?? undefined,
@@ -716,6 +718,14 @@ export function ProfileScreen({
             theme={theme}
           />
           <SettingsRow
+            icon="cellphone-key"
+            title="Dispositivos con sesión"
+            subtitle="Dónde está abierta tu cuenta; ciérrala en un teléfono perdido"
+            accent="#0EA5E9"
+            onPress={() => setSessionsVisible(true)}
+            theme={theme}
+          />
+          <SettingsRow
             icon="bell-badge-outline"
             title="Notificaciones"
             subtitle="Anticipación, permisos y reprogramación de recordatorios"
@@ -777,6 +787,8 @@ export function ProfileScreen({
 
         <Text style={[styles.versionText, { color: theme.colors.textMuted }]}>MedicAI v1.0.0</Text>
       </ScrollView>
+
+      <SessionsSheet theme={theme} visible={sessionsVisible} onClose={() => setSessionsVisible(false)} />
 
       <DeleteAccountSheet
         theme={theme}

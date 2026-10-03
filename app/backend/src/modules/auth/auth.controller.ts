@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Put,
   Patch,
@@ -22,6 +24,7 @@ type AuthBridgePageVariant = 'success' | 'warning' | 'error' | 'info';
 import { AuthService } from './auth.service';
 import { CheckEmailDto } from './dto/check-email.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
+import { UpdateTimezoneDto } from './dto/update-timezone.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -147,6 +150,33 @@ export class AuthController {
       throw new UnauthorizedException('Token inválido.');
     }
     return this.authService.updateAvatar(userId, dto.avatar);
+  }
+
+  /** La app informa la zona horaria del teléfono al abrirse si cambió. */
+  @UseGuards(JwtAuthGuard)
+  @Put('timezone')
+  updateTimezone(@Body() dto: UpdateTimezoneDto, @Request() req: any) {
+    return this.authService.updateTimezone(req.user?.sub, dto.timezone);
+  }
+
+  /** Dispositivos con sesión abierta. */
+  @UseGuards(JwtAuthGuard)
+  @Get('sessions')
+  listSessions(@Request() req: any) {
+    return this.authService.listSessions(req.user?.sub, req.user?.sid);
+  }
+
+  /** Cerrar la sesión de todos los demás dispositivos. */
+  @UseGuards(JwtAuthGuard)
+  @Post('sessions/close-others')
+  closeOtherSessions(@Request() req: any) {
+    return this.authService.revokeOtherSessions(req.user?.sub, req.user?.sid);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('sessions/:id')
+  closeSession(@Param('id') sessionId: string, @Request() req: any) {
+    return this.authService.revokeSession(req.user?.sub, sessionId);
   }
 
   /** Perfiles a cargo que se borrarían con la cuenta (para avisar antes). */

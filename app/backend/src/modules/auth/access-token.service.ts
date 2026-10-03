@@ -5,6 +5,8 @@ import { JwtService } from '@nestjs/jwt';
 export type AccessTokenPayload = {
   sub: string;
   email: string;
+  /** Sesión (dispositivo) que emitió el token. */
+  sid?: string;
 };
 
 type VerificationResult = {

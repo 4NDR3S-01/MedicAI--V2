@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 
 import { HealthController } from './health.controller';
@@ -13,6 +14,7 @@ import { AiModule } from '../modules/ai/ai.module';
 import { MedicationsModule } from '../modules/medications/medications.module';
 import { AppointmentsModule } from '../modules/appointments/appointments.module';
 import { CircleModule } from '../modules/circle/circle.module';
+import { PushModule } from '../modules/push/push.module';
 
 @Module({
   imports: [
@@ -34,8 +36,10 @@ import { CircleModule } from '../modules/circle/circle.module';
         },
       ],
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     MailModule,
+    PushModule,
     AuthModule,
     AiModule,
     MedicationsModule,

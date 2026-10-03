@@ -8,7 +8,11 @@ import {
   ProfileScreen,
 } from '../features/tabs';
 import { syncOwnReminders } from '../features/tabs/services/reminders-sync';
-import { CircleScreen, hasPendingCircleInvite, onCircleInvite } from '../features/circle';
+import { startDoseQueueSync } from '../features/tabs/services/dose-queue';
+import { reportTimeZoneIfChanged } from '../features/tabs/services/timezone-sync';
+import { CircleScreen, hasPendingCircleInvite, isCirclePushType, onCircleInvite, onOpenCircle } from '../features/circle';
+import { registerPushToken } from '../features/tabs/services/push-registration';
+import * as Notifications from 'expo-notifications';
 import { HomeScreen } from '../features/home';
 import type { AppTheme } from '../shared/theme';
 import { ChatModal, FloatingChatButton } from '../shared/ui';
@@ -51,19 +55,36 @@ export function MainAppShell({
   // Alguien del Círculo pudo cambiar medicamentos o citas desde su teléfono:
   // al abrir la app y al volver a ella se ponen al día alarmas y recordatorios.
   useEffect(() => {
+    void reportTimeZoneIfChanged();
+    void registerPushToken();
     void syncOwnReminders().catch(() => undefined);
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void syncOwnReminders().catch(() => undefined);
+      if (state !== 'active') return;
+      void reportTimeZoneIfChanged();
+      void registerPushToken();
+      void syncOwnReminders().catch(() => undefined);
     });
     return () => subscription.remove();
   }, []);
+
+  // Tomas registradas sin conexión: se envían al recuperar la red.
+  useEffect(() => startDoseQueueSync(), []);
 
   // Una invitación abierta desde un enlace lleva directamente a Círculo.
   useEffect(() => {
     void hasPendingCircleInvite().then((pending) => {
       if (pending) setTab('family');
     });
-    return onCircleInvite(() => setTab('family'));
+    const unsubscribeInvite = onCircleInvite(() => setTab('family'));
+    // Tocar un aviso del Círculo (también con la app cerrada) abre Círculo.
+    const unsubscribeOpen = onOpenCircle(() => setTab('family'));
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (isCirclePushType(response?.notification.request.content.data?.type)) setTab('family');
+    });
+    return () => {
+      unsubscribeInvite();
+      unsubscribeOpen();
+    };
   }, []);
 
   const handleSetAvatar = async (data: string) => {

@@ -11,7 +11,14 @@ import type { PermissionSet } from '../utils/permissions';
 import type { CareValue, Relation, RelationCode } from '../utils/relations';
 
 /** isManaged: perfil a cargo, sin cuenta propia (su correo llega vacío). */
-export type Person = { id: string; fullName: string | null; email: string; isManaged?: boolean };
+export type Person = {
+  id: string;
+  fullName: string | null;
+  email: string;
+  isManaged?: boolean;
+  /** Zona horaria IANA de la persona: sus horas de toma se interpretan en ella. */
+  timezone?: string | null;
+};
 
 /** Recordatorios de otra persona en mi teléfono. */
 export type ReminderMode = 'OFF' | 'NOTIFY' | 'ALARM';

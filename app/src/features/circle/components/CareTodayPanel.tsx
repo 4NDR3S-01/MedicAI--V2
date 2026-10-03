@@ -6,6 +6,7 @@ import type { AppTheme } from '../../../shared/theme';
 import { useReducedMotion } from '../../../shared/ui';
 import { bucketAppointments, formatClock, relativeDayLabel } from '../../tabs/utils/appointment-status';
 import { getTodayDoseSlots } from '../../tabs/utils/dose-status';
+import { formatClockIn, isForeignTimeZone } from '../../../shared/services/dose-schedule';
 import { withToken } from '../hooks/useCircle';
 import * as circleAPI from '../services/circle.service';
 import type { CareData, CircleMember } from '../services/circle.service';
@@ -65,7 +66,8 @@ function buildRows(members: CircleMember[], data: CareData[], now: Date): Row[] 
     let nextDose: Date | null = null;
     for (const medication of entry.medications ?? []) {
       if (!medication.active) continue;
-      for (const slot of getTodayDoseSlots(medication, entry.logs ?? [], now)) {
+      // Sus horas de toma son de SU zona horaria.
+      for (const slot of getTodayDoseSlots({ ...medication, timeZone: member.person.timezone }, entry.logs ?? [], now)) {
         total += 1;
         if (slot.state === 'missed') missed += 1;
         else if (slot.state === 'due') due += 1;
@@ -161,7 +163,15 @@ function CareRow({ theme, row, now, divider, onPress }: Readonly<{ theme: AppThe
   if (!row.missed && !row.due && row.total) {
     parts.push({ text: row.taken === row.total ? 'Tomas del día completas' : `${row.taken}/${row.total} tomas`, tone: row.taken === row.total ? 'ok' : 'muted' });
   }
-  if (row.nextDose && !row.due) parts.push({ text: `Próxima toma ${formatClock(row.nextDose)}`, tone: 'muted' });
+  const timeZone = row.member.person.timezone;
+  if (row.nextDose && !row.due) {
+    parts.push({
+      text: isForeignTimeZone(timeZone)
+        ? `Próxima toma ${formatClockIn(row.nextDose, timeZone)} su hora (${formatClock(row.nextDose)} tuya)`
+        : `Próxima toma ${formatClock(row.nextDose)}`,
+      tone: 'muted',
+    });
+  }
   if (row.nextAppointment) parts.push({ text: `Cita ${relativeDayLabel(row.nextAppointment, now).toLowerCase()} ${formatClock(row.nextAppointment)}`, tone: 'muted' });
   if (!parts.length) parts.push({ text: 'Sin tomas ni citas próximas', tone: 'muted' });
 

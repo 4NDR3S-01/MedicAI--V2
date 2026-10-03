@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "643831111108",
+    "project_id": "medicai-e3e9e",
+    "storage_bucket": "medicai-e3e9e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:643831111108:android:5cf475f054a199cb425891",
+        "android_client_info": {
+          "package_name": "com.william20.medicai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSGmi8stXXpjPFur349ms2WeDiLi7FuBY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
