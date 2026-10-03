@@ -188,6 +188,7 @@ export function InviteSheet({ theme, visible, onClose, onCreated, ownerId, owner
       visible={visible}
       title={ownerId ? `Invitar al Círculo de ${ownerName ?? 'esta persona'}` : 'Invitar a tu Círculo'}
       subtitle={`Paso ${step + 1} de 4 · ${STEP_TITLES[step]}`}
+      scrollToTopKey={step}
       onClose={onClose}
       dismissDisabled={saving}
       footer={

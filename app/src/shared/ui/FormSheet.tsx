@@ -28,6 +28,8 @@ type FormSheetProps = {
   /** Impide cerrar (p. ej. mientras se guarda). */
   dismissDisabled?: boolean;
   footer?: ReactNode;
+  /** Al cambiar (p. ej. el paso de un asistente), el contenido vuelve arriba. */
+  scrollToTopKey?: string | number;
   children: ReactNode;
 };
 
@@ -44,6 +46,7 @@ export function FormSheet({
   onClose,
   dismissDisabled = false,
   footer,
+  scrollToTopKey,
   children,
 }: Readonly<FormSheetProps>) {
   const insets = useSafeAreaInsets();
@@ -136,6 +139,7 @@ export function FormSheet({
 
             <KeyboardAwareScrollView
               reserveKeyboardSpace={false}
+              scrollToTopKey={scrollToTopKey}
               contentContainerStyle={styles.body}
               revealExtraSpace={24}
             >

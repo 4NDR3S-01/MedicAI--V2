@@ -361,6 +361,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         visible={Boolean(member)}
         title={first}
         subtitle={`${relationToMe(shown.relation)} · Lo que comparte contigo`}
+        scrollToTopKey={tab}
         onClose={onClose}
         footer={<AppButton theme={theme} label="Cerrar" variant="secondary" onPress={onClose} style={styles.flex} />}
       >
@@ -376,8 +377,15 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
                   accessibilityState={{ selected }}
                   style={[styles.tab, selected && { backgroundColor: theme.colors.accentSecondary }]}
                 >
-                  <MaterialCommunityIcons name={item.icon} size={16} color={selected ? '#fff' : theme.colors.textSecondary} />
-                  <Text style={[styles.tabText, { color: selected ? '#fff' : theme.colors.textSecondary }]} numberOfLines={1}>{item.label}</Text>
+                  <MaterialCommunityIcons name={item.icon} size={20} color={selected ? '#fff' : theme.colors.textSecondary} />
+                  <Text
+                    style={[styles.tabText, { color: selected ? '#fff' : theme.colors.textSecondary }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
+                    {item.label}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -466,8 +474,8 @@ function HealthRow({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   tabs: { flexDirection: 'row', borderWidth: 1.5, borderRadius: 16, padding: 4, gap: 4 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 40, borderRadius: 12, paddingHorizontal: 4 },
-  tabText: { fontSize: 12.5, fontWeight: '800', flexShrink: 1 },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 54, borderRadius: 12, paddingHorizontal: 4, paddingVertical: 6 },
+  tabText: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
   center: { alignItems: 'stretch', gap: 12, paddingVertical: 24 },
   list: { gap: 10 },
   groupTitle: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 6 },

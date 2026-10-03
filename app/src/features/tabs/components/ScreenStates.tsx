@@ -20,6 +20,8 @@ export type EmptyStateProps = {
   /** Color del botón de acción (por defecto, el acento de la pantalla). */
   actionColor?: string;
   onAction?: () => void;
+  /** Versión reducida para pantallas que muestran más contenido debajo. */
+  compact?: boolean;
 };
 
 export function EmptyState({
@@ -32,13 +34,14 @@ export function EmptyState({
   actionLabel,
   actionColor,
   onAction,
+  compact = false,
 }: Readonly<EmptyStateProps>) {
   const color = iconColor ?? theme.colors.accentPrimary;
   const buttonColor = actionColor ?? theme.colors.accentPrimary;
   return (
-    <View style={styles.emptyState}>
-      <View style={[styles.emptyIconBox, { backgroundColor: `${color}12` }]}>
-        <MaterialCommunityIcons name={icon} size={52} color={color} />
+    <View style={[styles.emptyState, compact && styles.emptyStateCompact]}>
+      <View style={[styles.emptyIconBox, compact && styles.emptyIconBoxCompact, { backgroundColor: `${color}12` }]}>
+        <MaterialCommunityIcons name={icon} size={compact ? 38 : 52} color={color} />
       </View>
       <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]} accessibilityRole="header">
         {title}
@@ -118,6 +121,8 @@ export function SkeletonList({
 
 const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: 48, gap: 12 },
+  emptyStateCompact: { paddingVertical: 12, gap: 8 },
+  emptyIconBoxCompact: { width: 76, height: 76, borderRadius: 38, marginBottom: 2 },
   emptyIconBox: { width: 108, height: 108, borderRadius: 54, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   emptyTitle: { fontSize: 21, fontWeight: '900', textAlign: 'center' },
   emptySubtext: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 20, paddingHorizontal: 16, opacity: 0.7 },

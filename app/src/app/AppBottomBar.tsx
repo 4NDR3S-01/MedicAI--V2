@@ -46,7 +46,9 @@ export function useMainTabContentInset(): number {
 export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomBarProps>) {
   const isFamily = activeTab === 'family';
   const bottomPad = 0;
-  const barBackground = theme.mode === 'light' ? '#FFFFFF' : '#0A1C2D';
+  // Translúcida en ambos modos: deja intuir el contenido que pasa por debajo.
+  const barBackground = theme.mode === 'light' ? 'rgba(255, 255, 255, 0.78)' : 'rgba(10, 28, 45, 0.74)';
+  const barBorder = theme.mode === 'light' ? 'rgba(41, 76, 110, 0.14)' : 'rgba(175, 208, 230, 0.16)';
 
   return (
     <View style={[styles.outer, { paddingBottom: bottomPad }]} pointerEvents="box-none">
@@ -94,8 +96,7 @@ export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomB
             styles.bar,
             {
               backgroundColor: barBackground,
-              borderColor: theme.colors.surfaceBorder,
-              opacity: 1,
+              borderColor: barBorder,
             },
           ]}
           accessibilityRole="tablist"

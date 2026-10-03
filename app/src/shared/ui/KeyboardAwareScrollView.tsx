@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, type ReactNode, type Ref } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, type ReactNode, type Ref } from 'react';
 import {
   Platform,
   ScrollView,
@@ -53,6 +53,8 @@ type KeyboardAwareScrollViewProps = {
    * contenedor superior ya lo hace (p. ej. FormSheet).
    */
   reserveKeyboardSpace?: boolean;
+  /** Al cambiar (p. ej. el paso de un asistente), vuelve arriba del todo. */
+  scrollToTopKey?: string | number;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -66,6 +68,7 @@ export function KeyboardAwareScrollView({
   contentContainerStyle,
   revealExtraSpace = 96,
   reserveKeyboardSpace = true,
+  scrollToTopKey,
   style,
 }: Readonly<KeyboardAwareScrollViewProps>) {
   const { keyboardVisible, bottomInset } = useKeyboardInset();
@@ -73,6 +76,11 @@ export function KeyboardAwareScrollView({
   const scrollRef = useRef<ScrollView | null>(null);
   const contentRef = useRef<View | null>(null);
   const viewportHeight = useRef(0);
+
+  useEffect(() => {
+    if (scrollToTopKey === undefined) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [scrollToTopKey]);
 
   const revealFocusedInput = useCallback(() => {
     const input = TextInput.State.currentlyFocusedInput();

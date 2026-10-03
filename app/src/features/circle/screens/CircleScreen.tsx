@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Alert, Animated, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -7,7 +7,7 @@ import { FloatingActionButton, useEnterAnimation } from '../../../shared/ui';
 import { EmptyState, SkeletonList } from '../../tabs/components/ScreenStates';
 import { CircleSections } from '../components/CircleSections';
 import { ReceivedInvitationCard } from '../components/CircleCards';
-import { InfoNote, SectionTitle } from '../components/CircleParts';
+import { InfoNote, SearchBar, SectionTitle } from '../components/CircleParts';
 import { InvitationReviewSheet } from '../components/InvitationReviewSheet';
 import { InviteSheet } from '../components/InviteSheet';
 import { JoinCodeSheet } from '../components/JoinCodeSheet';
@@ -16,9 +16,32 @@ import { MemberCareSheet } from '../components/MemberCareSheet';
 import { MemberDetailSheet, type CareTab } from '../components/MemberDetailSheet';
 import { shareInvitation, useCircle, withToken } from '../hooks/useCircle';
 import * as circleAPI from '../services/circle.service';
-import type { CircleInvitation, CircleMember } from '../services/circle.service';
+import type { CircleInvitation, CircleMember, CircleOverview } from '../services/circle.service';
 import { onCircleInvite, takePendingCircleInvite } from '../services/invite-link';
-import { firstName } from '../utils/relations';
+import { displayName, firstName, relationLabel } from '../utils/relations';
+
+/** A partir de cuántas personas aparece el buscador. */
+const SEARCH_THRESHOLD = 4;
+
+/** Sin tildes ni mayúsculas: "jose" encuentra a "José". */
+const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+function filterOverview(overview: CircleOverview, query: string): CircleOverview {
+  const needle = normalize(query);
+  if (!needle) return overview;
+  const matches = (...values: (string | null | undefined)[]) => values.some((value) => value && normalize(value).includes(needle));
+  return {
+    ...overview,
+    members: overview.members.filter((member) =>
+      matches(displayName(member.person), member.person.email, relationLabel(member.relation)),
+    ),
+    invitations: {
+      ...overview.invitations,
+      sent: overview.invitations.sent.filter((invitation) => matches(invitation.inviteeName, invitation.inviteeEmail, invitation.code)),
+    },
+    previous: overview.previous.filter((item) => matches(displayName(item.person), item.person.email)),
+  };
+}
 
 export type CircleScreenProps = {
   theme: AppTheme;
@@ -38,6 +61,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
   const [selected, setSelected] = useState<CircleMember | null>(null);
   const [care, setCare] = useState<{ member: CircleMember; tab: CareTab } | null>(null);
   const [managed, setManaged] = useState<CircleMember | null>(null);
+  const [query, setQuery] = useState('');
 
   // Recarga al volver a la app: alguien pudo aceptar, cambiar permisos o salir.
   useEffect(() => {
@@ -90,6 +114,17 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
     }));
   };
 
+  const peopleCount = overview ? overview.members.length + overview.invitations.sent.length : 0;
+  const showSearch = peopleCount >= SEARCH_THRESHOLD;
+  const visibleOverview = useMemo(
+    () => (overview && showSearch ? filterOverview(overview, query) : overview),
+    [overview, query, showSearch],
+  );
+  const noResults = Boolean(
+    showSearch && query.trim() && visibleOverview
+      && !visibleOverview.members.length && !visibleOverview.invitations.sent.length && !visibleOverview.previous.length,
+  );
+
   if (status === 'loading') {
     return (
       <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
@@ -120,25 +155,32 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
       <View style={styles.empty}>
         <EmptyState
           theme={theme}
+          compact
           icon="account-group-outline"
           title="Tu Círculo está vacío"
-          text="Invita a familiares, cuidadores o a tu médico. Tú decides qué puede ver o hacer cada uno con tu información."
+          text="Invita a familiares, cuidadores o a tu médico. Tú decides qué ve cada uno."
           actionIcon="account-plus"
           actionLabel="Invitar a alguien"
           onAction={() => setInviteVisible(true)}
         />
-        <View style={styles.howItWorks}>
-          <HowItWorks theme={theme} icon="account-plus-outline" text="Invitas por correo, código o enlace, aunque aún no tenga cuenta." />
-          <HowItWorks theme={theme} icon="account-heart-outline" text="Cada uno indica qué es para el otro y quién cuida a quién." />
-          <HowItWorks theme={theme} icon="shield-check-outline" text="Nadie ve nada hasta que tú lo permitas, y puedes quitarlo cuando quieras." />
+        <View style={[styles.howItWorks, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+          <HowItWorks theme={theme} icon="account-plus-outline" text="Invita por correo, código o enlace." />
+          <HowItWorks theme={theme} icon="account-heart-outline" text="Indiquen su relación y quién cuida a quién." />
+          <HowItWorks theme={theme} icon="shield-check-outline" text="Nadie ve nada sin tu permiso." />
         </View>
       </View>
     );
-  } else if (overview) {
+  } else if (noResults) {
+    body = (
+      <InfoNote theme={theme} icon="account-search-outline">
+        Nadie en tu Círculo coincide con «{query.trim()}». Prueba con su nombre, correo o relación.
+      </InfoNote>
+    );
+  } else if (visibleOverview) {
     body = (
       <CircleSections
         theme={theme}
-        overview={overview}
+        overview={visibleOverview}
         busyInvitationIds={circle.busyInvitationIds}
         onOpenMember={setSelected}
         onOpenCare={(member) => openCare(member)}
@@ -163,6 +205,8 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: contentBottomInset + 100 }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -210,6 +254,10 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
                 <ReceivedInvitationCard key={invitation.id} theme={theme} invitation={invitation} onOpen={setReviewing} />
               ))}
             </View>
+          ) : null}
+
+          {showSearch ? (
+            <SearchBar theme={theme} value={query} onChange={setQuery} placeholder="Buscar por nombre, correo o relación" />
           ) : null}
 
           {body}
@@ -283,7 +331,7 @@ function HowItWorks({ theme, icon, text }: Readonly<{ theme: AppTheme; icon: key
   return (
     <View style={styles.howRow}>
       <View style={[styles.howIcon, { backgroundColor: `${theme.colors.accentPrimary}12` }]}>
-        <MaterialCommunityIcons name={icon} size={20} color={theme.colors.accentPrimary} />
+        <MaterialCommunityIcons name={icon} size={18} color={theme.colors.accentPrimary} />
       </View>
       <Text style={[styles.howText, { color: theme.colors.textSecondary }]}>{text}</Text>
     </View>
@@ -302,9 +350,9 @@ const styles = StyleSheet.create({
   codeButtonText: { fontSize: 12.5, fontWeight: '900' },
   title: { fontSize: 32, fontWeight: '900', letterSpacing: -1, lineHeight: 36 },
   subtitle: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
-  empty: { gap: 8 },
-  howItWorks: { gap: 12, paddingHorizontal: 8 },
+  empty: { gap: 14 },
+  howItWorks: { gap: 10, borderWidth: 1, borderRadius: 18, padding: 14 },
   howRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  howIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  howText: { flex: 1, fontSize: 13.5, lineHeight: 19 },
+  howIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  howText: { flex: 1, fontSize: 13, lineHeight: 18 },
 });
