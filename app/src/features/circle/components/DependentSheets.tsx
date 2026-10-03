@@ -8,12 +8,12 @@ import { AppButton, FieldShell, FormSheet, PressableScale, TextField, useFieldCo
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 import { shareInvitation, withToken } from '../hooks/useCircle';
 import * as circleAPI from '../services/circle.service';
-import type { CircleGroup, CircleInvitation, CircleMember } from '../services/circle.service';
+import type { CircleGroup, CircleInvitation, CircleMember, ReminderMode } from '../services/circle.service';
 import { EMPTY_MEDICAL_INFO, MedicalInfoEditor, type MedicalInfo } from '../../auth';
 import { GroupPicker } from './CircleGroups';
 import { NO_PERMISSIONS, PERMISSION_PRESETS, type PermissionSet } from '../utils/permissions';
 import { firstName, reciprocalSuggestions, type RelationCode } from '../utils/relations';
-import { InfoNote, PermissionEditor, RelationPicker, SectionTitle } from './CircleParts';
+import { InfoNote, PermissionEditor, RelationPicker, ReminderModePicker, SectionTitle } from './CircleParts';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEPENDENT_SUGGESTIONS: RelationCode[] = ['SON', 'DAUGHTER', 'GRANDCHILD', 'CARE_RECIPIENT', 'FATHER', 'MOTHER', 'GRANDPARENT'];
@@ -49,6 +49,7 @@ export function DependentSheet({
 }>) {
   const editing = Boolean(member);
   const [medical, setMedical] = useState<MedicalInfo>(EMPTY_MEDICAL_INFO);
+  const [reminderMode, setReminderMode] = useState<ReminderMode>('ALARM');
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
@@ -72,6 +73,7 @@ export function DependentSheet({
     setMyRelationText('');
     setMedical(EMPTY_MEDICAL_INFO);
     setGroupIds([]);
+    setReminderMode('ALARM');
     setShowErrors(false);
     if (member) {
       // Datos de salud actuales para editarlos.
@@ -118,13 +120,13 @@ export function DependentSheet({
     }
   };
 
-  const save = async () => {
+  const save = async (allowDuplicateName = false) => {
     setShowErrors(true);
     const invalid = !name.trim()
       || (!editing && (!relation || (relation === 'OTHER' && !relationText.trim())))
       || (!editing && (!myRelation || (myRelation === 'OTHER' && !myRelationText.trim())));
     if (invalid) return;
-    if (!editing) {
+    if (!editing && reminderMode !== 'OFF' && !allowDuplicateName) {
       // Sus alarmas sonarán en este teléfono.
       const { ready } = await ensureAlarmPermissions();
       if (!ready) {
@@ -148,11 +150,22 @@ export function DependentSheet({
           allergies: medical.allergies || undefined,
           conditions: medical.conditions || undefined,
           groupIds,
+          reminderMode,
+          allowDuplicateName,
         });
       onSaved(saved, !member);
       onClose();
     } catch (error) {
-      Alert.alert('No se pudo guardar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+      const message = error instanceof Error ? error.message : 'Inténtalo de nuevo.';
+      // Ya administra un perfil con ese nombre: confirmar antes de duplicarlo.
+      if (message.startsWith('DUPLICATE_DEPENDENT:')) {
+        Alert.alert('¿Es otra persona?', `${message.slice('DUPLICATE_DEPENDENT:'.length)} Si es la misma, ábrela desde tu Círculo en lugar de crearla de nuevo.`, [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Es otra persona, crear', onPress: () => void save(true) },
+        ]);
+        return;
+      }
+      Alert.alert('No se pudo guardar', message);
     } finally {
       setSaving(false);
     }
@@ -258,9 +271,12 @@ export function DependentSheet({
       ) : null}
 
       {!editing ? (
-        <InfoNote theme={theme} icon="alarm">
-          Gestionarás sus medicamentos y citas, y sus alarmas sonarán en tu teléfono. Desde su ficha podrás agregar a otro cuidador, como tu pareja.
-        </InfoNote>
+        <>
+          <ReminderModePicker theme={theme} value={reminderMode} name={shortName} onChange={setReminderMode} />
+          <InfoNote theme={theme} icon="account-supervisor-outline">
+            Gestionarás sus medicamentos y citas. Desde su ficha podrás agregar a otro cuidador, como tu pareja. Si esta persona tiene (o tendrá) su propia cuenta, es mejor invitarla: así no habrá dos perfiles de la misma persona.
+          </InfoNote>
+        </>
       ) : null}
     </FormSheet>
   );

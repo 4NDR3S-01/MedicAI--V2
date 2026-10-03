@@ -6,7 +6,8 @@ import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FormSheet } from '../../../shared/ui';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
-import type { CircleGroup, CircleInvitation, CircleMember } from '../services/circle.service';
+import type { CircleGroup, CircleInvitation, CircleMember, ReminderMode } from '../services/circle.service';
+import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 import { hasAnyPermission, normalizePermissions, type PermissionSet } from '../utils/permissions';
 import {
   careSummary,
@@ -17,7 +18,7 @@ import {
   relationToMe,
   type RelationCode,
 } from '../utils/relations';
-import { Avatar, Badge, InfoNote, PermissionEditor, PermissionList, RelationPicker, SectionTitle } from './CircleParts';
+import { Avatar, Badge, InfoNote, PermissionEditor, PermissionList, RelationPicker, ReminderModePicker, SectionTitle } from './CircleParts';
 import { GroupPicker } from './CircleGroups';
 
 const STATE_MESSAGES: Record<Exclude<CircleInvitation['state'], 'PENDING'>, { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }> = {
@@ -31,7 +32,8 @@ export type InvitationReviewSheetProps = {
   theme: AppTheme;
   invitation: CircleInvitation | null;
   onClose: () => void;
-  onAccepted: (member: CircleMember, invitation: CircleInvitation) => void;
+  /** groupIds: grupos propios en los que se colocó a la persona al aceptar. */
+  onAccepted: (member: CircleMember, invitation: CircleInvitation, groupIds: string[]) => void;
   onDeclined: (invitation: CircleInvitation) => void;
   groups?: CircleGroup[];
   onGroupCreated?: (group: CircleGroup) => void;
@@ -52,6 +54,7 @@ export function InvitationReviewSheet({
   onGroupCreated,
 }: Readonly<InvitationReviewSheetProps>) {
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [reminderMode, setReminderMode] = useState<ReminderMode>('OFF');
   // Mantiene el contenido mientras el panel se cierra.
   const last = useRef(invitation);
   if (invitation) last.current = invitation;
@@ -71,11 +74,15 @@ export function InvitationReviewSheet({
     setGranted(normalizePermissions(invitation.requested));
     setShowErrors(false);
     setGroupIds([]);
+    // Cuidar a un perfil a cargo: sus alarmas suenan aquí por defecto; si
+    // ayudas a esta persona (te dice que la cuidas), un aviso; si no, nada.
+    setReminderMode(invitation.inviter.isManaged ? 'ALARM' : invitation.care === 'CARES_FOR_ME' || invitation.care === 'MUTUAL' ? 'NOTIFY' : 'OFF');
   }, [invitation]);
 
   if (!shown) return null;
 
   const inviterName = displayName(shown.inviter);
+  const canAskReminders = shown.granted.viewMedications || shown.granted.viewAppointments;
   const inviterFirst = firstName(shown.inviter);
   // Invitación para cuidar a un perfil a cargo (p. ej. el hijo de quien invita).
   const forDependent = Boolean(shown.inviter.isManaged);
@@ -99,6 +106,7 @@ export function InvitationReviewSheet({
   const accept = async () => {
     setShowErrors(true);
     if (!relation || (relation === 'OTHER' && !relationText.trim())) return;
+    if (canAskReminders && reminderMode !== 'OFF') await ensureAlarmPermissions();
     try {
       setBusy('accept');
       const member = await circleAPI.acceptInvitation(await withToken(), shown.id, {
@@ -106,8 +114,9 @@ export function InvitationReviewSheet({
         relationLabel: relation === 'OTHER' ? relationText.trim() : undefined,
         granted: forDependent ? normalizePermissions(null) : granted,
         groupIds,
+        reminderMode: canAskReminders ? reminderMode : 'OFF',
       });
-      onAccepted(member, shown);
+      onAccepted(member, shown, groupIds);
     } catch (error) {
       Alert.alert('No se pudo aceptar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {
@@ -203,6 +212,9 @@ export function InvitationReviewSheet({
 
           <SectionTitle theme={theme} title="Tú podrás" hint={forDependent ? `Lo decidió ${senderFirst}.` : `Lo decidió ${inviterFirst}.`} />
           <PermissionList theme={theme} value={shown.granted} perspective="iCan" emptyText={`No verás la información de ${inviterFirst}`} />
+          {canAskReminders ? (
+            <ReminderModePicker theme={theme} value={reminderMode} name={inviterFirst} onChange={setReminderMode} />
+          ) : null}
 
           {!forDependent ? (
             <>

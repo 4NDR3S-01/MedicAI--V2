@@ -437,6 +437,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         ownerId={ownerId}
         canEditDetails={can.editMedications}
         ownerTimeZone={shown.person.timezone}
+        existingMedications={medications}
         timeZoneNote={
           isForeignTimeZone(shown.person.timezone)
             ? `Las horas son las de ${first}, en su zona horaria (${shown.person.timezone?.split('/').pop()?.replace(/_/g, ' ')}).`
@@ -456,6 +457,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         ownerId={ownerId}
         ownerIsDependent={Boolean(shown.person.isManaged)}
         ownerTimeZone={shown.person.timezone}
+        existingAppointments={appointments}
         onClose={() => setApptForm((current) => ({ ...current, visible: false }))}
         onSaved={(saved, isNew) =>
           setAppointments((current) => (isNew ? [...current, saved] : current.map((item) => (item.id === saved.id ? saved : item))))

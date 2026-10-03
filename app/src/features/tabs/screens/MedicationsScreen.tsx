@@ -540,6 +540,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         theme={theme}
         visible={form.visible}
         medication={form.medication}
+        existingMedications={medications}
         onClose={() => setForm((current) => ({ ...current, visible: false }))}
         onSaved={handleSaved}
       />

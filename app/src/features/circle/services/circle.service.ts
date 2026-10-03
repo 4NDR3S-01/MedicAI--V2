@@ -97,6 +97,8 @@ export type CreateInvitationPayload = {
   requested: PermissionSet;
   ownerId?: string;
   groupIds?: string[];
+  /** Recibir en mi teléfono los recordatorios de la persona invitada (al aceptar). */
+  reminderMode?: ReminderMode;
 };
 
 export type HealthInfo = {
@@ -135,7 +137,7 @@ export const openInvitationByCode = (accessToken: string, code: string) =>
 export const acceptInvitation = (
   accessToken: string,
   invitationId: string,
-  payload: { relation: RelationCode; relationLabel?: string; granted: PermissionSet; groupIds?: string[] },
+  payload: { relation: RelationCode; relationLabel?: string; granted: PermissionSet; groupIds?: string[]; reminderMode?: ReminderMode },
 ) =>
   request<CircleMember>(`/circle/invitations/${invitationId}/accept`, 'POST', accessToken, 'No se pudo aceptar la invitación', payload);
 
@@ -184,6 +186,9 @@ export type DependentPayload = {
   immunosuppression?: boolean;
   anticoagulantTreatment?: boolean;
   groupIds?: string[];
+  reminderMode?: ReminderMode;
+  /** Crear aunque ya exista un perfil a cargo con ese nombre. */
+  allowDuplicateName?: boolean;
 };
 
 export const createDependent = (accessToken: string, payload: DependentPayload) =>
@@ -192,7 +197,7 @@ export const createDependent = (accessToken: string, payload: DependentPayload) 
 export const updateDependent = (
   accessToken: string,
   dependentId: string,
-  payload: Partial<Omit<DependentPayload, 'relation' | 'relationLabel' | 'myRelation' | 'myRelationLabel' | 'groupIds'>>,
+  payload: Partial<Omit<DependentPayload, 'relation' | 'relationLabel' | 'myRelation' | 'myRelationLabel' | 'groupIds' | 'reminderMode' | 'allowDuplicateName'>>,
 ) => request<CircleMember>(`/circle/dependents/${dependentId}`, 'PATCH', accessToken, 'No se pudo actualizar el perfil', payload);
 
 export const deleteDependent = (accessToken: string, dependentId: string) =>

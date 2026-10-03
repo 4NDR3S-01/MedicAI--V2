@@ -246,6 +246,9 @@ model CircleInvitation {
   inviteeCaresForInviter Boolean   @default(false)
   grantedPermissions     Json // lo que el invitado podrá hacer con la información del inviter
   requestedPermissions   Json // lo que el inviter pide sobre la información del invitado
+  // Recordatorios de la persona invitada que quien invita quiere recibir en su
+  // teléfono (OFF | NOTIFY | ALARM); se aplica al aceptar.
+  inviterReminderMode    String    @default("OFF")
   // Grupos (de quien invita) a los que se añadirá la persona al aceptar.
   inviterGroupIds        String[]  @default([])
   status                 String    @default("PENDING") // PENDING | ACCEPTED | DECLINED | CANCELED

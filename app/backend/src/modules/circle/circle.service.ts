@@ -206,6 +206,21 @@ export class CircleService {
       if (duplicate) {
         throw new ConflictException('Ya hay una invitación pendiente para este correo. Puedes reenviarla desde la lista.');
       }
+      // Esa persona ya te invitó a ti: basta con aceptar su invitación.
+      if (existing) {
+        const reverse = await this.prisma.circleInvitation.findFirst({
+          where: {
+            inviterId: existing.id,
+            status: 'PENDING',
+            expiresAt: { gt: new Date() },
+            OR: [{ inviteeUserId: inviterId }, { inviteeEmail: inviter.email }],
+          },
+          select: { id: true },
+        });
+        if (reverse) {
+          throw new ConflictException('Esta persona ya te invitó a su Círculo. Revisa "Invitaciones para ti" y acéptala.');
+        }
+      }
     }
 
     const care = flagsFromCare(dto.care);
@@ -225,6 +240,7 @@ export class CircleService {
           inviterCaresForInvitee: care.iCare,
           inviteeCaresForInviter: care.caresForMe,
           inviterGroupIds,
+          inviterReminderMode: dto.reminderMode ?? 'OFF',
           grantedPermissions: normalizePermissions(dto.granted as Record<string, unknown>),
           requestedPermissions: normalizePermissions(dto.requested as Record<string, unknown>),
           expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
@@ -258,6 +274,9 @@ export class CircleService {
       throw new BadRequestException('Esta invitación la creaste tú. Compártela con la persona que quieres invitar.');
     }
     this.assertCanRespond(invitation, actor);
+    if (invitation.status === 'PENDING' && (await this.findActiveLink(invitation.inviterId, actorId))) {
+      throw new ConflictException('Ya están conectados en el Círculo: no hace falta aceptar esta invitación.');
+    }
 
     if (!invitation.inviteeUserId && invitation.status === 'PENDING') {
       await this.prisma.circleInvitation.updateMany({
@@ -307,8 +326,8 @@ export class CircleService {
               ownerId: invitation.inviterId,
               granteeId: actorId,
               ...normalizePermissions(invitation.grantedPermissions as Record<string, unknown>),
-              // Quien acepta cuidar a un perfil a cargo recibe sus alarmas (puede cambiarlo).
-              reminderMode: inviterIsManaged ? 'ALARM' : 'OFF',
+              // Lo eligió quien acepta; si no, un perfil a cargo suena por defecto.
+              reminderMode: dto.reminderMode ?? (inviterIsManaged ? 'ALARM' : 'OFF'),
             },
             {
               linkId: created.id,
@@ -316,9 +335,26 @@ export class CircleService {
               granteeId: invitation.inviterId,
               // Un perfil a cargo no usa la app: no tiene sentido darle permisos.
               ...normalizePermissions(inviterIsManaged ? null : (dto.granted as Record<string, unknown>)),
+              // Lo eligió quien invitó al crear la invitación.
+              reminderMode: inviterIsManaged ? 'OFF' : invitation.inviterReminderMode,
             },
           ],
         });
+        // Otras invitaciones pendientes entre estas dos personas (repetidas o
+        // cruzadas) ya no tienen sentido: se cancelan para no dejar basura.
+        const inviter = await tx.user.findUnique({ where: { id: invitation.inviterId }, select: { email: true } });
+        await tx.circleInvitation.updateMany({
+          where: {
+            status: 'PENDING',
+            id: { not: invitation.id },
+            OR: [
+              { inviterId: invitation.inviterId, OR: [{ inviteeUserId: actorId }, { inviteeEmail: actor.email }] },
+              { inviterId: actorId, OR: [{ inviteeUserId: invitation.inviterId }, ...(inviter ? [{ inviteeEmail: inviter.email }] : [])] },
+            ],
+          },
+          data: { status: 'CANCELED' },
+        });
+
         const groupIds = [
           ...(await this.ownGroupIds(invitation.inviterId, invitation.inviterGroupIds)),
           ...(await this.ownGroupIds(actorId, dto.groupIds)),
@@ -669,6 +705,18 @@ export class CircleService {
     const relationLabel = this.relationLabel(dto.relation, dto.relationLabel);
     const myRelationLabel = this.relationLabel(dto.myRelation, dto.myRelationLabel);
 
+    // ¿Ya administra un perfil con ese nombre? (p. ej. creado dos veces por error)
+    if (!dto.allowDuplicateName) {
+      const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
+      const managed = await this.prisma.circleGrant.findMany({
+        where: { granteeId: actorId, manageCircle: true, link: { status: 'ACTIVE' }, owner: { isManaged: true } },
+        select: { owner: { select: { fullName: true } } },
+      });
+      if (managed.some((grant) => grant.owner.fullName && normalize(grant.owner.fullName) === normalize(dto.fullName))) {
+        throw new ConflictException(`DUPLICATE_DEPENDENT:Ya tienes a tu cargo a alguien llamado ${dto.fullName.trim()}.`);
+      }
+    }
+
     const link = await this.prisma.$transaction(async (tx) => {
       const dependent = await tx.user.create({
         data: {
@@ -704,7 +752,7 @@ export class CircleService {
       });
       await tx.circleGrant.createMany({
         data: [
-          { linkId: created.id, ownerId: dependent.id, granteeId: actorId, ...ALL_PERMISSIONS, reminderMode: 'ALARM' },
+          { linkId: created.id, ownerId: dependent.id, granteeId: actorId, ...ALL_PERMISSIONS, reminderMode: dto.reminderMode ?? 'ALARM' },
           { linkId: created.id, ownerId: actorId, granteeId: dependent.id },
         ],
       });

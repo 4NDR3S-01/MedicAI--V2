@@ -134,13 +134,18 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
     setCare({ member, tab: firstTab });
   };
 
-  const handleAccepted = (member: CircleMember, invitation: CircleInvitation) => {
+  const handleAccepted = (member: CircleMember, invitation: CircleInvitation, groupIds: string[]) => {
     setReviewing(null);
     circle.update((current) => ({
       ...current,
       members: [...current.members.filter((item) => item.linkId !== member.linkId), member],
       invitations: { ...current.invitations, received: current.invitations.received.filter((item) => item.id !== invitation.id) },
+      // Los grupos elegidos al aceptar se ven ya (antes había que recargar).
+      groups: (current.groups ?? []).map((group) =>
+        groupIds.includes(group.id) ? { ...group, linkIds: [...new Set([...group.linkIds, member.linkId])] } : group,
+      ),
     }));
+    void circle.load();
     void syncOwnReminders({ force: true }).catch(() => undefined);
     Alert.alert('¡Ya están conectados!', `Ahora formas parte del Círculo de ${firstName(member.person)}. Puedes cambiar lo que compartes desde su ficha cuando quieras.`);
   };

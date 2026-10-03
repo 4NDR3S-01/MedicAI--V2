@@ -1,6 +1,6 @@
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
-import { RELATION_CODES, RELATION_LABEL_MAX, type RelationCode } from '../circle.constants';
+import { RELATION_CODES, RELATION_LABEL_MAX, REMINDER_MODES, type RelationCode, type ReminderMode } from '../circle.constants';
 
 export class CreateDependentDto {
   @IsString()
@@ -47,6 +47,16 @@ export class CreateDependentDto {
   @IsOptional() @IsBoolean() recentSurgeries?: boolean;
   @IsOptional() @IsBoolean() immunosuppression?: boolean;
   @IsOptional() @IsBoolean() anticoagulantTreatment?: boolean;
+
+  /** Recibir sus recordatorios en mi teléfono: OFF | NOTIFY | ALARM. */
+  @IsOptional()
+  @IsIn(REMINDER_MODES)
+  reminderMode?: ReminderMode;
+
+  /** Ya existe un perfil a cargo con ese nombre y aun así se quiere crear. */
+  @IsOptional()
+  @IsBoolean()
+  allowDuplicateName?: boolean;
 
   /** Grupos propios en los que colocar a la persona. */
   @IsOptional()

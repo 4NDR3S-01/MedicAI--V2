@@ -484,6 +484,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         theme={theme}
         visible={form.visible}
         appointment={form.appointment}
+        existingAppointments={appointments}
         onClose={() => setForm((current) => ({ ...current, visible: false }))}
         onSaved={handleSaved}
       />

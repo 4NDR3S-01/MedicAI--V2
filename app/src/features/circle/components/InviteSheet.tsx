@@ -6,7 +6,8 @@ import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FormSheet, TextField } from '../../../shared/ui';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
-import type { CircleGroup, CircleInvitation } from '../services/circle.service';
+import type { CircleGroup, CircleInvitation, ReminderMode } from '../services/circle.service';
+import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 import {
   NO_PERMISSIONS,
   PERMISSION_PRESETS,
@@ -22,7 +23,7 @@ import {
   type RelationCode,
 } from '../utils/relations';
 import { shareInvitation } from '../hooks/useCircle';
-import { CarePicker, InfoNote, PermissionEditor, RelationPicker, SectionTitle } from './CircleParts';
+import { CarePicker, InfoNote, PermissionEditor, RelationPicker, REMINDER_OPTIONS, ReminderModePicker, SectionTitle } from './CircleParts';
 import { GroupPicker } from './CircleGroups';
 
 type Method = 'email' | 'code';
@@ -75,6 +76,7 @@ export function InviteSheet({
   onGroupCreated,
 }: Readonly<InviteSheetProps>) {
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [reminderMode, setReminderMode] = useState<ReminderMode>('OFF');
   const [step, setStep] = useState<Step>(0);
   const [method, setMethod] = useState<Method>('email');
   const [email, setEmail] = useState('');
@@ -106,8 +108,12 @@ export function InviteSheet({
     setShowErrors(false);
     setCreated(null);
     setGroupIds([]);
+    setReminderMode('OFF');
   }, [visible, initialEmail]);
 
+  // Solo tiene sentido si pides ver sus medicamentos o citas (y lo pides para ti).
+  const canAskReminders = !ownerId && (requested.viewMedications || requested.viewAppointments);
+  const wantsReminders = canAskReminders && reminderMode !== 'OFF';
   const personName = name.trim() || (method === 'email' && email.includes('@') ? email.split('@')[0] : 'esta persona');
   const ownerInfo = ownerId ? `la información de ${ownerName ?? 'esta persona'}` : 'tu información';
   const subject = ownerId ? (ownerName ?? 'Esta persona') : 'Tú';
@@ -128,6 +134,8 @@ export function InviteSheet({
       const defaults = defaultsFor(care, relation);
       setGranted(defaults.granted);
       setRequested(defaults.requested);
+      // Si la cuidas, por defecto recibes sus avisos (lo puedes cambiar).
+      setReminderMode(!ownerId && (care === 'I_CARE' || care === 'MUTUAL') && relation !== 'DOCTOR' ? 'NOTIFY' : 'OFF');
     }
     setStep((current) => Math.min(3, current + 1) as Step);
   };
@@ -139,6 +147,7 @@ export function InviteSheet({
       Alert.alert('Sesión expirada', 'Vuelve a iniciar sesión para continuar.');
       return;
     }
+    if (wantsReminders) await ensureAlarmPermissions();
     try {
       setSaving(true);
       const invitation = await circleAPI.createInvitation(session.accessToken, {
@@ -151,6 +160,7 @@ export function InviteSheet({
         requested,
         ownerId,
         groupIds: ownerId ? undefined : groupIds,
+        reminderMode: wantsReminders ? reminderMode : 'OFF',
       });
       setCreated(invitation);
       onCreated(invitation);
@@ -375,6 +385,9 @@ export function InviteSheet({
               setRequested(value);
             }}
           />
+          {canAskReminders ? (
+            <ReminderModePicker theme={theme} value={reminderMode} name={personName} onChange={setReminderMode} />
+          ) : null}
         </>
       ) : null}
 
@@ -396,6 +409,14 @@ export function InviteSheet({
             <Text style={[styles.reviewLabel, { color: theme.colors.textMuted }]}>Solicitas</Text>
             <PhraseList theme={theme} phrases={permissionPhrases(requested, 'iCan')} empty="No pides acceso a su información" />
           </View>
+          {canAskReminders ? (
+            <ReviewRow
+              theme={theme}
+              icon="bell-ring-outline"
+              label="Sus recordatorios en tu teléfono"
+              value={REMINDER_OPTIONS.find((option) => option.value === reminderMode)?.label ?? ''}
+            />
+          ) : null}
           {!hasAnyPermission(granted) && !hasAnyPermission(requested) ? (
             <InfoNote theme={theme} color={theme.colors.accentTertiary} icon="alert-circle-outline">
               Estarán conectados, pero ninguno verá la información del otro. Podrán dar permisos más adelante.

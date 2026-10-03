@@ -26,6 +26,7 @@ import { getStoredSession } from '../../auth';
 import * as appointmentsAPI from '../services/appointments.service';
 import type { AppointmentData } from '../services/appointments.service';
 import { formatClock } from '../utils/appointment-status';
+import { findDuplicateAppointment } from '../utils/duplicates';
 import { isForeignTimeZone, zonedParts, zonedToDate } from '../../../shared/services/dose-schedule';
 
 const TITLE_MAX = 120;
@@ -113,6 +114,8 @@ export type AppointmentFormSheetProps = {
   ownerIsDependent?: boolean;
   /** Zona horaria del dueño: la fecha y hora se eligen en su hora local. */
   ownerTimeZone?: string | null;
+  /** Citas actuales del dueño, para avisar si se repite una. */
+  existingAppointments?: AppointmentData[];
 };
 
 export function AppointmentFormSheet({
@@ -124,6 +127,7 @@ export function AppointmentFormSheet({
   ownerId,
   ownerIsDependent = false,
   ownerTimeZone,
+  existingAppointments = [],
 }: Readonly<AppointmentFormSheetProps>) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
@@ -180,10 +184,27 @@ export function AppointmentFormSheet({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (confirmedDuplicate = false) => {
     setShowErrors(true);
     const currentErrors = validate(form, appointment, ownerTimeZone);
     if (Object.values(currentErrors).some(Boolean) || !form.date) return;
+
+    // La misma cita ya registrada (p. ej. por otra persona del Círculo).
+    const duplicate = confirmedDuplicate
+      ? null
+      : findDuplicateAppointment(combine(form.date, form.time, ownerTimeZone), form.doctorName, form.title, existingAppointments, appointment?.id);
+    if (duplicate) {
+      const when = new Date(duplicate.scheduledAt).toLocaleString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+      Alert.alert(
+        'Parece que esta cita ya existe',
+        `Ya hay una cita "${duplicate.title}" con ${duplicate.doctorName} el ${when}. Si es la misma, no la agregues otra vez.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Es otra, guardar', onPress: () => void handleSave(true) },
+        ],
+      );
+      return;
+    }
 
     const session = await getStoredSession();
     if (!session?.accessToken) {

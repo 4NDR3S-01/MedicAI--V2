@@ -3,7 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Alert, LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
-import { AppButton, FormSheet, SelectField, useReducedMotion } from '../../../shared/ui';
+import { AppButton, FormSheet, useReducedMotion } from '../../../shared/ui';
 import { syncOwnReminders } from '../../tabs/services/reminders-sync';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 import { getStoredSession } from '../../auth';
@@ -19,15 +19,10 @@ import {
   type CareValue,
   type RelationCode,
 } from '../utils/relations';
-import { Avatar, Badge, CarePicker, InfoNote, PermissionEditor, PermissionList, RelationPicker, SectionTitle } from './CircleParts';
+import { Avatar, Badge, CarePicker, InfoNote, PermissionEditor, PermissionList, RelationPicker, ReminderModePicker, SectionTitle } from './CircleParts';
 import { CoCaregiverSheet, DependentSheet, HandoverSheet } from './DependentSheets';
 import { GroupPicker } from './CircleGroups';
 
-const REMINDER_OPTIONS: { value: ReminderMode; label: string }[] = [
-  { value: 'OFF', label: 'No recibir' },
-  { value: 'NOTIFY', label: 'Solo aviso' },
-  { value: 'ALARM', label: 'Alarma completa' },
-];
 
 export type CareTab = 'medications' | 'appointments' | 'health';
 
@@ -365,30 +360,13 @@ export function MemberDetailSheet({
               </View>
             ) : null}
             {canReceiveReminders ? (
-              <View style={[styles.reminderBox, { borderColor: theme.colors.surfaceBorder }]}>
-                <View style={styles.reminderRow}>
-                  <MaterialCommunityIcons name="bell-ring-outline" size={22} color={theme.colors.accentPrimary} />
-                  <View style={styles.flex}>
-                    <Text style={[styles.reminderTitle, { color: theme.colors.textPrimary }]}>Sus recordatorios en tu teléfono</Text>
-                    <Text style={[styles.reminderHint, { color: theme.colors.textMuted }]}>
-                      {reminders === 'ALARM'
-                        ? 'Sonará la alarma a la hora de sus tomas y te avisaremos de sus citas.'
-                        : reminders === 'NOTIFY'
-                          ? 'Te llegará un aviso a la hora de sus tomas y citas.'
-                          : 'No recibes avisos de sus tomas ni citas.'}
-                    </Text>
-                  </View>
-                </View>
-                <SelectField
-                  theme={theme}
-                  value={reminders}
-                  options={REMINDER_OPTIONS}
-                  onChange={(mode) => void changeReminders(mode)}
-                  disabled={busy !== null}
-                  accessibilityLabel={`Recordatorios de ${first}`}
-                  style={styles.reminderSelect}
-                />
-              </View>
+              <ReminderModePicker
+                theme={theme}
+                value={reminders}
+                name={first}
+                onChange={(mode) => void changeReminders(mode)}
+                disabled={busy !== null}
+              />
             ) : null}
             {isDependent && iCan.manageCircle ? (
               <View style={styles.dependentActions}>
@@ -483,10 +461,5 @@ const styles = StyleSheet.create({
   careAction: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
   careActionText: { fontSize: 12.5, fontWeight: '800' },
   danger: { borderTopWidth: 1, paddingTop: 16, gap: 8 },
-  reminderBox: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12 },
-  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  reminderTitle: { fontSize: 14, fontWeight: '800' },
-  reminderHint: { fontSize: 12, lineHeight: 16, marginTop: 1 },
-  reminderSelect: { minHeight: 46 },
   dependentActions: { gap: 8 },
 });
