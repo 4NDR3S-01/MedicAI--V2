@@ -6,6 +6,9 @@ import {
   withOwner,
 } from './http';
 
+/** Quién agregó/cambió/registró algo (la persona o alguien de su Círculo). */
+export type ActorRef = { id: string; fullName: string | null } | null;
+
 type MedicationData = {
   id: string;
   userId: string;
@@ -20,6 +23,8 @@ type MedicationData = {
   active: boolean;
   /** Última activación: las tomas anteriores no cuentan. */
   activeSince?: string | null;
+  createdBy?: ActorRef;
+  updatedBy?: ActorRef;
   createdAt: string;
   updatedAt: string;
 };
@@ -177,6 +182,7 @@ export type MedicationLog = {
   action: 'TAKEN' | 'SKIPPED' | 'SNOOZED';
   takenAt: string;
   scheduledFor: string | null;
+  loggedBy?: ActorRef;
 };
 
 export type { MedicationData, CreateMedicationPayload };

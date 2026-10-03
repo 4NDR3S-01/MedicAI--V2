@@ -6,7 +6,7 @@ import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FormSheet, TextField } from '../../../shared/ui';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
-import type { CircleInvitation } from '../services/circle.service';
+import type { CircleGroup, CircleInvitation } from '../services/circle.service';
 import {
   NO_PERMISSIONS,
   PERMISSION_PRESETS,
@@ -23,6 +23,7 @@ import {
 } from '../utils/relations';
 import { shareInvitation } from '../hooks/useCircle';
 import { CarePicker, InfoNote, PermissionEditor, RelationPicker, SectionTitle } from './CircleParts';
+import { GroupPicker } from './CircleGroups';
 
 type Method = 'email' | 'code';
 type Step = 0 | 1 | 2 | 3;
@@ -33,8 +34,13 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const preset = (id: 'none' | 'view' | 'help' | 'manage'): PermissionSet =>
   PERMISSION_PRESETS.find((item) => item.id === id)?.value ?? NO_PERMISSIONS;
 
-/** Permisos iniciales según quién cuida a quién (siempre editables). */
-function defaultsFor(care: CareValue) {
+/**
+ * Permisos iniciales (siempre editables) según quién cuida a quién y la
+ * relación. Un médico suele necesitar ver, no gestionar; un cuidador, gestionar.
+ */
+function defaultsFor(care: CareValue, relation: RelationCode | null) {
+  if (relation === 'DOCTOR') return { granted: NO_PERMISSIONS, requested: preset('view') };
+  if (relation === 'PATIENT') return { granted: preset('view'), requested: NO_PERMISSIONS };
   return {
     // Lo que la otra persona podrá hacer con MI información.
     granted: care === 'CARES_FOR_ME' ? preset('manage') : care === 'MUTUAL' ? preset('help') : NO_PERMISSIONS,
@@ -52,9 +58,23 @@ export type InviteSheetProps = {
   ownerId?: string;
   ownerName?: string;
   initialEmail?: string;
+  /** Mis grupos (solo al invitar en mi nombre). */
+  groups?: CircleGroup[];
+  onGroupCreated?: (group: CircleGroup) => void;
 };
 
-export function InviteSheet({ theme, visible, onClose, onCreated, ownerId, ownerName, initialEmail }: Readonly<InviteSheetProps>) {
+export function InviteSheet({
+  theme,
+  visible,
+  onClose,
+  onCreated,
+  ownerId,
+  ownerName,
+  initialEmail,
+  groups = [],
+  onGroupCreated,
+}: Readonly<InviteSheetProps>) {
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [step, setStep] = useState<Step>(0);
   const [method, setMethod] = useState<Method>('email');
   const [email, setEmail] = useState('');
@@ -85,6 +105,7 @@ export function InviteSheet({ theme, visible, onClose, onCreated, ownerId, owner
     setPermissionsTouched(false);
     setShowErrors(false);
     setCreated(null);
+    setGroupIds([]);
   }, [visible, initialEmail]);
 
   const personName = name.trim() || (method === 'email' && email.includes('@') ? email.split('@')[0] : 'esta persona');
@@ -104,7 +125,7 @@ export function InviteSheet({ theme, visible, onClose, onCreated, ownerId, owner
     if (stepError()) return;
     setShowErrors(false);
     if (step === 1 && !permissionsTouched) {
-      const defaults = defaultsFor(care);
+      const defaults = defaultsFor(care, relation);
       setGranted(defaults.granted);
       setRequested(defaults.requested);
     }
@@ -129,6 +150,7 @@ export function InviteSheet({ theme, visible, onClose, onCreated, ownerId, owner
         granted,
         requested,
         ownerId,
+        groupIds: ownerId ? undefined : groupIds,
       });
       setCreated(invitation);
       onCreated(invitation);
@@ -275,6 +297,21 @@ export function InviteSheet({ theme, visible, onClose, onCreated, ownerId, owner
             autoCapitalize="words"
             helper="Solo para que la reconozcas en tu lista mientras responde."
           />
+          {!ownerId ? (
+            <>
+              <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
+              <GroupPicker
+                theme={theme}
+                groups={groups}
+                value={groupIds}
+                onChange={setGroupIds}
+                onCreate={(group, next) => {
+                  onGroupCreated?.(group);
+                  setGroupIds(next);
+                }}
+              />
+            </>
+          ) : null}
         </>
       ) : null}
 

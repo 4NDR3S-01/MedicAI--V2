@@ -56,7 +56,10 @@ function MemberCardBase({
         <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textMuted} />
       </View>
 
-      {careLine ? (
+      {member.person.isManaged ? (
+        <Badge label="A tu cargo · sin cuenta propia" color={theme.colors.accentTertiary} icon="human-child" />
+      ) : null}
+      {careLine && !member.person.isManaged ? (
         <Badge label={careLine} color={member.care === 'CARES_FOR_ME' ? theme.colors.accentSecondary : theme.colors.accentPrimary} icon="hand-heart-outline" />
       ) : null}
 
@@ -101,12 +104,14 @@ export function ReceivedInvitationCard({
   onOpen,
 }: Readonly<{ theme: AppTheme; invitation: CircleInvitation; onOpen: (invitation: CircleInvitation) => void }>) {
   const name = displayName(invitation.inviter);
+  const forDependent = Boolean(invitation.inviter.isManaged);
+  const sender = forDependent ? displayName(invitation.createdBy) : name;
   const days = daysLeft(invitation.expiresAt);
   return (
     <Pressable
       onPress={() => onOpen(invitation)}
       accessibilityRole="button"
-      accessibilityLabel={`${name} te invitó a su Círculo. Ver invitación`}
+      accessibilityLabel={forDependent ? `${sender} te invita a cuidar a ${name}. Ver invitación` : `${name} te invitó a su Círculo. Ver invitación`}
       style={({ pressed }) => [
         styles.card,
         { backgroundColor: `${theme.colors.accentSecondary}0D`, borderColor: `${theme.colors.accentSecondary}55` },
@@ -116,9 +121,11 @@ export function ReceivedInvitationCard({
       <View style={styles.row}>
         <Avatar name={name} seed={invitation.inviter.id} />
         <View style={styles.flex}>
-          <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>{name} te invitó</Text>
+          <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+            {forDependent ? `Cuidar a ${name}` : `${name} te invitó`}
+          </Text>
           <Text style={[styles.relation, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-            Dice ser {relationToMe(invitation.inviterRelation).toLowerCase()}
+            {forDependent ? `Te invita ${sender}` : `Dice ser ${relationToMe(invitation.inviterRelation).toLowerCase()}`}
           </Text>
         </View>
       </View>

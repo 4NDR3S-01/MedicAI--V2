@@ -14,6 +14,7 @@ import {
   relativeDayLabel,
   type AppointmentState,
 } from '../utils/appointment-status';
+import { changedByNote } from '../utils/audit';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -135,6 +136,13 @@ function AppointmentCardBase({
           </View>
         ) : null}
       </View>
+
+      {changedByNote(appointment, { masculine: false }) ? (
+        <View style={styles.detailRow}>
+          <MaterialCommunityIcons name="account-edit-outline" size={14} color={theme.colors.textMuted} />
+          <Text style={[styles.auditText, { color: theme.colors.textMuted }]}>{changedByNote(appointment, { masculine: false })}</Text>
+        </View>
+      ) : null}
 
       {askAttendance ? (
         <View style={[styles.ask, { backgroundColor: `${theme.colors.accentTertiary}12`, borderColor: `${theme.colors.accentTertiary}35` }]}>
@@ -282,4 +290,5 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 6 },
   iconAction: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.6 },
+  auditText: { fontSize: 12, fontWeight: '600' },
 });

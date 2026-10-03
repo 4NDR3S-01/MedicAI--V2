@@ -29,6 +29,11 @@ model User {
   // contexto al asistente de IA (proveedor externo). Por defecto desactivado.
   aiHealthContextConsent   Boolean   @default(false)
   aiHealthContextConsentAt DateTime?
+  // Perfil a cargo (p. ej. un hijo pequeño): sin acceso propio, lo gestionan
+  // sus tutores desde el Círculo. Deja de serlo al "entregar la cuenta"
+  // (la persona crea su contraseña con el enlace que recibe por correo).
+  isManaged                Boolean   @default(false)
+  managedById              String?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
@@ -37,11 +42,18 @@ model User {
   medications         Medication[]
   appointments        Appointment[]
 
-  circleLinksAsA        CircleLink[]       @relation("CircleLinkUserA")
-  circleLinksAsB        CircleLink[]       @relation("CircleLinkUserB")
-  circleGrantsGiven     CircleGrant[]      @relation("CircleGrantOwner")
-  circleGrantsReceived  CircleGrant[]      @relation("CircleGrantGrantee")
-  circleInvitationsSent CircleInvitation[] @relation("CircleInvitationInviter")
+  circleLinksAsA           CircleLink[]       @relation("CircleLinkUserA")
+  circleLinksAsB           CircleLink[]       @relation("CircleLinkUserB")
+  circleGrantsGiven        CircleGrant[]      @relation("CircleGrantOwner")
+  circleGrantsReceived     CircleGrant[]      @relation("CircleGrantGrantee")
+  circleInvitationsSent    CircleInvitation[] @relation("CircleInvitationInviter")
+  circleInvitationsCreated CircleInvitation[] @relation("CircleInvitationCreatedBy")
+  circleGroups             CircleGroup[]
+  medicationsCreated       Medication[]       @relation("MedicationCreatedBy")
+  medicationsUpdated       Medication[]       @relation("MedicationUpdatedBy")
+  medicationLogsRecorded   MedicationLog[]    @relation("MedicationLogLoggedBy")
+  appointmentsCreated      Appointment[]      @relation("AppointmentCreatedBy")
+  appointmentsUpdated      Appointment[]      @relation("AppointmentUpdatedBy")
 }
 
 model EmailVerificationToken {
@@ -90,8 +102,14 @@ model Medication {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  logs MedicationLog[]
+  // Quién lo agregó / cambió por última vez (puede ser alguien del Círculo).
+  createdById String?
+  updatedById String?
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User?           @relation("MedicationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?           @relation("MedicationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  logs      MedicationLog[]
 
   @@index([userId])
   @@index([createdAt])
@@ -103,7 +121,10 @@ model MedicationLog {
   action       String // "TAKEN", "SKIPPED", "SNOOZED"
   takenAt      DateTime   @default(now())
   scheduledFor DateTime? // The originally scheduled time for this dose
+  // Quién registró la toma (la persona o alguien que la cuida).
+  loggedById   String?
   medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  loggedBy     User?      @relation("MedicationLogLoggedBy", fields: [loggedById], references: [id], onDelete: SetNull)
 
   // Compuestos: cubren "logs de estos medicamentos desde X" (GET /medications/logs)
   // y, por prefijo, las búsquedas solo por medicationId.
@@ -122,10 +143,14 @@ model Appointment {
   active             Boolean   @default(true)
   attendanceStatus   String    @default("PENDING") // "PENDING", "ATTENDED", "MISSED"
   attendanceMarkedAt DateTime?
+  createdById        String?
+  updatedById        String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("AppointmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("AppointmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([scheduledAt])
@@ -164,9 +189,10 @@ model CircleLink {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  userA  User          @relation("CircleLinkUserA", fields: [userAId], references: [id], onDelete: Cascade)
-  userB  User          @relation("CircleLinkUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  userA  User                @relation("CircleLinkUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB  User                @relation("CircleLinkUserB", fields: [userBId], references: [id], onDelete: Cascade)
   grants CircleGrant[]
+  groups CircleGroupMember[]
 
   @@index([userAId, status])
   @@index([userBId, status])
@@ -187,6 +213,9 @@ model CircleGrant {
   manageAppointments Boolean  @default(false)
   viewHealth         Boolean  @default(false)
   manageCircle       Boolean  @default(false)
+  // Preferencia de QUIEN RECIBE el permiso: recibir en su teléfono los
+  // recordatorios de tomas y citas del dueño. OFF | NOTIFY | ALARM.
+  reminderMode       String   @default("OFF")
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -212,15 +241,45 @@ model CircleInvitation {
   inviteeCaresForInviter Boolean   @default(false)
   grantedPermissions     Json // lo que el invitado podrá hacer con la información del inviter
   requestedPermissions   Json // lo que el inviter pide sobre la información del invitado
+  // Grupos (de quien invita) a los que se añadirá la persona al aceptar.
+  inviterGroupIds        String[]  @default([])
   status                 String    @default("PENDING") // PENDING | ACCEPTED | DECLINED | CANCELED
   respondedAt            DateTime?
   expiresAt              DateTime
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  inviter User @relation("CircleInvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  inviter   User @relation("CircleInvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  createdBy User @relation("CircleInvitationCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([inviterId, status])
   @@index([inviteeEmail, status])
   @@index([inviteeUserId, status])
+}
+
+// Grupos PRIVADOS para organizar la vista del Círculo ("Familia", "Pacientes").
+// No dan permisos: solo ordenan y filtran. Un vínculo puede estar en varios.
+model CircleGroup {
+  id        String   @id @default(cuid())
+  ownerId   String
+  name      String
+  icon      String   @default("account-group")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner   User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members CircleGroupMember[]
+
+  @@index([ownerId])
+}
+
+model CircleGroupMember {
+  groupId String
+  linkId  String
+
+  group CircleGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  link  CircleLink  @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, linkId])
+  @@index([linkId])
 }

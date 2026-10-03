@@ -93,6 +93,8 @@ export type AppointmentFormSheetProps = {
   onSaved: (appointment: AppointmentData, isNew: boolean) => void;
   /** Cita de otra persona del Círculo: sus recordatorios suenan en su teléfono. */
   ownerId?: string;
+  /** La otra persona no usa la app (perfil a cargo). */
+  ownerIsDependent?: boolean;
 };
 
 export function AppointmentFormSheet({
@@ -102,6 +104,7 @@ export function AppointmentFormSheet({
   onClose,
   onSaved,
   ownerId,
+  ownerIsDependent = false,
 }: Readonly<AppointmentFormSheetProps>) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
@@ -354,7 +357,9 @@ export function AppointmentFormSheet({
           <Ionicons name="notifications-outline" size={16} color={theme.colors.accentSecondary} />
           <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
             {ownerId
-              ? 'Los recordatorios le llegarán a su teléfono la próxima vez que abra MedicAI.'
+              ? ownerIsDependent
+                ? 'Los recordatorios llegarán a los cuidadores que los tengan activados en su ficha.'
+                : 'Los recordatorios le llegarán a su teléfono la próxima vez que abra MedicAI.'
               : leadMinutes
                 ? `Te avisaremos ${formatLeadMinutes(leadMinutes)} antes y a la hora de la cita. Después te preguntaremos si asististe.`
                 : 'Te avisaremos antes y a la hora de la cita. Después te preguntaremos si asististe.'}

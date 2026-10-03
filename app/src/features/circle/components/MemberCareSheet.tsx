@@ -16,6 +16,7 @@ import * as medicationsAPI from '../../tabs/services/medications.service';
 import type { MedicationData, MedicationLog } from '../../tabs/services/medications.service';
 import { bucketAppointments } from '../../tabs/utils/appointment-status';
 import { getTodayDoseSlots, type DoseSlot } from '../../tabs/utils/dose-status';
+import { cancelDoseAlarm } from '../../../shared/services/notifications.service';
 import * as circleAPI from '../services/circle.service';
 import type { CircleMember, HealthInfo } from '../services/circle.service';
 import { firstName, relationToMe } from '../utils/relations';
@@ -181,6 +182,8 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         ownerId,
       );
       setLogs((current) => [log, ...current]);
+      // Si sus alarmas suenan en este teléfono, esa toma ya no debe sonar.
+      if (doseTarget.slot.at.getTime() > Date.now()) void cancelDoseAlarm(doseTarget.medication.id, doseTarget.slot.at).catch(() => undefined);
       setDoseTarget(null);
     } catch (error) {
       fail('No se pudo registrar')(error);
@@ -400,7 +403,11 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
 
         {tab === 'medications' && tabStatus === 'ready' ? (
           <InfoNote theme={theme} icon="cellphone-check">
-            Las alarmas suenan en el teléfono de {first}. Los cambios le llegan la próxima vez que abra MedicAI.
+            {shown.person.isManaged
+              ? shown.reminders === 'OFF'
+                ? `${first} no usa la app: activa sus recordatorios en su ficha para que suenen en tu teléfono.`
+                : `Sus alarmas suenan en tu teléfono y en el de los cuidadores que las tengan activadas.`
+              : `Las alarmas suenan en el teléfono de ${first}${shown.reminders !== 'OFF' ? ' y también en el tuyo' : ''}. Los cambios le llegan la próxima vez que abra MedicAI.`}
           </InfoNote>
         ) : null}
       </FormSheet>
@@ -433,6 +440,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         visible={apptForm.visible}
         appointment={apptForm.appointment}
         ownerId={ownerId}
+        ownerIsDependent={Boolean(shown.person.isManaged)}
         onClose={() => setApptForm((current) => ({ ...current, visible: false }))}
         onSaved={(saved, isNew) =>
           setAppointments((current) => (isNew ? [...current, saved] : current.map((item) => (item.id === saved.id ? saved : item))))

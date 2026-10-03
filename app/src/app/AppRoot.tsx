@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { NavigationBar } from 'expo-navigation-bar';
 import { Asset } from 'expo-asset';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, AppState, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -22,6 +23,8 @@ import {
   ResetPasswordScreen,
   signInWithEmail,
   signOut,
+  onSessionExpired,
+  validateStoredSession,
   signUpWithProfile,
   updatePassword,
   validateEmailVerificationToken,
@@ -40,9 +43,11 @@ import {
   SCHEDULE_TYPES,
   snoozeNotification,
   snoozeAppointmentReminder,
+  getCareMedicationOwner,
 } from '../shared/services/notifications.service';
 import { emitDoseAction } from '../shared/services/dose-refresh-bus';
 import { parseCircleInviteCode, setPendingCircleInvite } from '../features/circle';
+import { clearUserData } from '../shared/services/user-data';
 import AlarmNative from '../shared/native/AlarmNative';
 import { logMedicationAction, fetchMedications } from '../features/tabs/services/medications.service';
 
@@ -389,6 +394,9 @@ export function AppRoot() {
 
       setSession(storedSession);
       setAuthReady(true);
+      // Una sesión restaurada (p. ej. desde una copia de seguridad) o cerrada
+      // en otro lugar se comprueba con el servidor; si no vale, vuelve al login.
+      if (storedSession) void validateStoredSession();
     });
 
     return () => {
@@ -561,6 +569,7 @@ export function AppRoot() {
             session.accessToken,
             action.action,
             scheduledFor,
+            await getCareMedicationOwner(action.medicationId),
           );
         } catch (err) {
           console.warn('[MedicAI] Failed to process pending alarm action:', err);
@@ -647,12 +656,12 @@ export function AppRoot() {
           const scheduledFor = typeof data.scheduledFor === 'string' ? data.scheduledFor : undefined;
 
           if (actionIdentifier === NOTIFICATION_ACTIONS.TAKE) {
-            await logMedicationAction(data.id, session.accessToken, 'TAKEN', scheduledFor);
+            await logMedicationAction(data.id, session.accessToken, 'TAKEN', scheduledFor, await getCareMedicationOwner(data.id));
             setActiveAlarm(null);
             emitDoseAction();
             Alert.alert('Éxito', 'Toma de medicamento registrada.');
           } else if (actionIdentifier === NOTIFICATION_ACTIONS.SKIP) {
-            await logMedicationAction(data.id, session.accessToken, 'SKIPPED', scheduledFor);
+            await logMedicationAction(data.id, session.accessToken, 'SKIPPED', scheduledFor, await getCareMedicationOwner(data.id));
             setActiveAlarm(null);
             emitDoseAction();
             Alert.alert('Información', 'Dosis marcada como omitida.');
@@ -770,7 +779,7 @@ export function AppRoot() {
         Alert.alert('Error', 'No autorizado.');
         return;
       }
-      await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN', getActiveAlarmScheduledFor());
+      await logMedicationAction(activeAlarm.id, session.accessToken, 'TAKEN', getActiveAlarmScheduledFor(), await getCareMedicationOwner(activeAlarm.id));
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
       emitDoseAction();
@@ -789,7 +798,7 @@ export function AppRoot() {
         Alert.alert('Error', 'No autorizado.');
         return;
       }
-      await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED', getActiveAlarmScheduledFor());
+      await logMedicationAction(activeAlarm.id, session.accessToken, 'SKIPPED', getActiveAlarmScheduledFor(), await getCareMedicationOwner(activeAlarm.id));
       void AlarmNative.stopAlarm();
       setActiveAlarm(null);
       emitDoseAction();
@@ -1089,10 +1098,24 @@ export function AppRoot() {
     }
   };
 
+  // El servidor rechazó la sesión (revocada o vencida): volver al login.
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        void clearUserData();
+        setSession(null);
+        setActiveAlarm(null);
+        Alert.alert('Sesión cerrada', 'Tu sesión ya no es válida. Vuelve a iniciar sesión.');
+      }),
+    [],
+  );
+
   const handleSignOut = async () => {
     try {
       setIsSubmittingAuth(true);
       await signOut();
+      await clearUserData();
+      setActiveAlarm(null);
       setSession(null);
       await clearRegisterDraft();
     } catch (error) {
@@ -1277,6 +1300,9 @@ export function AppRoot() {
       <PortalProvider>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <StatusBar style={statusBarStyle} />
+        {/* Barra del sistema transparente (sin velo de contraste, ver app.json):
+            muestra el fondo de la app y sus botones cambian con el tema al instante. */}
+        <NavigationBar style={theme.mode === 'dark' ? 'dark' : 'light'} />
         <View style={{ flex: 1 }}>
           {renderContent()}
         </View>

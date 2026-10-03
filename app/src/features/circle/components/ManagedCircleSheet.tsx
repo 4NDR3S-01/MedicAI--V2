@@ -8,6 +8,7 @@ import type { CircleMember } from '../services/circle.service';
 import { firstName } from '../utils/relations';
 import { CircleSections } from './CircleSections';
 import { InfoNote } from './CircleParts';
+import { CoCaregiverSheet } from './DependentSheets';
 import { InviteSheet } from './InviteSheet';
 import { MemberDetailSheet } from './MemberDetailSheet';
 
@@ -37,13 +38,21 @@ export function ManagedCircleSheet({
       <FormSheet
         theme={theme}
         visible={Boolean(member)}
-        title={`Círculo de ${name}`}
-        subtitle="Lo administras con el permiso que te dio."
+        title={shown.person.isManaged ? `Quién cuida a ${name}` : `Círculo de ${name}`}
+        subtitle={shown.person.isManaged ? 'Sus cuidadores y lo que puede hacer cada uno.' : 'Lo administras con el permiso que te dio.'}
         onClose={onClose}
         footer={
           <>
             <AppButton theme={theme} label="Cerrar" variant="secondary" onPress={onClose} style={styles.flex} />
-            <AppButton theme={theme} label="Invitar" icon="person-add-outline" iconPosition="left" onPress={() => setInviteVisible(true)} disabled={circle.status !== 'ready'} style={styles.flexWide} />
+            <AppButton
+              theme={theme}
+              label={shown.person.isManaged ? 'Agregar cuidador' : 'Invitar'}
+              icon="person-add-outline"
+              iconPosition="left"
+              onPress={() => setInviteVisible(true)}
+              disabled={circle.status !== 'ready'}
+              style={styles.flexWide}
+            />
           </>
         }
       >
@@ -82,9 +91,22 @@ export function ManagedCircleSheet({
         )}
       </FormSheet>
 
+      <CoCaregiverSheet
+        theme={theme}
+        visible={inviteVisible && Boolean(shown.person.isManaged)}
+        member={shown}
+        onClose={() => setInviteVisible(false)}
+        onCreated={(invitation) =>
+          circle.update((current) => ({
+            ...current,
+            invitations: { ...current.invitations, sent: [invitation, ...current.invitations.sent] },
+          }))
+        }
+      />
+
       <InviteSheet
         theme={theme}
-        visible={inviteVisible}
+        visible={inviteVisible && !shown.person.isManaged}
         ownerId={ownerId}
         ownerName={name}
         onClose={() => setInviteVisible(false)}

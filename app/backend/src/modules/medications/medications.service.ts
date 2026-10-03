@@ -9,6 +9,13 @@ import { UpdateMedicationDto } from './dto/update-medication.dto';
 // de filas; esto solo evita respuestas enormes si `since` es muy antiguo.
 const MAX_LOGS_PER_QUERY = 1000;
 
+/** Quién agregó o cambió el registro (para mostrar "Agregado por Ana"). */
+const AUDIT_INCLUDE = {
+  createdBy: { select: { id: true, fullName: true } },
+  updatedBy: { select: { id: true, fullName: true } },
+} as const;
+const LOG_INCLUDE = { loggedBy: { select: { id: true, fullName: true } } } as const;
+
 @Injectable()
 export class MedicationsService {
   private readonly logger = new Logger(MedicationsService.name);
@@ -19,6 +26,7 @@ export class MedicationsService {
     const medications = await this.prisma.medication.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      include: AUDIT_INCLUDE,
     });
 
     return medications;
@@ -36,10 +44,14 @@ export class MedicationsService {
     return medication;
   }
 
-  async create(userId: string, dto: CreateMedicationDto) {
+  /** `actorId`: quien hace el cambio (el dueño o alguien de su Círculo). */
+  async create(userId: string, dto: CreateMedicationDto, actorId: string = userId) {
     const medication = await this.prisma.medication.create({
+      include: AUDIT_INCLUDE,
       data: {
         userId,
+        createdById: actorId,
+        updatedById: actorId,
         name: dto.name.trim(),
         dosage: dto.dosage.trim(),
         frequency: dto.frequency.trim(),
@@ -56,7 +68,7 @@ export class MedicationsService {
     return medication;
   }
 
-  async update(medicationId: string, userId: string, dto: UpdateMedicationDto) {
+  async update(medicationId: string, userId: string, dto: UpdateMedicationDto, actorId: string = userId) {
     // Un único UPDATE filtrado por dueño: los campos `undefined` no se tocan,
     // así que no hace falta leer antes el registro.
     let nextCustomEndDate: Date | null | undefined;
@@ -83,6 +95,7 @@ export class MedicationsService {
       active: dto.active,
       customIntervalHours: dto.customIntervalHours,
       customEndDate: nextCustomEndDate,
+      updatedById: actorId,
     };
 
     try {
@@ -95,10 +108,10 @@ export class MedicationsService {
             where: { id: medicationId, userId, active: false },
             data: { activeSince: new Date() },
           }),
-          this.prisma.medication.update({ where: { id: medicationId, userId }, data }),
+          this.prisma.medication.update({ where: { id: medicationId, userId }, data, include: AUDIT_INCLUDE }),
         ]);
       } else {
-        updated = await this.prisma.medication.update({ where: { id: medicationId, userId }, data });
+        updated = await this.prisma.medication.update({ where: { id: medicationId, userId }, data, include: AUDIT_INCLUDE });
       }
 
       this.logger.log('Medication updated', { userId, medicationId: updated.id });
@@ -129,6 +142,7 @@ export class MedicationsService {
       where: { medicationId },
       orderBy: { takenAt: 'desc' },
       take: 200,
+      include: LOG_INCLUDE,
     });
   }
 
@@ -140,6 +154,7 @@ export class MedicationsService {
       },
       orderBy: { takenAt: 'desc' },
       take: MAX_LOGS_PER_QUERY,
+      include: LOG_INCLUDE,
     });
   }
 
@@ -154,11 +169,22 @@ export class MedicationsService {
     return { message: 'Registro eliminado.' };
   }
 
-  async logAction(medicationId: string, userId: string, action: string, scheduledFor?: string) {
+  async logAction(medicationId: string, userId: string, action: string, scheduledFor?: string, actorId: string = userId) {
     await this.assertOwnership(medicationId, userId);
+    // Varias personas pueden recibir la misma alarma (la persona y sus
+    // cuidadores): la primera respuesta cuenta y las demás no la duplican.
+    if (scheduledFor && action !== 'SNOOZED') {
+      const existing = await this.prisma.medicationLog.findFirst({
+        where: { medicationId, scheduledFor: new Date(scheduledFor), action: { in: ['TAKEN', 'SKIPPED'] } },
+        include: LOG_INCLUDE,
+      });
+      if (existing) return existing;
+    }
     const log = await this.prisma.medicationLog.create({
+      include: LOG_INCLUDE,
       data: {
         medicationId,
+        loggedById: actorId,
         action,
         scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
       },

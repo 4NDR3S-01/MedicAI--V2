@@ -9,6 +9,32 @@ import {
 import { mapAuthError } from "./authErrors";
 
 const AUTH_SESSION_KEY = "medicai_auth_session_v1";
+const LOGOUT_TIMEOUT_MS = 4000;
+
+/** Error de la API con su código HTTP (para distinguir "sin red" de "sesión inválida"). */
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+/** La sesión guardada ya no es válida en el servidor (revocada o vencida). */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super("Tu sesión expiró. Vuelve a iniciar sesión.");
+  }
+}
+
+type SessionExpiredListener = () => void;
+let sessionExpiredListeners: SessionExpiredListener[] = [];
+
+/** Avisa cuando el servidor rechaza la sesión: la app debe volver al login. */
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.push(listener);
+  return () => {
+    sessionExpiredListeners = sessionExpiredListeners.filter((item) => item !== listener);
+  };
+}
 
 export type AppAuthSession = {
   user: {
@@ -141,7 +167,7 @@ const apiRequest = async <T>(
 
   if (!response.ok) {
     const errorMessage = await parseApiError(response);
-    throw new Error(mapAuthError(errorMessage));
+    throw new ApiError(mapAuthError(errorMessage), response.status);
   }
 
   const rawBody = await response.text();
@@ -232,8 +258,56 @@ export const checkEmailAvailability = async (email: string) => {
   });
 };
 
+/**
+ * Cierra la sesión también en el servidor (invalida el refresh token), así
+ * una copia antigua de los datos de la app no puede volver a entrar. Si no hay
+ * red, se cierra igualmente en el teléfono.
+ */
 export const signOut = async () => {
+  const session = await getStoredSession();
   await appStorage.removeItem(AUTH_SESSION_KEY);
+  if (!session?.accessToken || !session.refreshToken || !API_BASE_URL) return;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOGOUT_TIMEOUT_MS);
+  try {
+    await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.accessToken}` },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+      signal: controller.signal,
+    });
+  } catch {
+    // Sin red o servidor caído: la sesión local ya se borró.
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+/** El servidor rechazó la sesión: se borra y se avisa a la app. */
+const expireSession = async () => {
+  await appStorage.removeItem(AUTH_SESSION_KEY);
+  sessionExpiredListeners.forEach((listener) => listener());
+};
+
+/**
+ * Comprueba con el servidor que la sesión guardada sigue siendo válida (p. ej.
+ * al abrir la app). Sin red no hace nada: se puede seguir usando sin conexión.
+ */
+export const validateStoredSession = async (): Promise<void> => {
+  const session = await getStoredSession();
+  if (!session?.accessToken || !API_BASE_URL) return;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/profile`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
+  } catch {
+    return;
+  }
+  if (response.status !== 401) return;
+  // Token de acceso vencido: la renovación decide si la sesión sigue viva.
+  await refreshStoredSession().catch(() => undefined);
 };
 
 // Varias pantallas pueden recibir 401 a la vez cuando expira el access token.
@@ -257,10 +331,22 @@ const refreshStoredSessionOnce = async (): Promise<AppAuthSession> => {
     throw new Error("No hay sesión activa para renovar.");
   }
 
-  const refreshedTokens = await apiRequest<{
-    accessToken: string;
-    refreshToken: string;
-  }>("/auth/refresh", { refreshToken: currentSession.refreshToken });
+  let refreshedTokens: { accessToken: string; refreshToken: string };
+  try {
+    refreshedTokens = await apiRequest<{
+      accessToken: string;
+      refreshToken: string;
+    }>("/auth/refresh", { refreshToken: currentSession.refreshToken });
+  } catch (error) {
+    // 400/401/403 (no 429): el refresh token fue revocado (cierre de sesión en otro
+    // lugar, copia restaurada...) o venció. Con errores de red o 5xx se
+    // conserva la sesión para reintentar más tarde.
+    if (error instanceof ApiError && [400, 401, 403].includes(error.status)) {
+      await expireSession();
+      throw new SessionExpiredError();
+    }
+    throw error;
+  }
 
   const updatedSession: AppAuthSession = {
     ...currentSession,

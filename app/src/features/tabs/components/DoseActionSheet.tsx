@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { AppTheme } from '../../../shared/theme';
 import { AppButton, BottomSheet } from '../../../shared/ui';
 import type { MedicationData } from '../services/medications.service';
+import { loggedByNote } from '../utils/audit';
 import { DOSE_EARLY_WINDOW_MS, type DoseSlot } from '../utils/dose-status';
 import { DOSE_STATE_META, doseStateColor } from './MedicationCard';
 
@@ -36,12 +37,13 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
   let body: React.ReactNode = null;
   let footer: React.ReactNode = null;
 
+  const byWhom = slot?.log && medication ? loggedByNote(slot.log.loggedBy, medication.userId) : null;
   if (slot?.log) {
     const loggedAt = new Date(slot.log.takenAt);
     body = (
       <Text style={[styles.text, { color: theme.colors.textSecondary }]}>
-        {state === 'taken' ? 'Registrada como tomada' : 'Registrada como omitida'} a las {formatTime(loggedAt)}.
-        Si fue un error, puedes deshacerlo.
+        {state === 'taken' ? 'Registrada como tomada' : 'Registrada como omitida'} a las {formatTime(loggedAt)}
+        {byWhom ? ` ${byWhom}` : ''}. Si fue un error, puedes deshacerlo.
       </Text>
     );
     footer = (
@@ -82,7 +84,8 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
     } else if (slot.log) {
       body = (
         <Text style={[styles.text, { color: theme.colors.textSecondary }]}>
-          {state === 'taken' ? 'Registrada como tomada' : 'Registrada como omitida'} a las {formatTime(new Date(slot.log.takenAt))}.
+          {state === 'taken' ? 'Registrada como tomada' : 'Registrada como omitida'} a las {formatTime(new Date(slot.log.takenAt))}
+          {byWhom ? ` ${byWhom}` : ''}.
         </Text>
       );
     }

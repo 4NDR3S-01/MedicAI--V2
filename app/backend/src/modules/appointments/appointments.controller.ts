@@ -34,7 +34,7 @@ export class AppointmentsController {
   @Post()
   async create(@Body() dto: CreateAppointmentDto, @Query() query: OwnerQueryDto, @Request() req: any) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'manageAppointments');
-    return this.appointmentsService.create(ownerId, dto);
+    return this.appointmentsService.create(ownerId, dto, req.user?.sub);
   }
 
   @Put(':id')
@@ -45,7 +45,7 @@ export class AppointmentsController {
     @Request() req: any,
   ) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'manageAppointments');
-    return this.appointmentsService.update(appointmentId, ownerId, dto);
+    return this.appointmentsService.update(appointmentId, ownerId, dto, req.user?.sub);
   }
 
   @Delete(':id')

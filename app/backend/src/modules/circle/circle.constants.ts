@@ -131,3 +131,12 @@ export const MAX_PENDING_INVITATIONS = 20;
 /** Sin 0/O/1/I/L para que el código se pueda dictar sin confusiones. */
 export const INVITE_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const INVITE_CODE_LENGTH = 8;
+
+/** Recordatorios de otra persona en mi teléfono: nada, aviso o alarma completa. */
+export const REMINDER_MODES = ['OFF', 'NOTIFY', 'ALARM'] as const;
+export type ReminderMode = (typeof REMINDER_MODES)[number];
+
+/** Correo interno de los perfiles a cargo (dominio reservado, nunca recibe correo). */
+export const MANAGED_EMAIL_DOMAIN = 'perfil.medicai.invalid';
+/** Tiempo para que la persona cree su contraseña al entregarle la cuenta. */
+export const HANDOVER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
