@@ -210,7 +210,7 @@ export function MemberDetailSheet({
       const updated = await circleAPI.updateReminders(await withToken(), shown.linkId, mode);
       onChanged(updated);
       // Se aplican ya en este teléfono (sin esperar a reabrir la app).
-      void syncOwnReminders().catch(() => undefined);
+      void syncOwnReminders({ force: true }).catch(() => undefined);
     } catch (error) {
       Alert.alert('No se pudo cambiar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {

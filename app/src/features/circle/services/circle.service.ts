@@ -171,6 +171,12 @@ export type DependentPayload = {
   myRelationLabel?: string;
   allergies?: string;
   conditions?: string;
+  pregnancy?: boolean;
+  lactation?: boolean;
+  recentSurgeries?: boolean;
+  immunosuppression?: boolean;
+  anticoagulantTreatment?: boolean;
+  groupIds?: string[];
 };
 
 export const createDependent = (accessToken: string, payload: DependentPayload) =>
@@ -179,7 +185,7 @@ export const createDependent = (accessToken: string, payload: DependentPayload) 
 export const updateDependent = (
   accessToken: string,
   dependentId: string,
-  payload: { fullName?: string; birthDate?: string; allergies?: string; conditions?: string },
+  payload: Partial<Omit<DependentPayload, 'relation' | 'relationLabel' | 'myRelation' | 'myRelationLabel' | 'groupIds'>>,
 ) => request<CircleMember>(`/circle/dependents/${dependentId}`, 'PATCH', accessToken, 'No se pudo actualizar el perfil', payload);
 
 export const deleteDependent = (accessToken: string, dependentId: string) =>

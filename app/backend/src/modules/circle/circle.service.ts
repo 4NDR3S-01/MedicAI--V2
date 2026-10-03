@@ -644,6 +644,11 @@ export class CircleService {
           birthDate: dto.birthDate || null,
           allergies: dto.allergies?.trim() || null,
           conditions: dto.conditions?.trim() || null,
+          pregnancy: dto.pregnancy ?? false,
+          lactation: dto.lactation ?? false,
+          recentSurgeries: dto.recentSurgeries ?? false,
+          immunosuppression: dto.immunosuppression ?? false,
+          anticoagulantTreatment: dto.anticoagulantTreatment ?? false,
           isManaged: true,
           managedById: actorId,
         },
@@ -666,6 +671,10 @@ export class CircleService {
           { linkId: created.id, ownerId: actorId, granteeId: dependent.id },
         ],
       });
+      const groupIds = await this.ownGroupIds(actorId, dto.groupIds);
+      if (groupIds.length) {
+        await tx.circleGroupMember.createMany({ data: groupIds.map((groupId) => ({ groupId, linkId: created.id })) });
+      }
       return tx.circleLink.findUniqueOrThrow({ where: { id: created.id }, include: LINK_INCLUDE });
     });
 
@@ -682,6 +691,11 @@ export class CircleService {
         birthDate: dto.birthDate === undefined ? undefined : dto.birthDate || null,
         allergies: dto.allergies === undefined ? undefined : dto.allergies.trim() || null,
         conditions: dto.conditions === undefined ? undefined : dto.conditions.trim() || null,
+        pregnancy: dto.pregnancy,
+        lactation: dto.lactation,
+        recentSurgeries: dto.recentSurgeries,
+        immunosuppression: dto.immunosuppression,
+        anticoagulantTreatment: dto.anticoagulantTreatment,
       },
     });
     const link = await this.prisma.circleLink.findFirstOrThrow({

@@ -14,12 +14,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import type { Request as ExpressRequest, Response } from 'express';
 
 type AuthBridgePageVariant = 'success' | 'warning' | 'error' | 'info';
 
 import { AuthService } from './auth.service';
 import { CheckEmailDto } from './dto/check-email.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -145,6 +147,29 @@ export class AuthController {
       throw new UnauthorizedException('Token inválido.');
     }
     return this.authService.updateAvatar(userId, dto.avatar);
+  }
+
+  /** Perfiles a cargo que se borrarían con la cuenta (para avisar antes). */
+  @UseGuards(JwtAuthGuard)
+  @Get('account/delete-preview')
+  deleteAccountPreview(@Request() req: any) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedException('Token inválido.');
+    }
+    return this.authService.deleteAccountPreview(userId);
+  }
+
+  /** Eliminar la cuenta y todos sus datos (exigido por las tiendas de apps). */
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('account/delete')
+  deleteAccount(@Body() dto: DeleteAccountDto, @Request() req: any) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedException('Token inválido.');
+    }
+    return this.authService.deleteAccount(userId, dto.password);
   }
 
   @UseGuards(JwtAuthGuard)

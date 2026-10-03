@@ -6,6 +6,7 @@ export { ResetPasswordScreen } from './screens/ResetPasswordScreen';
 export { VerifyEmailPromptScreen } from './screens/VerifyEmailPromptScreen';
 
 export type { LoginFormState } from './screens/LoginScreen';
+export { EMPTY_MEDICAL_INFO, MedicalInfoEditor, type MedicalInfo } from './components/MedicalInfoEditor';
 export type { RegisterWizardPayload } from './models/register.types';
 
 export {

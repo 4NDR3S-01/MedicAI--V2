@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class UpdateDependentDto {
   @IsOptional()
@@ -21,4 +21,11 @@ export class UpdateDependentDto {
   @IsString()
   @MaxLength(500)
   conditions?: string;
+
+  // Situaciones especiales (las mismas que en el registro).
+  @IsOptional() @IsBoolean() pregnancy?: boolean;
+  @IsOptional() @IsBoolean() lactation?: boolean;
+  @IsOptional() @IsBoolean() recentSurgeries?: boolean;
+  @IsOptional() @IsBoolean() immunosuppression?: boolean;
+  @IsOptional() @IsBoolean() anticoagulantTreatment?: boolean;
 }

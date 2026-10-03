@@ -27,7 +27,10 @@ import { CircleModule } from '../modules/circle/circle.module';
           ttl: 60_000,
           // Límite por usuario autenticado (o por IP si no hay token válido).
           // Ver UserThrottlerGuard.
-          limit: configService.get<number>('THROTTLE_LIMIT') ?? 30,
+          // Al abrir la app se sincronizan alarmas, Círculo y seguimiento
+          // (~6 peticiones) y se repite al volver a ella: 30/min se quedaba
+          // corto para un uso normal. Registro, login e IA tienen límites propios.
+          limit: configService.get<number>('THROTTLE_LIMIT') ?? 120,
         },
       ],
     }),

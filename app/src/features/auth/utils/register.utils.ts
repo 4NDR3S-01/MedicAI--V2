@@ -131,6 +131,21 @@ export function serializeMedicalSelection(selection: MedicalSelection): string |
   return selection.items.length ? selection.items.join(", ") : undefined;
 }
 
+/**
+ * Inverso de serializeMedicalSelection: "Ninguna" → ninguna; "Asma, Diabetes"
+ * → elementos. Admite también texto libre antiguo separado por comas o ";".
+ */
+export function parseMedicalSelection(value: string | null | undefined): MedicalSelection {
+  const text = value?.trim() ?? "";
+  if (!text) return { none: false, items: [] };
+  if (/^ninguna( conocida)?$/i.test(text)) return { none: true, items: [] };
+  const items = text
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return { none: false, items: [...new Set(items)] };
+}
+
 export function normalizeMedicalToken(value: string): string {
   return value
     .trim()

@@ -23,7 +23,8 @@ import {
   type ProfileUpdatePayload,
   type ProfileUser,
 } from '../../auth/services/auth.service';
-import { getStoredSession } from '../../auth';
+import { getStoredSession, MedicalInfoEditor } from '../../auth';
+import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { fetchMedications } from '../services/medications.service';
 import { fetchAppointments } from '../services/appointments.service';
 import {
@@ -134,6 +135,8 @@ export type ProfileScreenProps = {
   contentBottomInset: number;
   isSigningOut: boolean;
   onSignOut: () => void;
+  /** Tras eliminar la cuenta: limpiar el teléfono y volver al inicio. */
+  onAccountDeleted?: () => void;
 };
 
 function getSafeAvatar(data: string | null | undefined) {
@@ -395,7 +398,9 @@ export function ProfileScreen({
   contentBottomInset,
   isSigningOut,
   onSignOut,
+  onAccountDeleted,
 }: Readonly<ProfileScreenProps>) {
+  const [deleteVisible, setDeleteVisible] = useState(false);
   const [profile, setProfile] = useState<Partial<ProfileUser>>({
     fullName: userFullName,
     email: userEmail ?? undefined,
@@ -762,8 +767,27 @@ export function ProfileScreen({
           </Text>
         </Pressable>
 
+        <Pressable
+          onPress={() => setDeleteVisible(true)}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.deleteAccount, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={[styles.deleteAccountText, { color: theme.colors.textMuted }]}>Eliminar mi cuenta</Text>
+        </Pressable>
+
         <Text style={[styles.versionText, { color: theme.colors.textMuted }]}>MedicAI v1.0.0</Text>
       </ScrollView>
+
+      <DeleteAccountSheet
+        theme={theme}
+        visible={deleteVisible}
+        onClose={() => setDeleteVisible(false)}
+        onDeleted={() => {
+          setDeleteVisible(false);
+          (onAccountDeleted ?? onSignOut)();
+          Alert.alert('Cuenta eliminada', 'Tu cuenta y todos tus datos fueron eliminados.');
+        }}
+      />
 
       <Modal visible={isEditingAvatar} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsEditingAvatar(false)}>
         <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}> 
@@ -814,23 +838,22 @@ export function ProfileScreen({
               <TextField label="Teléfono" value={profileForm.phone} placeholder="Número de contacto" theme={theme} keyboardType="phone-pad" onChangeText={(value) => setProfileForm((current) => ({ ...current, phone: value }))} />
             </View>
 
-            <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
+            <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
               <Text style={[styles.formSectionTitle, { color: theme.colors.textPrimary }]}>Información médica</Text>
-              <TextField label="Condiciones de salud" value={profileForm.conditions} placeholder="Ej. hipertensión, diabetes, asma" theme={theme} multiline onChangeText={(value) => setProfileForm((current) => ({ ...current, conditions: value }))} />
-              <TextField label="Alergias" value={profileForm.allergies} placeholder="Ej. penicilina, ibuprofeno, alimentos" theme={theme} multiline onChangeText={(value) => setProfileForm((current) => ({ ...current, allergies: value }))} />
-            </View>
-
-            <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
-              <Text style={[styles.formSectionTitle, { color: theme.colors.textPrimary }]}>Condiciones especiales</Text>
-              {SPECIAL_CONDITIONS.map((item) => (
-                <ToggleRow
-                  key={item.key}
-                  item={item}
-                  value={profileForm[item.key]}
-                  theme={theme}
-                  onChange={(value) => setProfileForm((current) => ({ ...current, [item.key]: value }))}
-                />
-              ))}
+              {/* Mismos controles que en el registro y en los perfiles a cargo. */}
+              <MedicalInfoEditor
+                theme={theme}
+                value={{
+                  conditions: profileForm.conditions,
+                  allergies: profileForm.allergies,
+                  pregnancy: profileForm.pregnancy,
+                  lactation: profileForm.lactation,
+                  recentSurgeries: profileForm.recentSurgeries,
+                  immunosuppression: profileForm.immunosuppression,
+                  anticoagulantTreatment: profileForm.anticoagulantTreatment,
+                }}
+                onChange={(medical) => setProfileForm((current) => ({ ...current, ...medical }))}
+              />
             </View>
 
             <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
@@ -1045,6 +1068,8 @@ const styles = StyleSheet.create({
   settingsRowSubtitle: { fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
   signOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 24, borderWidth: 1, marginTop: 2 },
   signOutText: { fontSize: 16, fontWeight: '900' },
+  deleteAccount: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16 },
+  deleteAccountText: { fontSize: 13.5, fontWeight: '700', textDecorationLine: 'underline' },
   signOutDisabled: { opacity: 0.5 },
   versionText: { textAlign: 'center', fontSize: 12, fontWeight: '700', marginTop: 4 },
   modalContainer: { flex: 1 },

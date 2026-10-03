@@ -141,7 +141,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
       members: [...current.members.filter((item) => item.linkId !== member.linkId), member],
       invitations: { ...current.invitations, received: current.invitations.received.filter((item) => item.id !== invitation.id) },
     }));
-    void syncOwnReminders().catch(() => undefined);
+    void syncOwnReminders({ force: true }).catch(() => undefined);
     Alert.alert('¡Ya están conectados!', `Ahora formas parte del Círculo de ${firstName(member.person)}. Puedes cambiar lo que compartes desde su ficha cuando quieras.`);
   };
 
@@ -394,11 +394,15 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
       <DependentSheet
         theme={theme}
         visible={dependentVisible}
+        groups={groups}
+        onGroupCreated={(group) => setGroups([...groups, group])}
         onClose={() => setDependentVisible(false)}
         onSaved={(member) => {
+          // Recarga para reflejar también sus grupos.
           circle.update((current) => ({ ...current, members: [...current.members, member] }));
+          void circle.load();
           // Sus alarmas empiezan a sonar en este teléfono.
-          void syncOwnReminders().catch(() => undefined);
+          void syncOwnReminders({ force: true }).catch(() => undefined);
         }}
       />
 
