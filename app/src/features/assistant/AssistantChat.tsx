@@ -22,6 +22,7 @@ import type { AppTheme } from '../../shared/theme';
 import { Portal, PressableScale, Reveal, useKeyboardInset, useReducedMotion } from '../../shared/ui';
 import { BufferedTextInput } from '../../shared/ui/BufferedTextInput';
 import { appStorage } from '../../shared/storage';
+import { reportError } from '../../shared/services/error-reporting';
 import { emitDoseAction } from '../../shared/services/dose-refresh-bus';
 import { cancelDoseAlarm } from '../../shared/services/notifications.service';
 import { logDose } from '../tabs/services/dose-queue';
@@ -265,6 +266,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
       if (text) setInput((current) => (current.trim() ? `${current.trim()} ${text}` : text).slice(0, MESSAGE_MAX));
       else Alert.alert('No te escuché bien', 'Intenta hablar un poco más cerca del teléfono.');
     } catch (error) {
+      reportError(error, 'assistant-dictation');
       Alert.alert('No pude entenderte', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {
       setDictation('idle');
@@ -310,7 +312,9 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
       let text = '';
       try {
         text = await transcribe(uri);
-      } catch {
+      } catch (error) {
+        reportError(error, 'assistant-transcribe');
+        setCaption(error instanceof Error ? error.message : null);
         await say('No pude entenderte. Revisa tu conexión a internet.');
         continue;
       }
@@ -367,18 +371,30 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
     }
   };
 
+  /** Si algo falla (micrófono ocupado, error al grabar), se termina y se dice por qué. */
+  const runConversationSafely = () => {
+    runConversation().catch((error: unknown) => {
+      endConversation();
+      reportError(error, 'assistant-voice');
+      Alert.alert(
+        'No pude usar el micrófono',
+        `${error instanceof Error ? error.message : 'Error desconocido'}\n\nCierra otras apps que usen el micrófono e inténtalo de nuevo.`,
+      );
+    });
+  };
+
   const startConversation = async () => {
     if (voiceActive.current || dictation !== 'idle' || !(await withMicrophone())) return;
     voiceActive.current = true;
     setVoiceMode(true);
     void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => undefined);
-    void runConversation();
+    runConversationSafely();
   };
 
   const resumeConversation = () => {
     if (voiceActive.current) return;
     voiceActive.current = true;
-    void runConversation();
+    runConversationSafely();
   };
 
   // El micrófono no puede seguir con la app en segundo plano.
@@ -450,7 +466,18 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
 
   if (!mounted) return null;
 
-  const bubbleAssistant = theme.mode === 'dark' ? '#10253D' : '#F1F6FB';
+  // Colores con contraste suficiente en los dos modos (texto ≥ 4.5:1 sobre su burbuja).
+  const dark = theme.mode === 'dark';
+  const bubbles = {
+    assistant: { backgroundColor: dark ? '#10253D' : '#FFFFFF', borderColor: dark ? '#21435E' : '#D3E1EE' },
+    mine: { backgroundColor: dark ? theme.colors.accentPrimary : '#0B7A6E' },
+    mineText: dark ? theme.colors.buttonText : '#FFFFFF',
+  };
+  const assistantAvatar = (
+    <View style={[styles.miniAvatar, { backgroundColor: `${theme.colors.accentPrimary}${dark ? '26' : '1A'}` }]}>
+      <MaterialCommunityIcons name="robot-happy-outline" size={16} color={theme.colors.accentPrimary} />
+    </View>
+  );
   const canSend = (input.trim().length > 0 || Boolean(photo)) && !sending;
 
   return (
@@ -561,7 +588,9 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
             {messages.map((message) => {
               const mine = message.role === 'user';
               return (
-                <View key={message.id} style={[styles.messageWrap, mine ? styles.mineWrap : styles.theirsWrap]}>
+                <View key={message.id} style={mine ? [styles.messageWrap, styles.mineWrap] : styles.theirsRow}>
+                  {mine ? null : assistantAvatar}
+                  <View style={mine ? styles.mineColumn : styles.theirsColumn}>
                   <PressableScale
                     onLongPress={() => void Share.share({ message: message.content })}
                     pressedScale={0.99}
@@ -569,8 +598,8 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                     style={[
                       styles.bubble,
                       mine
-                        ? [styles.mine, { backgroundColor: theme.colors.accentPrimary }]
-                        : [styles.theirs, { backgroundColor: bubbleAssistant }],
+                        ? [styles.mine, bubbles.mine]
+                        : [styles.theirs, styles.theirsBubble, bubbles.assistant, !dark && styles.lightShadow],
                       message.failed && { opacity: 0.6 },
                     ]}
                   >
@@ -578,7 +607,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                       <Image source={{ uri: message.image }} style={styles.photo} accessibilityLabel="Foto enviada" />
                     ) : null}
                     {mine ? (
-                      <Text style={[styles.mineText, { color: theme.colors.buttonText }]}>{message.content}</Text>
+                      <Text style={[styles.mineText, { color: bubbles.mineText }]}>{message.content}</Text>
                     ) : (
                       <MessageText text={message.content} color={theme.colors.textPrimary} mutedColor={theme.colors.textMuted} />
                     )}
@@ -606,13 +635,15 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                       <Text style={[styles.retryText, { color: theme.colors.accentTertiary }]}>No se envió · Reintentar</Text>
                     </PressableScale>
                   ) : null}
+                  </View>
                 </View>
               );
             })}
 
             {sending ? (
-              <View style={[styles.messageWrap, styles.theirsWrap]}>
-                <View style={[styles.bubble, styles.theirs, { backgroundColor: bubbleAssistant }]}>
+              <View style={styles.theirsRow}>
+                {assistantAvatar}
+                <View style={[styles.bubble, styles.theirs, styles.theirsBubble, bubbles.assistant, !dark && styles.lightShadow]}>
                   <TypingDots color={theme.colors.accentPrimary} />
                 </View>
               </View>
@@ -780,6 +811,12 @@ const styles = StyleSheet.create({
   mineWrap: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   theirsWrap: { alignSelf: 'flex-start', alignItems: 'stretch' },
   bubble: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10 },
+  theirsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, alignSelf: 'flex-start', maxWidth: '94%' },
+  theirsColumn: { flexShrink: 1, gap: 6 },
+  mineColumn: { alignItems: 'flex-end', gap: 6 },
+  theirsBubble: { borderWidth: 1 },
+  miniAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  lightShadow: { shadowColor: '#10243A', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   mine: { borderBottomRightRadius: 6 },
   theirs: { borderBottomLeftRadius: 6 },
   mineText: { fontSize: 15, lineHeight: 21, fontWeight: '600' },
