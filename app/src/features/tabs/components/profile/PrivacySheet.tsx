@@ -99,7 +99,7 @@ export function PrivacySheet({
           theme={theme}
           icon="robot-outline"
           title="Personalizar el asistente"
-          subtitle="Comparte tu edad, condiciones y alergias con el asistente de IA (nunca tu nombre, correo ni teléfono)."
+          subtitle="El asistente de IA usa tu edad, condiciones, alergias, medicamentos y próximas citas para responderte mejor. Nunca tu nombre, correo ni teléfono."
           toggle={{ value: aiConsent, onChange: (value) => void changeConsent(value), disabled: savingConsent }}
         />
       </View>

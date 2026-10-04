@@ -173,6 +173,39 @@ const formFromMedication = (medication: MedicationData, timeZone?: string | null
   };
 };
 
+/** Medicamento preparado por el asistente: se abre como nuevo, ya rellenado. */
+export type MedicationDraft = {
+  name: string;
+  dosageAmount: number;
+  dosageUnit: string;
+  intervalHours: number;
+  firstDoseTime: string;
+  durationDays: number | null;
+  notes: string | null;
+};
+
+const formFromDraft = (draft: MedicationDraft): FormState => {
+  const option = FREQUENCY_OPTIONS.find((item) => item.hours === draft.intervalHours);
+  const unit = DOSAGE_UNITS.find((item) => item.toLowerCase() === draft.dosageUnit.toLowerCase()) ?? 'mg';
+  let endDate: Date | null = null;
+  if (draft.durationDays) {
+    endDate = today();
+    endDate.setDate(endDate.getDate() + draft.durationDays - 1);
+  }
+  return {
+    ...emptyForm(),
+    name: draft.name,
+    dosageAmount: formatQuantity(draft.dosageAmount),
+    dosageUnit: unit,
+    frequency: option ? option.value : CUSTOM,
+    customInterval: Math.min(CUSTOM_INTERVAL_MAX, Math.max(CUSTOM_INTERVAL_MIN, draft.intervalHours)),
+    firstDoseTime: draft.firstDoseTime,
+    hasEndDate: Boolean(endDate),
+    endDate,
+    notes: draft.notes ?? '',
+  };
+};
+
 const intervalFor = (form: FormState) =>
   form.frequency === CUSTOM
     ? form.customInterval
@@ -271,6 +304,8 @@ export type MedicationFormSheetProps = {
   ownerTimeZone?: string | null;
   /** Medicamentos actuales del dueño, para avisar si se repite uno. */
   existingMedications?: MedicationData[];
+  /** Nuevo medicamento ya rellenado (p. ej. preparado por el asistente). */
+  draft?: MedicationDraft | null;
 };
 
 type PickerTarget = 'time' | 'date' | 'start';
@@ -287,6 +322,7 @@ export function MedicationFormSheet({
   timeZoneNote,
   ownerTimeZone,
   existingMedications = [],
+  draft,
 }: Readonly<MedicationFormSheetProps>) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
@@ -300,7 +336,8 @@ export function MedicationFormSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setForm(medication ? formFromMedication(medication, ownerTimeZone) : emptyForm());
+    if (medication) setForm(formFromMedication(medication, ownerTimeZone));
+    else setForm(draft ? formFromDraft(draft) : emptyForm());
     setShowErrors(false);
     setFrequencyError(false);
     setIosPicker(null);

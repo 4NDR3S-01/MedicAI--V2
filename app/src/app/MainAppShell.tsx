@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, type ReactNode } from 'react';
 import { AppState, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -15,7 +15,8 @@ import { registerPushToken } from '../features/tabs/services/push-registration';
 import * as Notifications from 'expo-notifications';
 import { HomeScreen } from '../features/home';
 import type { AppTheme } from '../shared/theme';
-import { ChatModal, FloatingChatButton } from '../shared/ui';
+import { FloatingChatButton } from '../shared/ui';
+import { AssistantChat } from '../features/assistant/AssistantChat';
 import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBottomBar';
 import type { ProfileUser } from '../features/auth/services/auth.service';
 
@@ -40,6 +41,7 @@ export function MainAppShell({
 }: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
   const [chatVisible, setChatVisible] = useState(false);
+  const closeChat = useCallback(() => setChatVisible(false), []);
   const [avatarData, setAvatarData] = useState<string | null>(initialAvatarData ?? null);
   const contentBottomInset = useMainTabContentInset();
 
@@ -128,6 +130,8 @@ export function MainAppShell({
           contentBottomInset={contentBottomInset}
           onOpenMedications={() => setTab('medications')}
           onOpenAppointments={() => setTab('appointments')}
+          onOpenCircle={() => setTab('family')}
+          onOpenProfile={() => setTab('profile')}
           onOpenAssistant={() => setChatVisible(true)}
         />
       );
@@ -137,7 +141,7 @@ export function MainAppShell({
     <View style={{ flex: 1 }}>
       {body}
       {tab === 'home' ? <FloatingChatButton theme={theme} onPress={() => setChatVisible(true)} /> : null}
-      <ChatModal visible={chatVisible} onClose={() => setChatVisible(false)} theme={theme} />
+      <AssistantChat theme={theme} visible={chatVisible} onClose={closeChat} />
       <AppBottomBar theme={theme} activeTab={tab} onSelect={setTab} />
     </View>
   );

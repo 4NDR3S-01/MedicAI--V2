@@ -57,14 +57,15 @@ const executeAuthorizedRequest = async (
   accessToken: string,
   body?: unknown,
 ) => {
+  // FormData (p. ej. un audio): fetch pone el Content-Type multipart con su boundary.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   try {
     return await fetch(`${API_BASE_URL}${path}`, {
       method,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
+      headers: isForm
+        ? { Authorization: `Bearer ${accessToken}` }
+        : { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: isForm ? body : body ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new NetworkError();

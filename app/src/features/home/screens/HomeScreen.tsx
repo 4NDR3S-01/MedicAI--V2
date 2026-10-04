@@ -1,10 +1,31 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useMemo } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Dimensions, Image } from 'react-native';
+import { Alert, AppState, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
-
-const { width } = Dimensions.get('window');
+import { PressableScale } from '../../../shared/ui';
+import { cancelDoseAlarm } from '../../../shared/services/notifications.service';
+import {
+  ensureAlarmPermissions,
+  getAlarmPermissionsStatus,
+} from '../../../shared/services/alarm-permissions.service';
+import { getStoredSession } from '../../auth';
+import { CareTodayPanel, useCareData } from '../../circle/components/CareTodayPanel';
+import { useCircle } from '../../circle/hooks/useCircle';
+import { DoseActionSheet } from '../../tabs/components/DoseActionSheet';
+import { SkeletonList } from '../../tabs/components/ScreenStates';
+import { initialsOf, parseAvatar } from '../../tabs/components/profile/avatar';
+import { logDose, removeQueuedDose } from '../../tabs/services/dose-queue';
+import { deleteMedicationLog } from '../../tabs/services/medications.service';
+import { withStockChange } from '../../tabs/utils/dose-status';
+import { formatQuantity, stockUnitLabel } from '../../tabs/utils/medication-form';
+import { AttentionList, type AttentionItem } from '../components/AttentionList';
+import { DoseTimeline } from '../components/DoseTimeline';
+import { NextAppointmentCard } from '../components/NextAppointmentCard';
+import { Reveal } from '../components/Reveal';
+import { SectionHeader } from '../components/SectionHeader';
+import { TodayCard } from '../components/TodayCard';
+import { useHomeData, type TodayDose } from '../hooks/useHomeData';
 
 export type HomeScreenProps = {
   theme: AppTheme;
@@ -13,84 +34,30 @@ export type HomeScreenProps = {
   avatarData?: string | null;
   /** Espacio inferior para la barra de pestañas y el FAB central. */
   contentBottomInset: number;
-  /** Si se define, sustituye el aviso «En desarrollo» al abrir Medicamentos. */
   onOpenMedications?: () => void;
   onOpenAppointments?: () => void;
-  onOpenReminders?: () => void;
+  onOpenCircle?: () => void;
+  onOpenProfile?: () => void;
   onOpenAssistant?: () => void;
 };
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) {
-    return 'Buenos días';
-  }
-  if (hour < 19) {
-    return 'Buenas tardes';
-  }
-  return 'Buenas noches';
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+
+function greetingFor(date: Date): { text: string; icon: IconName } {
+  const hour = date.getHours();
+  if (hour < 12) return { text: 'Buenos días', icon: 'weather-sunset-up' };
+  if (hour < 19) return { text: 'Buenas tardes', icon: 'white-balance-sunny' };
+  return { text: 'Buenas noches', icon: 'weather-night' };
 }
 
-function displayNameFromEmail(email: string | null): string {
-  if (!email) {
-    return 'Usuario';
-  }
-  const local = email.split('@')[0] ?? '';
-  if (!local) {
-    return 'Usuario';
-  }
-  const spaced = local.replace(/[._-]+/g, ' ').trim();
-  return spaced.replace(/\b\w/g, (char) => char.toUpperCase());
+function firstNameOf(fullName: string | null, email: string | null): string {
+  const first = fullName?.trim().split(/\s+/)[0];
+  if (first) return first;
+  const local = email?.split('@')[0]?.replace(/[._-]+/g, ' ').trim();
+  return local ? local.split(' ')[0].replace(/^\w/, (char) => char.toUpperCase()) : '';
 }
 
-function normalizeFullName(fullName: string | null): string | null {
-  if (!fullName) {
-    return null;
-  }
-  const words = fullName
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (words.length === 0) {
-    return null;
-  }
-
-  // Mostrar maximo dos palabras para un encabezado corto y legible.
-  return words.slice(0, 2).join(' ');
-}
-
-function initialFromName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return '?';
-  }
-  return trimmed[0]!.toUpperCase();
-}
-
-function openOrStub(label: string, handler?: () => void) {
-  return () => {
-    if (handler) {
-      handler();
-      return;
-    }
-    Alert.alert(
-      'En desarrollo',
-      `La sección «${label}» estará disponible en una próxima actualización.`,
-    );
-  };
-}
-
-function getSafeAvatar(data: string | null | undefined) {
-  if (!data) return null;
-  try {
-    const parsed = JSON.parse(data);
-    if (parsed && parsed.url) return parsed;
-  } catch (e) {
-    // ignore
-  }
-  return null;
-}
+const noop = () => undefined;
 
 export function HomeScreen({
   theme,
@@ -98,323 +65,276 @@ export function HomeScreen({
   userEmail,
   avatarData,
   contentBottomInset,
-  onOpenMedications,
-  onOpenAppointments,
-  onOpenReminders,
-  onOpenAssistant,
+  onOpenMedications = noop,
+  onOpenAppointments = noop,
+  onOpenCircle = noop,
+  onOpenProfile = noop,
+  onOpenAssistant = noop,
 }: Readonly<HomeScreenProps>) {
-  const greeting = useMemo(() => getGreeting(), []);
-  const displayName = useMemo(
-    () => normalizeFullName(userFullName) ?? displayNameFromEmail(userEmail),
-    [userFullName, userEmail],
-  );
-  const avatarLetter = useMemo(() => initialFromName(displayName), [displayName]);
-  const firstName = useMemo(() => displayName.split(' ')[0] ?? displayName, [displayName]);
-  const parsedAvatar = useMemo(() => getSafeAvatar(avatarData), [avatarData]);
+  const home = useHomeData();
+  const { summary, now } = home;
+  const [refreshing, setRefreshing] = useState(false);
+  const [doseTarget, setDoseTarget] = useState<TodayDose | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [alarmIssue, setAlarmIssue] = useState(false);
+
+  // Personas que cuido: el mismo resumen que en Círculo.
+  const circle = useCircle();
+  const caresForSomeone = Boolean(circle.overview?.members.some((member) => member.iCan.viewMedications || member.iCan.viewAppointments));
+  const careData = useCareData(caresForSomeone);
+
+  const checkAlarms = useCallback(async () => {
+    try {
+      const status = await getAlarmPermissionsStatus();
+      setAlarmIssue(!status.isAlarmReady);
+    } catch {
+      setAlarmIssue(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkAlarms();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void checkAlarms();
+    });
+    return () => subscription.remove();
+  }, [checkAlarms]);
+
+  const greeting = greetingFor(now);
+  const firstName = firstNameOf(userFullName, userEmail);
+  const avatar = parseAvatar(avatarData);
+  const today = now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  // ── Tomas ─────────────────────────────────────────────────────────────────
+  const register = async (dose: TodayDose, action: 'TAKEN' | 'SKIPPED') => {
+    setBusy(true);
+    try {
+      const log = await logDose(dose.medication.id, action, dose.slot.at.toISOString());
+      home.setLogs((current) => [log, ...current]);
+      home.setMedications((current) => withStockChange(current, log, 1));
+      // Registrada antes de la hora: esa alarma ya no debe sonar.
+      if (dose.slot.at.getTime() > Date.now()) void cancelDoseAlarm(dose.medication.id, dose.slot.at);
+      setDoseTarget(null);
+    } catch (error) {
+      Alert.alert('No se pudo registrar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const undo = async () => {
+    const log = doseTarget?.slot.log;
+    if (!doseTarget || !log) return;
+    setBusy(true);
+    try {
+      if (!(await removeQueuedDose(log.id))) {
+        const session = await getStoredSession();
+        if (!session?.accessToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+        await deleteMedicationLog(doseTarget.medication.id, log.id, session.accessToken);
+      }
+      home.setLogs((current) => current.filter((item) => item.id !== log.id));
+      home.setMedications((current) => withStockChange(current, log, -1));
+      setDoseTarget(null);
+    } catch (error) {
+      Alert.alert('No se pudo deshacer', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ── Lo que requiere atención ──────────────────────────────────────────────
+  const attention = useMemo<AttentionItem[]>(() => {
+    const items: AttentionItem[] = [];
+    if (alarmIssue && summary.hasMedications) {
+      items.push({
+        key: 'alarms',
+        icon: 'alarm-off',
+        tone: 'warning',
+        title: 'Tus alarmas podrían no sonar',
+        body: 'Falta un permiso del teléfono para avisarte a tiempo.',
+        action: 'Resolver',
+        onPress: () => void ensureAlarmPermissions().finally(() => void checkAlarms()),
+      });
+    }
+    for (const appointment of summary.awaiting.slice(0, 2)) {
+      items.push({
+        key: `attend-${appointment.id}`,
+        icon: 'calendar-question',
+        tone: 'info',
+        title: `¿Asististe a ${appointment.title}?`,
+        body: 'Márcalo para mantener tu historial al día.',
+        action: 'Marcar',
+        onPress: onOpenAppointments,
+      });
+    }
+    for (const medication of summary.lowStock.slice(0, 2)) {
+      const left = medication.stockQuantity ?? 0;
+      items.push({
+        key: `stock-${medication.id}`,
+        icon: 'package-variant',
+        tone: 'warning',
+        title: left <= 0 ? `Se acabó ${medication.name}` : `Queda poco ${medication.name}`,
+        body: left <= 0 ? 'Compra más y actualiza las existencias.' : `Quedan ${formatQuantity(left)} ${stockUnitLabel(medication.dosage, left)}.`,
+        action: 'Ver',
+        onPress: onOpenMedications,
+      });
+    }
+    return items;
+  }, [alarmIssue, summary, onOpenAppointments, onOpenMedications, checkAlarms]);
+
+  const refresh = () => {
+    setRefreshing(true);
+    void Promise.all([home.load(), circle.load(), caresForSomeone ? careData.load() : Promise.resolve(), checkAlarms()])
+      .finally(() => setRefreshing(false));
+  };
+
+  let step = 0;
+  const next = () => step++;
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomInset + 20 }]}
-        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomInset + 24 }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.colors.accentPrimary} colors={[theme.colors.accentPrimary]} />
+        }
       >
-        {/* Header Section */}
-        <View style={styles.header}>
-          <View style={styles.headerTextContainer}>
-            <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>{greeting},</Text>
-            <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-              {firstName}
-            </Text>
+        <Reveal index={next()}>
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <View style={styles.greetingRow}>
+                <MaterialCommunityIcons name={greeting.icon} size={18} color={theme.colors.accentTertiary} />
+                <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>{greeting.text}{firstName ? ',' : ''}</Text>
+              </View>
+              {firstName ? (
+                <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1} accessibilityRole="header">
+                  {firstName}
+                </Text>
+              ) : null}
+              <Text style={[styles.date, { color: theme.colors.textMuted }]}>{today.charAt(0).toUpperCase() + today.slice(1)}</Text>
+            </View>
+            <PressableScale
+              onPress={onOpenProfile}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir tu perfil"
+              style={[styles.avatar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+            >
+              {avatar ? (
+                <Image source={{ uri: avatar.url }} style={styles.avatarImage} accessibilityIgnoresInvertColors />
+              ) : (
+                <Text style={[styles.avatarText, { color: theme.colors.accentPrimary }]}>{initialsOf(userFullName || firstName || '?')}</Text>
+              )}
+            </PressableScale>
           </View>
-          <View
-            style={[
-              styles.avatarContainer,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-            ]}
-          >
-            {parsedAvatar ? (
-              <Image source={{ uri: parsedAvatar.url }} style={styles.avatarImage} />
-            ) : (
-              <Text style={[styles.avatarText, { color: theme.colors.accentPrimary }]}>
-                {avatarLetter}
-              </Text>
-            )}
-          </View>
-        </View>
+        </Reveal>
 
-        {/* Hero AI Banner */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.heroBanner,
-            { backgroundColor: theme.colors.accentPrimary, transform: [{ scale: pressed ? 0.98 : 1 }] },
-          ]}
-          onPress={openOrStub('Asistente IA', onOpenAssistant)}
-        >
-          <View style={styles.heroContent}>
-            <View style={[styles.badge, { backgroundColor: theme.colors.buttonText }]}>
-              <MaterialCommunityIcons name="star-four-points" size={14} color={theme.colors.accentPrimary} />
-              <Text style={[styles.badgeText, { color: theme.colors.accentPrimary }]}>MedicAI Activo</Text>
-            </View>
-            <Text style={[styles.heroTitle, { color: theme.colors.buttonText }]}>¿Cómo te sientes hoy?</Text>
-            <Text style={[styles.heroSubtitle, { color: theme.colors.buttonText }]}>
-              Habla con tu asistente médico inteligente para recibir ayuda inmediata.
-            </Text>
-          </View>
-          <MaterialCommunityIcons
-            name="robot-outline"
-            size={110}
-            color="rgba(255,255,255,0.15)"
-            style={styles.heroIcon}
-          />
-        </Pressable>
+        {home.status === 'loading' ? (
+          <SkeletonList theme={theme} bottomInset={0} />
+        ) : (
+          <>
+            {attention.length ? (
+              <Reveal index={next()}>
+                <AttentionList theme={theme} items={attention} />
+              </Reveal>
+            ) : null}
 
-        {/* Bento Grid */}
-        <View style={styles.bentoGrid}>
-          {/* Medications */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.bentoSquare,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.surfaceBorder,
-                transform: [{ scale: pressed ? 0.97 : 1 }],
-              },
-            ]}
-            onPress={openOrStub('Medicamentos', onOpenMedications)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: `${theme.colors.accentPrimary}15` }]}>
-              <MaterialCommunityIcons name="pill" size={32} color={theme.colors.accentPrimary} />
-            </View>
-            <View style={styles.bentoTextWrap}>
-              <Text style={[styles.bentoTitle, { color: theme.colors.textPrimary }]}>Botiquín</Text>
-              <Text style={[styles.bentoSubtitle, { color: theme.colors.textSecondary }]}>Tus recetas</Text>
-            </View>
-          </Pressable>
+            <Reveal index={next()}>
+              <TodayCard
+                theme={theme}
+                now={now}
+                hasMedications={summary.hasMedications}
+                focus={summary.focus}
+                taken={summary.taken}
+                handled={summary.handled}
+                total={summary.doses.length}
+                missedCount={summary.missedCount}
+                busy={busy}
+                onRegister={(dose, action) => void register(dose, action)}
+                onOpenDose={setDoseTarget}
+                onAddMedication={onOpenMedications}
+                onOpenMedications={onOpenMedications}
+              />
+            </Reveal>
 
-          {/* Appointments */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.bentoSquare,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.surfaceBorder,
-                transform: [{ scale: pressed ? 0.97 : 1 }],
-              },
-            ]}
-            onPress={openOrStub('Citas', onOpenAppointments)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: `${theme.colors.accentSecondary}15` }]}>
-              <MaterialCommunityIcons name="calendar-month" size={32} color={theme.colors.accentSecondary} />
-            </View>
-            <View style={styles.bentoTextWrap}>
-              <Text style={[styles.bentoTitle, { color: theme.colors.textPrimary }]}>Agenda</Text>
-              <Text style={[styles.bentoSubtitle, { color: theme.colors.textSecondary }]}>Próximas citas</Text>
-            </View>
-          </Pressable>
-        </View>
+            {summary.doses.length > 1 ? (
+              <Reveal index={next()}>
+                <DoseTimeline theme={theme} doses={summary.doses} onOpenDose={setDoseTarget} onSeeAll={onOpenMedications} />
+              </Reveal>
+            ) : null}
 
-        {/* Radar / Resumen Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Hoy en tu radar</Text>
-          <View style={[styles.radarCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-            <View style={styles.radarItem}>
-              <View style={[styles.radarDot, { backgroundColor: theme.colors.accentPrimary }]} />
-              <Text style={[styles.radarText, { color: theme.colors.textPrimary }]}>Actualiza tu registro de síntomas con la IA</Text>
-            </View>
-            <View style={[styles.radarDivider, { backgroundColor: theme.colors.background }]} />
-            <View style={styles.radarItem}>
-              <View style={[styles.radarDot, { backgroundColor: theme.colors.accentSecondary }]} />
-              <Text style={[styles.radarText, { color: theme.colors.textPrimary }]}>Revisa la disponibilidad de tus medicamentos</Text>
-            </View>
-            <View style={[styles.radarDivider, { backgroundColor: theme.colors.background }]} />
-            <View style={styles.radarItem}>
-              <View style={[styles.radarDot, { backgroundColor: theme.colors.textMuted }]} />
-              <Text style={[styles.radarText, { color: theme.colors.textSecondary }]}>No hay citas programadas para hoy</Text>
-            </View>
-          </View>
-        </View>
+            <Reveal index={next()}>
+              <NextAppointmentCard
+                theme={theme}
+                now={now}
+                appointment={summary.nextAppointment}
+                upcomingCount={summary.upcomingAppointments}
+                onOpen={onOpenAppointments}
+              />
+            </Reveal>
 
+            {caresForSomeone && careData.data && circle.overview ? (
+              <Reveal index={next()} style={styles.section}>
+                <CareTodayPanel theme={theme} members={circle.overview.members} data={careData.data} onOpen={onOpenCircle} />
+              </Reveal>
+            ) : null}
+
+            <Reveal index={next()} style={styles.section}>
+              <SectionHeader theme={theme} title="Asistente" />
+              <PressableScale
+                onPress={onOpenAssistant}
+                pressedScale={0.98}
+                accessibilityRole="button"
+                accessibilityLabel="Preguntar al asistente de MedicAI"
+                style={[styles.assistant, { backgroundColor: theme.colors.accentPrimary }]}
+              >
+                <View style={styles.assistantText}>
+                  <Text style={[styles.assistantTitle, { color: theme.colors.buttonText }]}>¿Dudas sobre un medicamento?</Text>
+                  <Text style={[styles.assistantBody, { color: theme.colors.buttonText }]}>
+                    Pregunta por interacciones, efectos o cómo tomarlo. Orienta, pero no reemplaza a tu médico.
+                  </Text>
+                  <View style={[styles.assistantCta, { backgroundColor: theme.colors.buttonText }]}>
+                    <MaterialCommunityIcons name="chat-processing-outline" size={16} color={theme.colors.accentPrimary} />
+                    <Text style={[styles.assistantCtaText, { color: theme.colors.accentPrimary }]}>Preguntar</Text>
+                  </View>
+                </View>
+                <MaterialCommunityIcons name="robot-outline" size={96} color="rgba(255,255,255,0.16)" style={styles.assistantIcon} />
+              </PressableScale>
+            </Reveal>
+          </>
+        )}
       </ScrollView>
+
+      <DoseActionSheet
+        theme={theme}
+        target={doseTarget}
+        busy={busy}
+        onClose={() => setDoseTarget(null)}
+        onRegister={(action) => doseTarget && void register(doseTarget, action)}
+        onUndo={() => void undo()}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    gap: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-    marginBottom: 4,
-  },
-  headerTextContainer: {
-    flex: 1,
-  },
-  greeting: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-    marginBottom: 2,
-  },
-  name: {
-    fontSize: 32,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  avatarContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 22,
-    fontWeight: '900',
-  },
-  avatarImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-  },
-  heroBanner: {
-    borderRadius: 32,
-    padding: 24,
-    overflow: 'hidden',
-    position: 'relative',
-    minHeight: 180,
-    justifyContent: 'center',
-  },
-  heroContent: {
-    position: 'relative',
-    zIndex: 2,
-    width: '75%',
-    gap: 12,
-  },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    lineHeight: 30,
-  },
-  heroSubtitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    lineHeight: 20,
-    opacity: 0.9,
-  },
-  heroIcon: {
-    position: 'absolute',
-    right: -15,
-    bottom: -15,
-    zIndex: 1,
-    transform: [{ rotate: '-10deg' }],
-  },
-  bentoGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  bentoSquare: {
-    flex: 1,
-    borderRadius: 28,
-    borderWidth: 1,
-    padding: 20,
-    aspectRatio: 1,
-    justifyContent: 'space-between',
-  },
-  iconCircle: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bentoTextWrap: {
-    gap: 4,
-  },
-  bentoTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-  },
-  bentoSubtitle: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  bentoRect: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 28,
-    borderWidth: 1,
-    padding: 20,
-  },
-  bentoRectLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  section: {
-    marginTop: 8,
-    gap: 16,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    paddingHorizontal: 4,
-  },
-  radarCard: {
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-  },
-  radarItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-  },
-  radarDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  radarText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 22,
-  },
-  radarDivider: {
-    height: 2,
-    borderRadius: 1,
-  },
+  screen: { flex: 1 },
+  content: { paddingHorizontal: 18, paddingTop: 16, gap: 18 },
+  section: { gap: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  headerText: { flex: 1, gap: 2 },
+  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  greeting: { fontSize: 15, fontWeight: '700' },
+  name: { fontSize: 30, fontWeight: '900', letterSpacing: -0.8 },
+  date: { fontSize: 13, fontWeight: '700' },
+  avatar: { width: 54, height: 54, borderRadius: 27, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImage: { width: 54, height: 54, borderRadius: 27 },
+  avatarText: { fontSize: 19, fontWeight: '900' },
+  assistant: { borderRadius: 26, padding: 20, overflow: 'hidden', minHeight: 150 },
+  assistantText: { width: '78%', gap: 8 },
+  assistantTitle: { fontSize: 19, fontWeight: '900', letterSpacing: -0.3 },
+  assistantBody: { fontSize: 13.5, lineHeight: 19, fontWeight: '600', opacity: 0.92 },
+  assistantCta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, marginTop: 4 },
+  assistantCtaText: { fontSize: 13, fontWeight: '900' },
+  assistantIcon: { position: 'absolute', right: -14, bottom: -14, transform: [{ rotate: '-10deg' }] },
 });
