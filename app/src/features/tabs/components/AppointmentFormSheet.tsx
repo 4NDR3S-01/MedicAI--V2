@@ -96,6 +96,29 @@ const wallClock = (instant: Date, timeZone?: string | null) => {
   };
 };
 
+/** Cita preparada por el asistente: fecha y hora de pared del dueño. */
+export type AppointmentDraft = {
+  title: string;
+  doctorName: string;
+  date: string;
+  time: string;
+  location: string | null;
+  notes: string | null;
+};
+
+const formFromDraft = (draft: AppointmentDraft): FormState => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(draft.date);
+  return {
+    ...emptyForm(),
+    title: draft.title,
+    doctorName: draft.doctorName,
+    date: match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null,
+    time: draft.time,
+    location: draft.location ?? '',
+    notes: draft.notes ?? '',
+  };
+};
+
 const formFromAppointment = (appointment: AppointmentData, timeZone?: string | null): FormState => {
   const scheduled = new Date(appointment.scheduledAt);
   const valid = !Number.isNaN(scheduled.getTime());
@@ -165,6 +188,8 @@ export type AppointmentFormSheetProps = {
   ownerTimeZone?: string | null;
   /** Citas actuales del dueño, para avisar si se repite una. */
   existingAppointments?: AppointmentData[];
+  /** Nueva cita ya rellenada (p. ej. preparada por el asistente). */
+  draft?: AppointmentDraft | null;
 };
 
 export function AppointmentFormSheet({
@@ -177,6 +202,7 @@ export function AppointmentFormSheet({
   ownerIsDependent = false,
   ownerTimeZone,
   existingAppointments = [],
+  draft,
 }: Readonly<AppointmentFormSheetProps>) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
@@ -188,7 +214,8 @@ export function AppointmentFormSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setForm(appointment ? formFromAppointment(appointment, ownerTimeZone) : emptyForm());
+    if (appointment) setForm(formFromAppointment(appointment, ownerTimeZone));
+    else setForm(draft ? formFromDraft(draft) : emptyForm());
     setShowErrors(false);
     setIosPicker(null);
     void getAppointmentReminderLeadMinutes().then(setLeadMinutes).catch(() => setLeadMinutes(null));

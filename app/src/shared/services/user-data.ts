@@ -19,6 +19,8 @@ const USER_DATA_KEYS = [
   'medicai_reported_timezone_v1',
   // El dispositivo se vuelve a registrar para notificaciones con la nueva cuenta.
   'medicai_registered_push_token_v1',
+  // Conversación con el asistente: es privada del usuario.
+  'medicai_assistant_chat_v1',
 ];
 const LEGACY_AVATAR_KEY = 'user_avatar_data';
 

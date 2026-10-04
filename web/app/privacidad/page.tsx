@@ -10,8 +10,8 @@ const CONTROLLER = {
   country: "Ecuador",
 };
 
-const POLICY_VERSION = "2026-10-01";
-const LAST_UPDATED = "1 de octubre de 2026";
+const POLICY_VERSION = "2026-10-03";
+const LAST_UPDATED = "3 de octubre de 2026";
 
 export const metadata: Metadata = {
   title: "Política de privacidad",
@@ -64,8 +64,8 @@ export default function PrivacyPolicyPage() {
             <li>Usamos tus datos solo para que MedicAI funcione: cuenta, recordatorios, citas y asistente.</li>
             <li>Tus datos de salud son opcionales y nunca los vendemos ni los usamos para publicidad.</li>
             <li>
-              El asistente de IA lo presta un proveedor externo. Tu perfil de salud solo se le envía si lo
-              autorizas, y puedes retirar ese permiso cuando quieras.
+              El asistente de IA lo presta un proveedor externo. Tu perfil de salud, tus medicamentos y tus
+              próximas citas solo se le envían si lo autorizas, y puedes retirar ese permiso cuando quieras.
             </li>
             <li>Puedes consultar, corregir, exportar o eliminar tus datos escribiendo a {CONTROLLER.email}.</li>
             <li>MedicAI te ayuda a organizarte, pero no reemplaza la atención de un profesional de la salud.</li>
@@ -121,7 +121,15 @@ export default function PrivacyPolicyPage() {
           <h3>Mensajes con el asistente de IA</h3>
           <p>
             Lo que escribes en el chat se envía al proveedor de IA para generar la respuesta. No guardamos
-            el historial de conversaciones en nuestros servidores.
+            el historial de conversaciones en nuestros servidores: queda solo en tu teléfono y se borra al
+            cerrar sesión o cuando tú lo borras.
+          </p>
+          <h3>Voz</h3>
+          <p>
+            Si le hablas al asistente, el micrófono se usa solo mientras lo activas en el chat (nunca en
+            segundo plano). El audio se envía al proveedor de IA para convertirlo en texto y no se guarda ni
+            en el teléfono ni en nuestros servidores. Las respuestas habladas las genera la voz de tu propio
+            teléfono.
           </p>
           <h3>Ubicación</h3>
           <p>
@@ -178,9 +186,13 @@ export default function PrivacyPolicyPage() {
           </p>
           <p>
             <strong>Tu perfil de salud solo se incluye si lo autorizas</strong> (opción desactivada por
-            defecto). En ese caso enviamos tu edad, condiciones de salud, alergias y situaciones especiales;
-            nunca tu nombre, correo ni teléfono. Puedes activarlo o desactivarlo en{" "}
-            <em>Perfil → Datos personales → Privacidad</em>.
+            defecto). En ese caso enviamos tu edad, condiciones de salud, alergias, situaciones especiales,
+            tus medicamentos activos (nombre, dosis y horarios) y tus citas de los próximos 60 días; nunca tu
+            nombre, correo ni teléfono. Puedes activarlo o desactivarlo en <em>Perfil → Privacidad</em>.
+          </p>
+          <p>
+            El asistente puede <strong>preparar</strong> un medicamento o una cita cuando se lo pides, pero
+            nunca los guarda solo: siempre los revisas y confirmas tú.
           </p>
           <p>
             Evita escribir en el chat datos que no quieras compartir. Las respuestas son orientativas, pueden
@@ -193,8 +205,8 @@ export default function PrivacyPolicyPage() {
           <p>Solo con proveedores que necesitamos para prestar el servicio, y solo lo imprescindible:</p>
           <ul>
             <li>
-              <strong>Groq</strong> (Estados Unidos): procesa los mensajes del asistente de IA y, si lo
-              autorizas, tu perfil de salud.
+              <strong>Groq</strong> (Estados Unidos): procesa los mensajes (y la voz, para convertirla en texto) del asistente de IA y, si lo
+              autorizas, tu perfil de salud, medicamentos y próximas citas.
             </li>
             <li>
               <strong>Resend</strong> (Estados Unidos): envía los correos de verificación y recuperación de

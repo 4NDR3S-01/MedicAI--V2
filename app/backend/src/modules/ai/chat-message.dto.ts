@@ -1,10 +1,11 @@
-import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ChatMessageDto {
+  // Solo turnos de la conversación: el contexto de sistema lo pone el servidor.
   @IsOptional()
-  @IsIn(['system', 'user', 'assistant'])
-  role?: 'system' | 'user' | 'assistant';
+  @IsIn(['user', 'assistant'])
+  role?: 'user' | 'assistant';
 
   @IsString()
   @MaxLength(4000)
@@ -13,13 +14,19 @@ export class ChatMessageDto {
 
 export class ChatRequestDto {
   @IsString()
-  @MaxLength(4000)
+  @IsNotEmpty()
+  @MaxLength(2000)
   message!: string;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDto)
-  @ArrayMaxSize(12)
+  @ArrayMaxSize(20)
   @IsOptional()
   history?: ChatMessageDto[];
+
+  /** 'voice': la respuesta se leerá en voz alta (más corta, sin listas). */
+  @IsOptional()
+  @IsIn(['text', 'voice'])
+  mode?: 'text' | 'voice';
 }
