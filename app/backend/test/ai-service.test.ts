@@ -65,4 +65,10 @@ describe('asistente: modelos', () => {
     fakeGroq(() => ({ status: 429, body: { error: { message: 'Rate limit reached' } } }));
     await assert.rejects(service().chat({ message: 'Hola' }, 'u'), /muchas consultas/);
   });
+
+  it('clave de Groq inválida: no reintenta con el respaldo y lo dice claro', async () => {
+    const calls = fakeGroq(() => ({ status: 401, body: { error: { message: 'Invalid API Key', code: 'invalid_api_key' } } }));
+    await assert.rejects(service().chat({ message: 'Hola' }, 'u'), /configuración del servidor/);
+    assert.equal(calls.length, 1);
+  });
 });

@@ -96,6 +96,11 @@ export class AiService {
       if (result.status === 0) {
         throw new ServiceUnavailableException(result.message);
       }
+      if (result.status === 401 || result.code === 'invalid_api_key') {
+        // No es culpa del usuario ni se arregla reintentando: falta una clave válida en el servidor.
+        this.logger.error('Groq rejected the API key: set a valid GROQ_API_KEY in the server .env', { model, code: result.code });
+        throw new ServiceUnavailableException('El asistente no está disponible por un problema de configuración del servidor. Ya lo estamos revisando.');
+      }
       throw new BadGatewayException('El asistente no pudo responder. Inténtalo de nuevo.');
     }
     const data = result.data;
@@ -236,6 +241,10 @@ export class AiService {
       clearTimeout(timeout);
     }
     const data = (await response.json().catch(() => ({}))) as { text?: string; error?: { message?: string } };
+    if (response.status === 401) {
+      this.logger.error('Groq rejected the API key: set a valid GROQ_API_KEY in the server .env');
+      throw new ServiceUnavailableException('La voz no está disponible por un problema de configuración del servidor.');
+    }
     if (!response.ok) {
       this.logger.warn('Groq transcription rejected', { status: response.status, message: data.error?.message });
       if (response.status === 429) {
