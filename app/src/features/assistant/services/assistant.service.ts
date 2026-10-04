@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+
 import { ensureApiBaseUrl, parseApiErrorMessage, readResponseBody, requestWithAutoRefresh } from '../../tabs/services/http';
 import type { AppointmentDraft } from '../../tabs/components/AppointmentFormSheet';
 import type { MedicationDraft } from '../../tabs/components/MedicationFormSheet';
@@ -54,17 +56,33 @@ export async function askAssistant(
   };
 }
 
-/** Voz → texto (el servidor la transcribe con Whisper y no guarda el audio). */
+/**
+ * Voz → texto. El audio va en base64 dentro de JSON (enviarlo como archivo
+ * adjunto falla en algunos teléfonos Android) y la grabación se borra del
+ * teléfono en cuanto se envía. El servidor tampoco la guarda.
+ */
 export async function transcribeAudio(accessToken: string, uri: string): Promise<string> {
   ensureApiBaseUrl();
-  const extension = uri.split('.').pop()?.toLowerCase() || 'm4a';
-  const form = new FormData();
-  // React Native acepta { uri, name, type } como archivo en FormData.
-  form.append('audio', { uri, name: `voz.${extension}`, type: extension === '3gp' ? 'audio/3gpp' : 'audio/m4a' } as unknown as Blob);
-  const response = await requestWithAutoRefresh('/ai/transcribe', 'POST', accessToken, form);
-  if (!response.ok) {
-    throw new Error(await parseApiErrorMessage(response, 'No pude entender el audio. Inténtalo de nuevo.'));
+  const file = new File(uri);
+  const format = uri.split('.').pop()?.toLowerCase() || 'm4a';
+  let audio: string;
+  try {
+    audio = await file.base64();
+  } catch {
+    throw new Error('No pude leer la grabación. Inténtalo de nuevo.');
   }
-  const data = await readResponseBody<{ text?: string }>(response);
-  return data.text?.trim() ?? '';
+  try {
+    const response = await requestWithAutoRefresh('/ai/transcribe', 'POST', accessToken, { audio, format });
+    if (!response.ok) {
+      throw new Error(await parseApiErrorMessage(response, 'No pude entender el audio. Inténtalo de nuevo.'));
+    }
+    const data = await readResponseBody<{ text?: string }>(response);
+    return data.text?.trim() ?? '';
+  } finally {
+    try {
+      file.delete();
+    } catch {
+      // ya no existe: nada que borrar
+    }
+  }
 }

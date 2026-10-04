@@ -31,8 +31,9 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   // Limitar tamaño de cuerpo de peticiones: JSON y formularios.
-  // El chat del asistente puede llevar una foto (base64): solo esa ruta admite más.
+  // El chat (foto) y la voz (audio) van en base64: solo esas rutas admiten más.
   app.use('/ai/chat', json({ limit: AI_CHAT_SIZE_LIMIT }));
+  app.use('/ai/transcribe', json({ limit: AI_CHAT_SIZE_LIMIT }));
   app.use(json({ limit: REQUEST_SIZE_LIMIT }));
   app.use(urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
 
