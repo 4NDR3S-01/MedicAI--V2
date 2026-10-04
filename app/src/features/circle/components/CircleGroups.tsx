@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { BufferedTextInput } from '../../../shared/ui/BufferedTextInput';
 
 import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FormSheet, SelectableChip } from '../../../shared/ui';
@@ -91,7 +93,7 @@ export function GroupPicker({
       </View>
       {creating ? (
         <View style={[styles.createRow, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}>
-          <TextInput
+          <BufferedTextInput
             value={name}
             onChangeText={setName}
             placeholder="Nombre del grupo"
@@ -217,7 +219,7 @@ export function GroupsSheet({
         <>
           <View style={[styles.createRow, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}>
             <MaterialCommunityIcons name={draftIcon} size={22} color={theme.colors.accentPrimary} />
-            <TextInput
+            <BufferedTextInput
               value={draftName}
               onChangeText={setDraftName}
               placeholder="Nombre del grupo"

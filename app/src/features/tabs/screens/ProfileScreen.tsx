@@ -200,7 +200,12 @@ export function ProfileScreen({
                 </View>
               </PressableScale>
               <View style={styles.heroIdentity}>
-                <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>{name}</Text>
+                <Text
+                  style={[styles.name, name.length > 22 && styles.nameLong, { color: theme.colors.textPrimary }]}
+                  numberOfLines={2}
+                >
+                  {name}
+                </Text>
                 {email ? <Text style={[styles.email, { color: theme.colors.textMuted }]} numberOfLines={1}>{email}</Text> : null}
                 <View style={styles.heroPills}>
                   {phone ? (
@@ -358,7 +363,7 @@ export function ProfileScreen({
           <View style={styles.footer}>
             <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>MedicAI {APP_VERSION}</Text>
             <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>
-              MedicAI te ayuda a organizar tu tratamiento, pero no reemplaza la atención médica profesional. En una emergencia, llama al 123.
+              MedicAI te ayuda a organizar tu tratamiento, pero no reemplaza la atención médica profesional. En una emergencia, llama al 911.
             </Text>
           </View>
         </ScrollView>
@@ -486,7 +491,9 @@ const styles = StyleSheet.create({
   avatarLetter: { fontSize: 32, fontWeight: '900' },
   editBadge: { position: 'absolute', bottom: -3, right: -3, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
   heroIdentity: { flex: 1, gap: 6 },
-  name: { fontSize: 25, fontWeight: '900', letterSpacing: -0.6 },
+  name: { fontSize: 24, lineHeight: 28, fontWeight: '900', letterSpacing: -0.6 },
+  // Nombres largos ("William Andrés Pérez Gómez"): un poco más pequeños, en dos líneas.
+  nameLong: { fontSize: 20, lineHeight: 24 },
   email: { fontSize: 13, fontWeight: '700' },
   heroPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },

@@ -12,6 +12,8 @@ import {
 
 import type { AppTheme } from "../theme";
 
+import { BufferedTextInput } from "./BufferedTextInput";
+
 export const ERROR_COLOR = "#D64545";
 
 type FieldShellProps = {
@@ -112,8 +114,8 @@ export function TextField({
       onLayout={onLayout}
     >
       <View style={[styles.inputWrap, colors]}>
-        <TextInput
-          ref={inputRef}
+        <BufferedTextInput
+          inputRef={inputRef}
           {...inputProps}
           secureTextEntry={secureToggle ? !revealed : secureTextEntry}
           accessibilityLabel={accessibilityLabel ?? label}

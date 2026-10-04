@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { LayoutAnimation, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { LayoutAnimation, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+
+import { BufferedTextInput } from '../../../shared/ui/BufferedTextInput';
 
 import type { AppTheme } from '../../../shared/theme';
 import { SelectField, SelectableChip, TextField, useReducedMotion } from '../../../shared/ui';
@@ -151,7 +153,7 @@ export function SearchBar({
   return (
     <View style={[styles.search, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder }]}>
       <MaterialCommunityIcons name="magnify" size={20} color={theme.colors.textMuted} />
-      <TextInput
+      <BufferedTextInput
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
