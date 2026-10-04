@@ -26,9 +26,21 @@ export const readResponseBody = async <T>(response: Response): Promise<T> => {
   }
 };
 
+const SERVER_DOWN_MESSAGE = 'El servidor de MedicAI no está disponible en este momento. Inténtalo en unos minutos.';
+
 export const parseApiErrorMessage = async (response: Response, fallback: string) => {
+  // Un 500 genérico de Nest ("Internal server error") o una página del proxy
+  // no dicen nada útil; los errores 502/503 del backend sí traen un mensaje claro.
   if (response.status >= 500) {
-    return 'El backend de MedicAI no esta disponible en este momento.';
+    try {
+      const body = await readResponseBody<{ message?: unknown }>(response);
+      if (typeof body.message === 'string' && body.message.trim() && body.message !== 'Internal server error') {
+        return body.message;
+      }
+    } catch {
+      // respuesta que no es JSON (p. ej. del proxy)
+    }
+    return `${SERVER_DOWN_MESSAGE} (error ${response.status})`;
   }
 
   try {
