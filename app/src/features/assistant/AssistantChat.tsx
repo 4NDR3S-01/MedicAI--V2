@@ -36,7 +36,7 @@ import { MessageText } from './components/MessageText';
 import { ProposalCard } from './components/ProposalCard';
 import { TypingDots } from './components/TypingDots';
 import { VoicePanel, type VoicePhase } from './components/VoicePanel';
-import { isExitPhrase, isNo, isYes, speak, stopSpeaking, useVoiceRecorder } from './hooks/useVoice';
+import { isExitPhrase, isNo, isYes, speak, stopSpeaking, useVoiceRecorder, warmUpSpeech } from './hooks/useVoice';
 import { askAssistant, transcribeAudio, type AssistantReply, type Proposal } from './services/assistant.service';
 import { EMERGENCY_NUMBER, looksLikeEmergency } from './utils/emergency';
 import { pickPhoto, type ChatPhoto } from './utils/photo';
@@ -88,7 +88,9 @@ function pendingDoseOf(messages: ChatMessage[]) {
  */
 export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: AppTheme; visible: boolean; onClose: () => void }>) {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
+  /** Pantallas estrechas: cabecera sin avatar y botón de voz sin texto. */
+  const compact = width < 360;
   const { keyboardVisible, screenInset } = useKeyboardInset();
   const reducedMotion = useReducedMotion();
   const progress = useRef(new Animated.Value(0)).current;
@@ -105,6 +107,8 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   const [existingMedications, setExistingMedications] = useState<MedicationData[]>([]);
   const [busyDose, setBusyDose] = useState<string | null>(null);
   const [photo, setPhoto] = useState<ChatPhoto | null>(null);
+  /** Respuesta que se está leyendo en voz alta con "Escuchar". */
+  const [readingId, setReadingId] = useState<string | null>(null);
 
   // Voz
   const voice = useVoiceRecorder();
@@ -384,6 +388,12 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   };
 
   const startConversation = async () => {
+    // La voz se prepara mientras se pide el micrófono: la primera respuesta suena antes.
+    void warmUpSpeech().catch(() => undefined);
+    if (readingId) {
+      void stopSpeaking();
+      setReadingId(null);
+    }
     if (voiceActive.current || dictation !== 'idle' || !(await withMicrophone())) return;
     voiceActive.current = true;
     setVoiceMode(true);
@@ -406,6 +416,10 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   }, [endConversation]);
 
   useEffect(() => {
+    if (!visible && readingId) {
+      void stopSpeaking();
+      setReadingId(null);
+    }
     if (!visible && (voiceActive.current || voiceMode)) endConversation();
     if (!visible) voice.cancel();
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -421,6 +435,19 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
       { text: 'Elegir de la galería', onPress: () => choose('library') },
       { text: 'Tomar foto', onPress: () => choose('camera') },
     ]);
+  };
+
+  const toggleRead = (message: ChatMessage) => {
+    if (readingId === message.id) {
+      void stopSpeaking();
+      setReadingId(null);
+      return;
+    }
+    void stopSpeaking().then(async () => {
+      setReadingId(message.id);
+      await speak(message.content);
+      setReadingId((current) => (current === message.id ? null : current));
+    });
   };
 
   const clearChat = () => {
@@ -508,39 +535,55 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
             <PressableScale onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cerrar asistente" style={styles.headerButton}>
               <MaterialCommunityIcons name="chevron-down" size={28} color={theme.colors.textPrimary} />
             </PressableScale>
-            <View style={[styles.botAvatar, { backgroundColor: `${theme.colors.accentPrimary}18` }]}>
-              <MaterialCommunityIcons name="robot-happy-outline" size={22} color={theme.colors.accentPrimary} />
-            </View>
+            {compact ? null : (
+              <View style={[styles.botAvatar, { backgroundColor: `${theme.colors.accentPrimary}18` }]}>
+                <MaterialCommunityIcons name="robot-happy-outline" size={22} color={theme.colors.accentPrimary} />
+              </View>
+            )}
             <View style={styles.headerText}>
-              <Text style={[styles.title, { color: theme.colors.textPrimary }]} accessibilityRole="header">Asistente MedicAI</Text>
+              <Text style={[styles.title, { color: theme.colors.textPrimary }]} numberOfLines={1} accessibilityRole="header">
+                Asistente MedicAI
+              </Text>
               {personal === null ? null : personal ? (
-                <View style={styles.statusRow}>
+                <View style={styles.statusRow} accessible accessibilityLabel="Conoce tu salud, medicamentos y citas">
                   <View style={[styles.statusDot, { backgroundColor: theme.colors.success }]} />
-                  <Text style={[styles.status, { color: theme.colors.textMuted }]}>Conoce tu salud, medicamentos y citas</Text>
+                  <Text style={[styles.status, { color: theme.colors.textMuted }]} numberOfLines={1}>
+                    Conoce tu información de salud
+                  </Text>
                 </View>
               ) : (
-                <PressableScale onPress={enablePersonal} accessibilityRole="button" style={styles.statusRow}>
-                  <Text style={[styles.status, { color: theme.colors.textMuted }]}>Sin acceso a tu información ·</Text>
-                  <Text style={[styles.status, { color: theme.colors.accentPrimary, fontWeight: '800' }]}> Activar</Text>
+                <PressableScale onPress={enablePersonal} accessibilityRole="button" accessibilityLabel="Sin acceso a tu información. Activar" style={styles.statusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: theme.colors.textMuted }]} />
+                  <Text style={[styles.status, styles.flexShrink, { color: theme.colors.textMuted }]} numberOfLines={1}>Sin acceso a tus datos</Text>
+                  <Text style={[styles.status, styles.statusAction, { color: theme.colors.accentPrimary }]}>Activar</Text>
                 </PressableScale>
               )}
             </View>
-            {!voiceMode ? (
-              <PressableScale
-                onPress={() => void startConversation()}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Conversar por voz"
-                style={[styles.voiceButton, { backgroundColor: `${theme.colors.accentPrimary}14` }]}
-              >
-                <MaterialCommunityIcons name="headset" size={20} color={theme.colors.accentPrimary} />
-              </PressableScale>
-            ) : null}
-            {messages.length && !voiceMode ? (
-              <PressableScale onPress={clearChat} hitSlop={8} accessibilityRole="button" accessibilityLabel="Borrar conversación" style={styles.headerButton}>
-                <MaterialCommunityIcons name="delete-outline" size={22} color={theme.colors.textMuted} />
-              </PressableScale>
-            ) : null}
+            {voiceMode ? null : (
+              <View style={styles.headerActions}>
+                <PressableScale
+                  onPress={() => void startConversation()}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Conversar por voz, manos libres"
+                  style={[styles.voiceButton, { backgroundColor: `${theme.colors.accentPrimary}16`, borderColor: `${theme.colors.accentPrimary}40` }]}
+                >
+                  <MaterialCommunityIcons name="headset" size={18} color={theme.colors.accentPrimary} />
+                  {compact ? null : <Text style={[styles.voiceLabel, { color: theme.colors.accentPrimary }]}>Voz</Text>}
+                </PressableScale>
+                {messages.length ? (
+                  <PressableScale
+                    onPress={clearChat}
+                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel="Borrar conversación"
+                    style={[styles.iconButton, { backgroundColor: `${theme.colors.textMuted}14` }]}
+                  >
+                    <MaterialCommunityIcons name="delete-outline" size={20} color={theme.colors.textSecondary} />
+                  </PressableScale>
+                ) : null}
+              </View>
+            )}
           </View>
 
           {/* Conversación */}
@@ -629,6 +672,24 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                       />
                     );
                   })}
+                  {!mine && !voiceMode ? (
+                    <PressableScale
+                      onPress={() => toggleRead(message)}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={readingId === message.id ? 'Dejar de leer en voz alta' : 'Escuchar esta respuesta'}
+                      style={styles.listen}
+                    >
+                      <MaterialCommunityIcons
+                        name={readingId === message.id ? 'stop-circle-outline' : 'volume-high'}
+                        size={15}
+                        color={theme.colors.textMuted}
+                      />
+                      <Text style={[styles.listenText, { color: theme.colors.textMuted }]}>
+                        {readingId === message.id ? 'Detener' : 'Escuchar'}
+                      </Text>
+                    </PressableScale>
+                  ) : null}
                   {message.failed ? (
                     <PressableScale onPress={() => void send(message.content, { retryOf: message.id })} accessibilityRole="button" style={styles.retry}>
                       <MaterialCommunityIcons name="alert-circle-outline" size={14} color={theme.colors.accentTertiary} />
@@ -791,14 +852,20 @@ const styles = StyleSheet.create({
   root: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
   center: { alignItems: 'center', gap: 10 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 4, paddingRight: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  botAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerText: { flex: 1, gap: 1 },
+  botAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerText: { flex: 1, minWidth: 0, gap: 2, paddingRight: 4 },
   title: { fontSize: 17, fontWeight: '900' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  status: { fontSize: 12, fontWeight: '600' },
+  status: { fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
+  statusAction: { fontWeight: '900', flexShrink: 0 },
+  flexShrink: { flexShrink: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  voiceButton: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, minWidth: 38, paddingHorizontal: 12, borderRadius: 19, borderWidth: 1, justifyContent: 'center' },
+  voiceLabel: { fontSize: 13.5, fontWeight: '900' },
+  iconButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   messages: { padding: 16, gap: 12, flexGrow: 1 },
   welcome: { alignItems: 'center', gap: 10, paddingTop: 16 },
   welcomeIcon: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
@@ -820,6 +887,8 @@ const styles = StyleSheet.create({
   mine: { borderBottomRightRadius: 6 },
   theirs: { borderBottomLeftRadius: 6 },
   mineText: { fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  listen: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 2, paddingHorizontal: 2, minHeight: 28 },
+  listenText: { fontSize: 12.5, fontWeight: '700' },
   retry: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
   retryText: { fontSize: 12.5, fontWeight: '800' },
   emergency: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginBottom: 8, padding: 12, borderRadius: 16, borderWidth: 1 },
@@ -835,7 +904,6 @@ const styles = StyleSheet.create({
   preview: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   previewImage: { width: 52, height: 52, borderRadius: 12 },
   previewText: { flex: 1, fontSize: 13, fontWeight: '600' },
-  voiceButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   dictation: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, borderRadius: 26, borderWidth: 1, paddingHorizontal: 16 },
   recDot: { width: 12, height: 12, borderRadius: 6 },
   dictationText: { flex: 1, fontSize: 14.5, fontWeight: '700' },

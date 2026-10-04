@@ -15,6 +15,23 @@ export function toSpeech(text: string): string {
 
 // ─── Respuestas habladas ────────────────────────────────────────────────────
 
+/**
+ * Frases para leer: la primera corta (empieza a sonar antes) y el resto en
+ * trozos de hasta ~220 caracteres. El motor de voz prepara cada trozo
+ * mientras suena el anterior.
+ */
+export function speechChunks(text: string): string[] {
+  const sentences = text.match(/[^.!?…\n]+[.!?…]*["»)]?\s*/g)?.map((part) => part.trim()).filter(Boolean) ?? [text];
+  const chunks: string[] = [];
+  for (const sentence of sentences) {
+    const last = chunks[chunks.length - 1];
+    // La primera frase va sola; las siguientes se agrupan hasta ~220 caracteres.
+    if (chunks.length > 1 && last && last.length + sentence.length < 220) chunks[chunks.length - 1] = `${last} ${sentence}`;
+    else chunks.push(sentence);
+  }
+  return chunks.length ? chunks : [text];
+}
+
 const normalize = (text: string) =>
   text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
 /** Solo respuestas cortas cuentan como "sí": "sí, pero ¿qué me toca después?" es otra pregunta. */

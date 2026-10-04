@@ -7,9 +7,10 @@ import {
   useAudioRecorder,
   type RecordingOptions,
 } from 'expo-audio';
+import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
 
-import { toSpeech } from '../utils/speech-text';
+import { speechChunks, toSpeech } from '../utils/speech-text';
 
 export { isExitPhrase, isNo, isYes } from '../utils/speech-text';
 
@@ -123,7 +124,8 @@ export function useVoiceRecorder() {
       setRecording(false);
       setLevel(0);
       busy.current = false;
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+      // Sin esperar: no debe retrasar el envío de lo grabado.
+      void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
     }
   }, [recorder]);
 
@@ -167,18 +169,44 @@ async function pickVoice() {
   return preferredVoice;
 }
 
+let warmedUp = false;
+
+/**
+ * Deja lista la voz antes de la primera respuesta: elige la voz y "despierta"
+ * el motor de voz del teléfono (en silencio), que tarda en arrancar la primera vez.
+ */
+export async function warmUpSpeech(): Promise<void> {
+  const voice = await pickVoice();
+  if (warmedUp) return;
+  warmedUp = true;
+  Speech.speak('.', { language: voice.language, voice: voice.identifier, volume: 0 });
+}
+
 /** Lee el texto y se resuelve al terminar (o al interrumpirlo con stopSpeaking). */
 export async function speak(text: string): Promise<void> {
   const voice = await pickVoice();
-  await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+  // En iPhone la sesión de audio debe salir del modo grabación para sonar por el altavoz.
+  if (Platform.OS === 'ios') {
+    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+  }
+  const chunks = speechChunks(toSpeech(text));
   await new Promise<void>((resolve) => {
-    Speech.speak(toSpeech(text), {
-      language: voice.language,
-      voice: voice.identifier,
-      rate: 1.0,
-      onDone: () => resolve(),
-      onStopped: () => resolve(),
-      onError: () => resolve(),
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      resolve();
+    };
+    chunks.forEach((chunk, index) => {
+      const last = index === chunks.length - 1;
+      Speech.speak(chunk, {
+        language: voice.language,
+        voice: voice.identifier,
+        rate: 1.0,
+        onDone: last ? done : undefined,
+        onStopped: done,
+        onError: done,
+      });
     });
   });
 }
