@@ -77,7 +77,7 @@
         {
           "cameraPermission": "MedicAI usa la cámara solo para que fotografíes una receta o la caja de un medicamento y se la muestres al asistente.",
           "photosPermission": "MedicAI accede a la foto que elijas para mostrársela al asistente.",
-          "microphonePermission": false
+          "microphonePermission": "MedicAI usa el micrófono solo mientras hablas con el asistente."
         }
       ],
       [
