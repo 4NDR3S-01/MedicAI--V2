@@ -3,7 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Alert, AppState, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
-import { PressableScale } from '../../../shared/ui';
+import { PressableScale, Reveal } from '../../../shared/ui';
 import { cancelDoseAlarm } from '../../../shared/services/notifications.service';
 import {
   ensureAlarmPermissions,
@@ -13,7 +13,6 @@ import { getStoredSession } from '../../auth';
 import { CareTodayPanel, useCareData } from '../../circle/components/CareTodayPanel';
 import { useCircle } from '../../circle/hooks/useCircle';
 import { DoseActionSheet } from '../../tabs/components/DoseActionSheet';
-import { SkeletonList } from '../../tabs/components/ScreenStates';
 import { initialsOf, parseAvatar } from '../../tabs/components/profile/avatar';
 import { logDose, removeQueuedDose } from '../../tabs/services/dose-queue';
 import { deleteMedicationLog } from '../../tabs/services/medications.service';
@@ -21,8 +20,8 @@ import { withStockChange } from '../../tabs/utils/dose-status';
 import { formatQuantity, stockUnitLabel } from '../../tabs/utils/medication-form';
 import { AttentionList, type AttentionItem } from '../components/AttentionList';
 import { DoseTimeline } from '../components/DoseTimeline';
+import { HomeSkeleton } from '../components/HomeSkeleton';
 import { NextAppointmentCard } from '../components/NextAppointmentCard';
-import { Reveal } from '../components/Reveal';
 import { SectionHeader } from '../components/SectionHeader';
 import { TodayCard } from '../components/TodayCard';
 import { useHomeData, type TodayDose } from '../hooks/useHomeData';
@@ -230,7 +229,7 @@ export function HomeScreen({
         </Reveal>
 
         {home.status === 'loading' ? (
-          <SkeletonList theme={theme} bottomInset={0} />
+          <HomeSkeleton theme={theme} />
         ) : (
           <>
             {attention.length ? (

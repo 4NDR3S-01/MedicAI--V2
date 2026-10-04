@@ -10,7 +10,7 @@ import { ChatMessageDto, ChatRequestDto } from './chat-message.dto';
 type GroqToolCall = { type?: string; function?: { name?: string; arguments?: string } };
 type GroqChatCompletionResponse = {
   choices?: Array<{ message?: { content?: string | null; tool_calls?: GroqToolCall[] } }>;
-  error?: { message?: string };
+  error?: { message?: string; code?: string; type?: string };
 };
 
 const SYSTEM_PROMPT = [
@@ -32,8 +32,20 @@ const SYSTEM_PROMPT = [
 const VOICE_PROMPT =
   'Esta conversación es POR VOZ: tu respuesta se leerá en voz alta. Responde en máximo 3 frases cortas y naturales, sin listas, negritas, emojis ni símbolos. Di las horas como "a las 8 de la noche".';
 
-/** Hasta dónde se recuerda la conversación (mensajes previos enviados al modelo). */
-export const MAX_HISTORY = 20;
+/** Hasta dónde se recuerda la conversación (el plan gratuito permite ~8K tokens por minuto). */
+export const MAX_HISTORY = 12;
+
+/** Entiende texto e imágenes y usa herramientas (plan gratuito de Groq). */
+const DEFAULT_MODEL = 'qwen/qwen3.8-27b';
+/** Respaldo de solo texto si el principal no está disponible. */
+const FALLBACK_MODEL = 'openai/gpt-oss-120b';
+
+const IMAGE_PROMPT =
+  'Si el usuario envía una foto (caja o etiqueta de un medicamento, receta, fórmula médica, orden de cita), describe solo lo relevante para su salud. Si es un medicamento o una receta y quiere registrarlo, usa propose_medication con lo que se lea con claridad y pregunta lo que no se lea bien; nunca inventes una dosis ilegible. No interpretes exámenes ni imágenes clínicas como diagnóstico: sugiere revisarlos con su médico.';
+
+type GroqResult =
+  | { ok: true; data: GroqChatCompletionResponse }
+  | { ok: false; status: number; code?: string; message: string; modelUnavailable: boolean };
 
 @Injectable()
 export class AiService {
@@ -47,52 +59,46 @@ export class AiService {
   private readonly GROQ_TIMEOUT_MS = 30_000;
   // El tiempo de respuesta crece con los tokens generados; el prompt pide
   // respuestas breves, así que se acota para evitar colas largas.
-  private readonly GROQ_MAX_TOKENS = 800;
+  private readonly GROQ_MAX_TOKENS = 700;
 
   async chat(dto: ChatRequestDto, userId: string) {
-    const apiKey = this.configService.getOrThrow<string>('GROQ_API_KEY');
-    const baseUrl = (this.configService.get<string>('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1').replace(/\/$/, '');
-    const model = this.configService.get<string>('GROQ_MODEL') || 'llama-3.3-70b-versatile';
+    const primary = this.configService.get<string>('GROQ_MODEL') || DEFAULT_MODEL;
+    const fallback = this.configService.get<string>('GROQ_FALLBACK_MODEL') || FALLBACK_MODEL;
     const context = await buildAiContext(this.prisma, userId);
+    const images = dto.images ?? [];
+    const voice = dto.mode === 'voice';
 
-    const payload = {
-      model,
-      temperature: 0.2,
-      max_tokens: this.GROQ_MAX_TOKENS,
-      messages: this.buildMessages(dto.message, dto.history, context.text, dto.mode === 'voice'),
-      tools: AI_TOOLS,
-      tool_choice: 'auto',
-    };
+    // 1) Modelo principal, con herramientas (y fotos si las hay).
+    let model = primary;
+    let result = await this.callGroq(model, this.buildMessages(dto.message, dto.history, context.text, voice, images), true);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.GROQ_TIMEOUT_MS);
-    let response: Response;
-    try {
-      response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        this.logger.warn('Groq request timed out', { timeoutMs: this.GROQ_TIMEOUT_MS });
-        throw new ServiceUnavailableException('La respuesta tardó demasiado. Inténtalo de nuevo.');
-      }
-      this.logger.error('Groq request failed', error as Error);
-      throw new ServiceUnavailableException('No fue posible conectar con el asistente. Inténtalo en un momento.');
-    } finally {
-      clearTimeout(timeout);
+    // 2) Generó mal una herramienta: se repite sin herramientas.
+    if (!result.ok && result.code === 'tool_use_failed') {
+      this.logger.warn('Groq tool call failed, retrying without tools', { model });
+      result = await this.callGroq(model, this.buildMessages(dto.message, dto.history, context.text, voice, images), false);
     }
 
-    const data = (await response.json().catch(() => ({}))) as GroqChatCompletionResponse;
-    if (!response.ok) {
-      this.logger.warn('Groq request rejected', { status: response.status, message: data.error?.message });
-      if (response.status === 429) {
+    // 3) El modelo no está disponible (retirado, sin acceso en el plan…): el de respaldo, sin fotos.
+    if (!result.ok && result.modelUnavailable && fallback !== model) {
+      this.logger.warn('Groq model unavailable, using fallback', { model, fallback, status: result.status, message: result.message });
+      model = fallback;
+      const text = images.length
+        ? `${dto.message}\n\n(El usuario adjuntó ${images.length === 1 ? 'una foto' : 'fotos'}, pero ahora no puedes verlas: díselo y pídele que escriba lo que dice.)`
+        : dto.message;
+      result = await this.callGroq(model, this.buildMessages(text, dto.history, context.text, voice, []), true);
+    }
+
+    if (!result.ok) {
+      this.logger.warn('Groq request rejected', { model, status: result.status, code: result.code, message: result.message });
+      if (result.status === 429) {
         throw new HttpException('El asistente está atendiendo muchas consultas. Inténtalo en un minuto.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+      if (result.status === 0) {
+        throw new ServiceUnavailableException(result.message);
       }
       throw new BadGatewayException('El asistente no pudo responder. Inténtalo de nuevo.');
     }
+    const data = result.data;
 
     const message = data.choices?.[0]?.message;
     const today = todayKey(context.timeZone);
@@ -117,7 +123,8 @@ export class AiService {
     }
     proposals.splice(3);
 
-    let reply = message?.content?.trim() ?? '';
+    // Algunos modelos razonan entre <think>…</think>: eso no es para el usuario.
+    let reply = (message?.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
     if (doseNote) reply = proposals.length ? `${reply}\n\n${doseNote}`.trim() : doseNote;
     const firstDose = proposals.find((proposal): proposal is DoseProposal => proposal.kind === 'dose');
     if (!reply && firstDose) {
@@ -133,6 +140,59 @@ export class AiService {
     }
 
     return { reply, model, proposals, usedPersonalContext: context.personal };
+  }
+
+  /** Una llamada a Groq. Nunca lanza: devuelve el error para decidir si se reintenta. */
+  private async callGroq(model: string, messages: unknown[], withTools: boolean): Promise<GroqResult> {
+    const apiKey = this.configService.getOrThrow<string>('GROQ_API_KEY');
+    const baseUrl = (this.configService.get<string>('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1').replace(/\/$/, '');
+    const payload: Record<string, unknown> = {
+      model,
+      temperature: 0.3,
+      max_tokens: this.GROQ_MAX_TOKENS,
+      messages,
+      ...(withTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
+    };
+    // Sin "pensar en voz alta": respuestas más rápidas y que no gastan cupo.
+    if (model.startsWith('qwen/')) {
+      payload.reasoning_effort = 'none';
+      payload.reasoning_format = 'hidden';
+    } else if (model.startsWith('openai/gpt-oss')) {
+      payload.reasoning_effort = 'low';
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.GROQ_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const data = (await response.json().catch(() => ({}))) as GroqChatCompletionResponse;
+      if (response.ok) return { ok: true, data };
+      const message = data.error?.message ?? `HTTP ${response.status}`;
+      const code = data.error?.code;
+      const modelUnavailable =
+        response.status === 404
+        || (response.status === 403 && /model/i.test(message))
+        || code === 'model_not_found'
+        || code === 'model_decommissioned'
+        || (response.status === 400 && /model.*(not (found|exist|available|supported))|decommission|does not support/i.test(message));
+      return { ok: false, status: response.status, code, message, modelUnavailable };
+    } catch (error) {
+      const timedOut = error instanceof Error && error.name === 'AbortError';
+      if (!timedOut) this.logger.error('Groq request failed', error as Error);
+      return {
+        ok: false,
+        status: 0,
+        message: timedOut ? 'La respuesta tardó demasiado. Inténtalo de nuevo.' : 'No fue posible conectar con el asistente. Inténtalo en un momento.',
+        modelUnavailable: false,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**
@@ -186,7 +246,7 @@ export class AiService {
     return { text: (data.text ?? '').trim() };
   }
 
-  private buildMessages(message: string, history: ChatMessageDto[] | undefined, context: string, voice = false) {
+  private buildMessages(message: string, history: ChatMessageDto[] | undefined, context: string, voice = false, images: string[] = []) {
     const previousMessages = (history || [])
       .filter((entry) => entry.content.trim().length > 0)
       .slice(-MAX_HISTORY)
@@ -196,8 +256,17 @@ export class AiService {
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'system', content: context },
       ...(voice ? [{ role: 'system', content: VOICE_PROMPT }] : []),
+      ...(images.length ? [{ role: 'system', content: IMAGE_PROMPT }] : []),
       ...previousMessages,
-      { role: 'user', content: message.trim() },
+      images.length
+        ? {
+          role: 'user',
+          content: [
+            { type: 'text', text: message.trim() },
+            ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
+          ],
+        }
+        : { role: 'user', content: message.trim() },
     ];
   }
 }

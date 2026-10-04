@@ -14,6 +14,7 @@ import { flushErrorReporting, initErrorReporting } from './infrastructure/monito
 // Límites de payload para evitar que requests grandes agoten memoria en un
 // servidor con 2 GB RAM / 16 GB eMMC. Ajusta si la app sube archivos médicos.
 const REQUEST_SIZE_LIMIT = process.env.REQUEST_SIZE_LIMIT || '100kb';
+const AI_CHAT_SIZE_LIMIT = '4mb';
 
 async function bootstrap() {
   const monitoring = initErrorReporting();
@@ -30,6 +31,8 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   // Limitar tamaño de cuerpo de peticiones: JSON y formularios.
+  // El chat del asistente puede llevar una foto (base64): solo esa ruta admite más.
+  app.use('/ai/chat', json({ limit: AI_CHAT_SIZE_LIMIT }));
   app.use(json({ limit: REQUEST_SIZE_LIMIT }));
   app.use(urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
 
