@@ -46,6 +46,15 @@ class EnvironmentVariables {
   @IsOptional()
   TRUST_PROXY?: string;
 
+  /** Monitoreo de errores (Sentry). Sin él, desactivado. */
+  @IsString()
+  @IsOptional()
+  SENTRY_DSN?: string;
+
+  @IsString()
+  @IsOptional()
+  SENTRY_RELEASE?: string;
+
   @IsString()
   @IsNotEmpty()
   DATABASE_URL!: string;

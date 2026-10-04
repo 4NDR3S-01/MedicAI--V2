@@ -11,12 +11,13 @@ import { DoseActionSheet } from '../../tabs/components/DoseActionSheet';
 import { MedicationCard } from '../../tabs/components/MedicationCard';
 import { MedicationFormSheet } from '../../tabs/components/MedicationFormSheet';
 import * as appointmentsAPI from '../../tabs/services/appointments.service';
-import type { AppointmentAttendanceStatus, AppointmentData } from '../../tabs/services/appointments.service';
+import type { AppointmentAttendanceStatus, AppointmentData, SeriesScope } from '../../tabs/services/appointments.service';
+import { askSeriesScope } from '../../tabs/utils/appointment-series';
 import * as medicationsAPI from '../../tabs/services/medications.service';
 import { logDose, pendingDoseLogs, removeQueuedDose } from '../../tabs/services/dose-queue';
 import type { MedicationData, MedicationLog } from '../../tabs/services/medications.service';
 import { bucketAppointments } from '../../tabs/utils/appointment-status';
-import { getTodayDoseSlots, type DoseSlot } from '../../tabs/utils/dose-status';
+import { asNeededWarning, getDaySlots, withStockChange, type DoseSlot } from '../../tabs/utils/dose-status';
 import { cancelDoseAlarm } from '../../../shared/services/notifications.service';
 import { isForeignTimeZone } from '../../../shared/services/dose-schedule';
 import * as circleAPI from '../services/circle.service';
@@ -123,7 +124,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
 
   const slotsById = useMemo(() => {
     const map = new Map<string, DoseSlot[]>();
-    for (const medication of medications) map.set(medication.id, getTodayDoseSlots(medication, logs, now));
+    for (const medication of medications) map.set(medication.id, getDaySlots(medication, logs, now));
     return map;
   }, [medications, logs, now]);
   const buckets = useMemo(() => bucketAppointments(appointments, now), [appointments, now]);
@@ -181,6 +182,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
     try {
       const log = await logDose(doseTarget.medication.id, action, doseTarget.slot.at.toISOString(), ownerId);
       setLogs((current) => [log, ...current]);
+      setMedications((current) => withStockChange(current, log, 1));
       // Si sus alarmas suenan en este teléfono, esa toma ya no debe sonar.
       if (doseTarget.slot.at.getTime() > Date.now()) void cancelDoseAlarm(doseTarget.medication.id, doseTarget.slot.at).catch(() => undefined);
       setDoseTarget(null);
@@ -189,6 +191,32 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
     } finally {
       setDoseBusy(false);
     }
+  };
+
+  /** Según necesidad: confirma (avisando si supera el máximo o el tiempo mínimo) y registra. */
+  const logAsNeeded = (medication: MedicationData) => {
+    const current = new Date();
+    const slots = getDaySlots(medication, logs, current);
+    const warning = asNeededWarning(medication, slots, current);
+    const register = async () => {
+      try {
+        const log = await logDose(medication.id, 'TAKEN', undefined, ownerId);
+        setLogs((list) => [log, ...list]);
+        setMedications((list) => withStockChange(list, log, 1));
+      } catch (error) {
+        fail('No se pudo registrar')(error);
+      }
+    };
+    Alert.alert(
+      warning ? 'Revisa antes de registrarla' : `¿Registrar ${medication.name}?`,
+      warning
+        ? `${warning} ¿Registrar una toma de ${first} ahora de todas formas?`
+        : `Se registrará que ${first} tomó ${medication.name} ahora.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: warning ? 'Registrar igual' : 'Registrar', style: warning ? 'destructive' : 'default', onPress: () => void register() },
+      ],
+    );
   };
 
   const undoDose = async () => {
@@ -200,6 +228,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         await medicationsAPI.deleteMedicationLog(doseTarget.medication.id, log.id, await withToken(), ownerId);
       }
       setLogs((current) => current.filter((item) => item.id !== log.id));
+      setMedications((current) => withStockChange(current, log, -1));
       setDoseTarget(null);
     } catch (error) {
       fail('No se pudo deshacer')(error);
@@ -229,23 +258,33 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
     ]);
   };
 
+  const removeAppointment = async (appointment: AppointmentData, scope: SeriesScope) => {
+    try {
+      await appointmentsAPI.deleteAppointment(appointment.id, await withToken(), ownerId, scope);
+      const from = new Date(appointment.scheduledAt).getTime();
+      setAppointments((current) =>
+        current.filter((item) =>
+          item.id !== appointment.id
+          && !(scope === 'FOLLOWING' && appointment.seriesId && item.seriesId === appointment.seriesId && new Date(item.scheduledAt).getTime() >= from)));
+    } catch (error) {
+      fail('No se pudo eliminar')(error);
+    }
+  };
+
   const deleteAppointment = (appointment: AppointmentData) => {
+    if (appointment.seriesId) {
+      void askSeriesScope(appointment, {
+        title: 'Eliminar cita que se repite',
+        message: `¿Eliminar solo esta cita de ${first} o también las siguientes? No se puede deshacer.`,
+        destructive: true,
+      }).then((scope) => {
+        if (scope) void removeAppointment(appointment, scope);
+      });
+      return;
+    }
     Alert.alert('Eliminar cita', `Se eliminará "${appointment.title}" de ${first} y sus recordatorios.`, [
       { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            try {
-              await appointmentsAPI.deleteAppointment(appointment.id, await withToken(), ownerId);
-              setAppointments((current) => current.filter((item) => item.id !== appointment.id));
-            } catch (error) {
-              fail('No se pudo eliminar')(error);
-            }
-          })();
-        },
-      },
+      { text: 'Eliminar', style: 'destructive', onPress: () => void removeAppointment(appointment, 'ONE') },
     ]);
   };
 
@@ -302,6 +341,8 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
               onEdit={(item) => setMedForm({ visible: true, medication: item })}
               onDelete={deleteMedication}
               onDosePress={(item, slot) => setDoseTarget({ medication: item, slot })}
+              onLogAsNeeded={(item) => logAsNeeded(item)}
+              canLog={can.logDoses}
               canToggle={can.manageReminders}
               canEdit={can.editMedications || can.manageReminders}
               canDelete={can.deleteMedications}
@@ -459,9 +500,11 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         ownerTimeZone={shown.person.timezone}
         existingAppointments={appointments}
         onClose={() => setApptForm((current) => ({ ...current, visible: false }))}
-        onSaved={(saved, isNew) =>
-          setAppointments((current) => (isNew ? [...current, saved] : current.map((item) => (item.id === saved.id ? saved : item))))
-        }
+        onSaved={(saved, isNew, reload) => {
+          setAppointments((current) => (isNew ? [...current, saved] : current.map((item) => (item.id === saved.id ? saved : item))));
+          // Serie creada o "esta y las siguientes": cambiaron varias citas.
+          if (reload) void load('appointments');
+        }}
       />
     </>
   );

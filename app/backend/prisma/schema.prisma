@@ -59,6 +59,9 @@ model User {
   medicationLogsRecorded   MedicationLog[]    @relation("MedicationLogLoggedBy")
   appointmentsCreated      Appointment[]      @relation("AppointmentCreatedBy")
   appointmentsUpdated      Appointment[]      @relation("AppointmentUpdatedBy")
+  circleAuditOwned         CircleAuditEvent[] @relation("CircleAuditOwner")
+  circleAuditActed         CircleAuditEvent[] @relation("CircleAuditActor")
+  circleAuditSubject       CircleAuditEvent[] @relation("CircleAuditSubject")
 }
 
 model EmailVerificationToken {
@@ -100,6 +103,23 @@ model Medication {
   notes               String?
   customIntervalHours Int? // For custom frequency (e.g., 6 for every 6 hours)
   customEndDate       DateTime? // Date when custom alarms should stop
+  // Qué días se toma: DAILY (todos), WEEKDAYS (weekDays), INTERVAL (cada
+  // dayInterval días desde startDate) o AS_NEEDED (sin horario ni alarmas).
+  scheduleType        String    @default("DAILY")
+  weekDays            Int[]     @default([]) // 0 = domingo … 6 = sábado
+  dayInterval         Int?
+  // Primer día del tratamiento ("YYYY-MM-DD", calendario del dueño). Ancla
+  // de INTERVAL y de dosageSteps; antes de ese día no hay tomas.
+  startDate           String?
+  // Dosis que cambia con el tiempo: [{ days, dosage }] desde startDate.
+  dosageSteps         Json?
+  // Según necesidad: máximo de tomas al día y horas mínimas entre tomas.
+  maxDailyDoses       Int?
+  minHoursBetween     Int?
+  // Existencias: unidades que quedan, unidades por toma y umbral de aviso.
+  stockQuantity       Float?
+  stockPerDose        Float?
+  stockAlertAt        Float?
   active              Boolean   @default(true)
   // Momento de la última activación (o de la creación). Las tomas anteriores
   // a esta fecha no cuentan como pendientes ni como olvidadas.
@@ -126,6 +146,8 @@ model MedicationLog {
   action       String // "TAKEN", "SKIPPED", "SNOOZED"
   takenAt      DateTime   @default(now())
   scheduledFor DateTime? // The originally scheduled time for this dose
+  // Unidades descontadas de las existencias (se devuelven al deshacer).
+  stockUnits   Float?
   // Quién registró la toma (la persona o alguien que la cuida).
   loggedById   String?
   medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
@@ -148,6 +170,10 @@ model Appointment {
   active             Boolean   @default(true)
   attendanceStatus   String    @default("PENDING") // "PENDING", "ATTENDED", "MISSED"
   attendanceMarkedAt DateTime?
+  // Citas que se repiten: cada repetición es una cita propia (con su
+  // asistencia) que comparte seriesId; repeatRule describe la regla.
+  seriesId           String?
+  repeatRule         Json?
   createdById        String?
   updatedById        String?
   createdAt          DateTime  @default(now())
@@ -162,6 +188,7 @@ model Appointment {
   @@index([attendanceStatus])
   @@index([createdAt])
   @@index([userId, active, scheduledAt])
+  @@index([seriesId, scheduledAt])
 }
 
 // ─── Círculo ──────────────────────────────────────────────────────────────────
@@ -336,4 +363,30 @@ model MissedDoseAlert {
 
   @@id([medicationId, scheduledFor])
   @@index([sentAt])
+}
+
+/// Historial de accesos a la información de una persona: quién dio, cambió o
+/// quitó permisos y cuándo. Solo se agregan filas (nunca se editan).
+model CircleAuditEvent {
+  id        String   @id @default(cuid())
+  /// Dueño de la información cuyo acceso cambió.
+  ownerId   String
+  /// Quién hizo el cambio (el dueño, otra persona que administra su Círculo…).
+  actorId   String?
+  /// La otra persona: a quien se le dio o quitó el acceso.
+  subjectId String?
+  linkId    String?
+  /// LINK_CREATED | PERMISSIONS_CHANGED | LINK_REVOKED | DEPENDENT_CREATED | HANDOVER_STARTED
+  action    String
+  /// Permisos antes y después (CirclePermissions), si aplica.
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  owner   User  @relation("CircleAuditOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  actor   User? @relation("CircleAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  subject User? @relation("CircleAuditSubject", fields: [subjectId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, createdAt])
+  @@index([subjectId, createdAt])
 }

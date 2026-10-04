@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { AppTheme } from '../../../shared/theme';
 import { AppButton, BottomSheet } from '../../../shared/ui';
 import type { MedicationData } from '../services/medications.service';
+import { dosageOnDay } from '../../../shared/services/dose-schedule';
 import { loggedByNote } from '../utils/audit';
 import { DOSE_EARLY_WINDOW_MS, type DoseSlot } from '../utils/dose-status';
 import { DOSE_STATE_META, doseStateColor } from './MedicationCard';
@@ -102,7 +103,7 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
         slot ? (
           <View style={styles.subtitleRow}>
             <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-              Toma de las {slot.time}{slot.viewerTime ? ` (${slot.viewerTime} para ti)` : ''} · {medication?.dosage}
+              Toma de las {slot.time}{slot.viewerTime ? ` (${slot.viewerTime} para ti)` : ''} · {medication && slot ? dosageOnDay(medication, slot.at) : ''}
             </Text>
             <View style={[styles.badge, { backgroundColor: `${color}1F` }]}>
               <MaterialCommunityIcons name={meta.icon} size={14} color={color} />

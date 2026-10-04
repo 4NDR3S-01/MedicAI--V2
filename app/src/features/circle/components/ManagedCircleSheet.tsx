@@ -11,6 +11,7 @@ import { InfoNote } from './CircleParts';
 import { CoCaregiverSheet } from './DependentSheets';
 import { InviteSheet } from './InviteSheet';
 import { MemberDetailSheet } from './MemberDetailSheet';
+import { PermissionHistorySheet } from './PermissionHistorySheet';
 
 /**
  * El Círculo de otra persona, para quien tiene permiso de administrarlo:
@@ -29,6 +30,7 @@ export function ManagedCircleSheet({
   const circle = useCircle(ownerId, Boolean(member));
   const [inviteVisible, setInviteVisible] = useState(false);
   const [selected, setSelected] = useState<CircleMember | null>(null);
+  const [historyVisible, setHistoryVisible] = useState(false);
 
   if (!shown) return null;
   const name = firstName(shown.person);
@@ -87,9 +89,25 @@ export function ManagedCircleSheet({
             ) : (
               <InfoNote theme={theme} icon="account-group-outline">El Círculo de {name} no tiene más personas todavía.</InfoNote>
             )}
+            <AppButton
+              theme={theme}
+              label="Historial de accesos"
+              icon="time-outline"
+              iconPosition="left"
+              variant="secondary"
+              onPress={() => setHistoryVisible(true)}
+            />
           </>
         )}
       </FormSheet>
+
+      <PermissionHistorySheet
+        theme={theme}
+        visible={historyVisible && Boolean(member)}
+        ownerId={ownerId}
+        ownerName={name}
+        onClose={() => setHistoryVisible(false)}
+      />
 
       <CoCaregiverSheet
         theme={theme}

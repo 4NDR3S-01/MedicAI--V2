@@ -19,6 +19,7 @@ import { FloatingActionButton, useEnterAnimation, useReducedMotion, useSwapAnima
 import { appStorage } from '../../../shared/storage';
 import { onDoseAction } from '../../../shared/services/dose-refresh-bus';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { reportError } from '../../../shared/services/error-reporting';
 import {
   cancelDoseAlarm,
   cancelNotificationsByDataId,
@@ -32,9 +33,13 @@ import { DoseActionSheet } from '../components/DoseActionSheet';
 import { MedicationCard } from '../components/MedicationCard';
 import { MedicationFormSheet } from '../components/MedicationFormSheet';
 import { EmptyState, SkeletonList } from '../components/ScreenStates';
+import { isAsNeeded } from '../../../shared/services/dose-schedule';
 import {
+  asNeededWarning,
+  getDaySlots,
   getHandledDoseKeys,
   getTodayDoseSlots,
+  withStockChange,
   type DoseSlot,
 } from '../utils/dose-status';
 
@@ -98,7 +103,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           ? 'Las notificaciones están desactivadas: no sonarán las alarmas.'
           : null,
       );
-    } catch {
+    } catch (error) {
+      // Una alarma que no suena es el fallo más grave de la app: conviene saberlo.
+      reportError(error, 'alarm-sync');
       setAlarmIssue('No pudimos programar algunas alarmas.');
     }
   }, []);
@@ -195,7 +202,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   // ── Datos derivados ───────────────────────────────────────────────────────
   const slotsById = useMemo(() => {
     const map = new Map<string, DoseSlot[]>();
-    for (const med of medications) map.set(med.id, getTodayDoseSlots(med, logs, now));
+    for (const med of medications) map.set(med.id, getDaySlots(med, logs, now));
     return map;
   }, [medications, logs, now]);
 
@@ -204,7 +211,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const visibleMeds = segment === 'active' ? activeMeds : pausedMeds;
 
   const summary = useMemo(() => {
-    const slots = activeMeds.flatMap((med) => (slotsById.get(med.id) ?? []).map((slot) => ({ med, slot })));
+    // Las de "según necesidad" no tienen horario: no cuentan para el progreso.
+    const slots = activeMeds
+      .filter((med) => !isAsNeeded(med))
+      .flatMap((med) => (slotsById.get(med.id) ?? []).map((slot) => ({ med, slot })));
     const taken = slots.filter(({ slot }) => slot.state === 'taken').length;
     const missed = slots.filter(({ slot }) => slot.state === 'missed').length;
     const next = slots
@@ -295,6 +305,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     try {
       const log = await logDose(medication.id, action, slot.at.toISOString());
       setLogs((current) => [log, ...current]);
+      setMedications((current) => withStockChange(current, log, 1));
       // Si se registra antes de la hora, esa alarma ya no debe sonar.
       if (slot.at.getTime() > Date.now()) void cancelDoseAlarm(medication.id, slot.at);
       setDoseTarget(null);
@@ -316,6 +327,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       }
       const nextLogs = logsRef.current.filter((item) => item.id !== log.id);
       setLogs(nextLogs);
+      setMedications((current) => withStockChange(current, log, -1));
       // Una toma futura vuelve a necesitar su alarma.
       if (slot.at.getTime() > Date.now()) void syncAlarms(medicationsRef.current, nextLogs, true);
       setDoseTarget(null);
@@ -325,6 +337,30 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       setDoseBusy(false);
     }
   };
+
+  /** Según necesidad: confirma (avisando si supera el máximo o el tiempo mínimo) y registra. */
+  const handleLogAsNeeded = useCallback((medication: MedicationData) => {
+    const current = new Date();
+    const warning = asNeededWarning(medication, getDaySlots(medication, logsRef.current, current), current);
+    const time = `${String(current.getHours()).padStart(2, '0')}:${String(current.getMinutes()).padStart(2, '0')}`;
+    const register = async () => {
+      try {
+        const log = await logDose(medication.id, 'TAKEN');
+        setLogs((list) => [log, ...list]);
+        setMedications((list) => withStockChange(list, log, 1));
+      } catch (error) {
+        Alert.alert('No se pudo registrar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+      }
+    };
+    Alert.alert(
+      warning ? 'Revisa antes de tomarla' : `¿Registrar ${medication.name}?`,
+      warning ? `${warning} ¿Registrar la toma de las ${time} de todas formas?` : `Se registrará una toma a las ${time}.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: warning ? 'Registrar igual' : 'Registrar', style: warning ? 'destructive' : 'default', onPress: () => void register() },
+      ],
+    );
+  }, []);
 
   const handleSaved = (saved: MedicationData, isNew: boolean) => {
     // Si cambia de pestaña, la transición la hace useSwapAnimation.
@@ -495,6 +531,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onDosePress={handleDosePress}
+                onLogAsNeeded={handleLogAsNeeded}
               />
             </Animated.View>
           )}

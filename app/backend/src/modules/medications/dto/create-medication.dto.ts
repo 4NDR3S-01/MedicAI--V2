@@ -1,6 +1,8 @@
 import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength, IsInt, Min, IsISO8601 } from 'class-validator';
 
-export class CreateMedicationDto {
+import { ScheduleFieldsDto } from './schedule-fields';
+
+export class CreateMedicationDto extends ScheduleFieldsDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)

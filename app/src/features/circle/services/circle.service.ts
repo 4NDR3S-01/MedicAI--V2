@@ -246,3 +246,26 @@ export const fetchCareData = (accessToken: string) =>
     accessToken,
     'No se pudo cargar el seguimiento',
   );
+
+// ─── Historial de permisos ───────────────────────────────────────────────────
+
+export type HistoryAction = 'LINK_CREATED' | 'PERMISSIONS_CHANGED' | 'LINK_REVOKED' | 'DEPENDENT_CREATED' | 'HANDOVER_STARTED';
+type HistoryPerson = { id: string; fullName: string | null } | null;
+
+export type HistoryEvent = {
+  id: string;
+  action: HistoryAction;
+  createdAt: string;
+  /** MINE: acceso a la información de la persona consultada; THEIRS: a la de otra. */
+  direction: 'MINE' | 'THEIRS';
+  owner: HistoryPerson;
+  actor: HistoryPerson;
+  subject: HistoryPerson;
+  before: Partial<PermissionSet> | null;
+  after: Partial<PermissionSet> | null;
+};
+
+export type PermissionHistory = { targetId: string; events: HistoryEvent[] };
+
+export const fetchPermissionHistory = (accessToken: string, ownerId?: string) =>
+  request<PermissionHistory>(withOwner('/circle/history', ownerId), 'GET', accessToken, 'No se pudo cargar el historial');

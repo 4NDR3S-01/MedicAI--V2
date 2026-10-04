@@ -3,11 +3,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LayoutAnimation, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
-import { isTreatmentFinished } from '../../../shared/services/dose-schedule';
+import { dosageOnDay, isAsNeeded, isTreatmentFinished } from '../../../shared/services/dose-schedule';
 import type { MedicationData } from '../services/medications.service';
 import type { DoseSlot, DoseState } from '../utils/dose-status';
 import { changedByNote } from '../utils/audit';
-import { frequencyLabel } from '../utils/medication-form';
+import { formatQuantity, isLowStock, scheduleLabel, stockDaysLeft, stockUnitLabel } from '../utils/medication-form';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -45,10 +45,13 @@ type MedicationCardProps = {
   onEdit: (medication: MedicationData) => void;
   onDelete: (medication: MedicationData) => void;
   onDosePress: (medication: MedicationData, slot: DoseSlot) => void;
+  /** Según necesidad: registrar una toma ahora. */
+  onLogAsNeeded?: (medication: MedicationData) => void;
   /** Permisos al ver los medicamentos de otra persona (por defecto, todos). */
   canToggle?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  canLog?: boolean;
 };
 
 function MedicationCardBase({
@@ -60,15 +63,23 @@ function MedicationCardBase({
   onEdit,
   onDelete,
   onDosePress,
+  onLogAsNeeded,
   canToggle = true,
   canEdit = true,
   canDelete = true,
+  canLog = true,
 }: Readonly<MedicationCardProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const finished = isTreatmentFinished(medication);
   const isActive = medication.active;
+  const asNeeded = isAsNeeded(medication);
   const completedCount = slots.filter((slot) => slot.state === 'taken').length;
-  const allCompleted = slots.length > 0 && slots.every((slot) => slot.state === 'taken' || slot.state === 'skipped');
+  const allCompleted = !asNeeded && slots.length > 0 && slots.every((slot) => slot.state === 'taken' || slot.state === 'skipped');
+  // Dosis que cambia con el tiempo: se muestra la de hoy.
+  const dosageToday = medication.dosageSteps?.length ? dosageOnDay(medication, new Date()) : medication.dosage;
+  const stockTracked = medication.stockQuantity != null;
+  const lowStock = isLowStock(medication);
+  const daysLeft = stockTracked ? stockDaysLeft(medication) : null;
   const visibleSlots = isExpanded ? slots : slots.slice(0, VISIBLE_DOSES);
   const hiddenCount = slots.length - visibleSlots.length;
 
@@ -89,7 +100,11 @@ function MedicationCardBase({
   let statusText = '';
   if (!isActive) statusText = 'Inactivo';
   else if (finished) statusText = 'Finalizado';
-  else if (!slots.length) statusText = 'Sin dosis hoy';
+  else if (asNeeded) {
+    statusText = medication.maxDailyDoses
+      ? `${completedCount} de ${medication.maxDailyDoses} hoy`
+      : `${completedCount} ${completedCount === 1 ? 'toma' : 'tomas'} hoy`;
+  } else if (!slots.length) statusText = 'Hoy no toca';
   else if (allCompleted) statusText = 'Completado';
   else statusText = `${completedCount}/${slots.length} tomadas`;
 
@@ -114,7 +129,7 @@ function MedicationCardBase({
       onPress={toggleExpanded}
       onLongPress={canEdit ? () => onEdit(medication) : undefined}
       delayLongPress={250}
-      accessibilityLabel={`${medication.name}, ${medication.dosage}, ${isActive ? 'activo' : 'inactivo'}, ${completedCount} de ${slots.length} tomadas`}
+      accessibilityLabel={`${medication.name}, ${dosageToday}, ${isActive ? 'activo' : 'inactivo'}, ${statusText}`}
       accessibilityHint={canEdit ? 'Mantén presionado para editar' : undefined}
     >
       <View style={styles.cardHeader}>
@@ -129,10 +144,13 @@ function MedicationCardBase({
             {medication.name}
           </Text>
           <View style={styles.medMetaRow}>
-            <Text style={[styles.dosageText, { color: accentColor }]}>{medication.dosage}</Text>
+            <Text style={[styles.dosageText, { color: accentColor }]}>
+              {dosageToday}
+              {medication.dosageSteps?.length ? <Text style={styles.todayTag}> hoy</Text> : null}
+            </Text>
             <View style={[styles.metaDot, { backgroundColor: accentColor }]} />
-            <Text style={[styles.frequencyText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-              {frequencyLabel(medication.frequency)}
+            <Text style={[styles.frequencyText, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+              {scheduleLabel(medication)}
             </Text>
           </View>
         </View>
@@ -187,6 +205,49 @@ function MedicationCardBase({
         </View>
       ) : null}
 
+      {isActive && asNeeded && canLog && onLogAsNeeded ? (
+        <Pressable
+          onPress={() => onLogAsNeeded(medication)}
+          accessibilityRole="button"
+          accessibilityLabel={`Registrar una toma de ${medication.name} ahora`}
+          style={({ pressed }) => [
+            styles.logButton,
+            { backgroundColor: `${theme.colors.accentPrimary}14`, borderColor: `${theme.colors.accentPrimary}40`, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <MaterialCommunityIcons name="hand-pointing-up" size={16} color={theme.colors.accentPrimary} />
+          <Text style={[styles.logButtonText, { color: theme.colors.accentPrimary }]}>Registrar una toma ahora</Text>
+        </Pressable>
+      ) : null}
+
+      {stockTracked ? (
+        <Pressable
+          onPress={canEdit ? () => onEdit(medication) : undefined}
+          disabled={!canEdit}
+          accessibilityRole={canEdit ? 'button' : undefined}
+          accessibilityHint={canEdit ? 'Abre el medicamento para actualizar las existencias' : undefined}
+          style={[
+            styles.stockRow,
+            { backgroundColor: lowStock ? `${theme.colors.accentTertiary}14` : `${theme.colors.textMuted}0D` },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name={lowStock ? 'alert-outline' : 'package-variant-closed'}
+            size={14}
+            color={lowStock ? theme.colors.accentTertiary : theme.colors.textMuted}
+          />
+          <Text
+            style={[styles.stockText, { color: lowStock ? theme.colors.accentTertiary : theme.colors.textSecondary }]}
+            numberOfLines={1}
+          >
+            {medication.stockQuantity! <= 0
+              ? 'Se acabó: actualiza las existencias'
+              : `Quedan ${formatQuantity(medication.stockQuantity!)} ${stockUnitLabel(medication.dosage, medication.stockQuantity!)}`}
+            {medication.stockQuantity! > 0 && daysLeft !== null ? ` · unos ${daysLeft} ${daysLeft === 1 ? 'día' : 'días'}` : ''}
+          </Text>
+        </Pressable>
+      ) : null}
+
       {medication.notes ? (
         <View style={[styles.notesRow, { backgroundColor: `${theme.colors.accentPrimary}05` }]}>
           <MaterialCommunityIcons name="note-text-outline" size={13} color={theme.colors.textMuted} />
@@ -207,7 +268,9 @@ function MedicationCardBase({
         <View style={[styles.statusPill, { backgroundColor: accentBg }]}>
           <MaterialCommunityIcons
             name={
-              !isActive || finished || !slots.length
+              asNeeded && isActive && !finished
+                ? 'hand-pointing-up'
+                : !isActive || finished || !slots.length
                 ? 'information-outline'
                 : allCompleted
                   ? 'check-circle'
@@ -266,6 +329,19 @@ const styles = StyleSheet.create({
   medName: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   medMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dosageText: { fontSize: 13, fontWeight: '700' },
+  todayTag: { fontSize: 11, fontWeight: '600' },
+  logButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  logButtonText: { fontSize: 14, fontWeight: '800' },
+  stockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
+  stockText: { fontSize: 12, fontWeight: '700', flex: 1 },
   metaDot: { width: 3, height: 3, borderRadius: 2 },
   frequencyText: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
   doseTimeline: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

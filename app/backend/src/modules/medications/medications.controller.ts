@@ -19,8 +19,24 @@ const REMINDER_FIELDS: (keyof UpdateMedicationDto)[] = [
   'customIntervalHours',
   'customEndDate',
   'active',
+  'scheduleType',
+  'weekDays',
+  'dayInterval',
+  'startDate',
+  'maxDailyDoses',
+  'minHoursBetween',
+  // Una dosis que cambia con el tiempo es un plan de tratamiento, como el horario.
+  'dosageSteps',
 ];
-const DETAIL_FIELDS: (keyof UpdateMedicationDto)[] = ['name', 'dosage', 'notes'];
+/** Las existencias son parte de la ficha, como el nombre y la dosis. */
+const DETAIL_FIELDS: (keyof UpdateMedicationDto)[] = [
+  'name',
+  'dosage',
+  'notes',
+  'stockQuantity',
+  'stockPerDose',
+  'stockAlertAt',
+];
 
 /**
  * Todas las rutas aceptan `?ownerId=` para actuar sobre los medicamentos de

@@ -9,14 +9,17 @@ import { AppModule } from './app/app.module';
 import { AppLogger } from './infrastructure/logging/app.logger';
 import { GlobalExceptionFilter } from './infrastructure/logging/global-exception.filter';
 import { HttpRequestLoggerMiddleware } from './infrastructure/logging/http-request-logger.middleware';
+import { flushErrorReporting, initErrorReporting } from './infrastructure/monitoring/error-reporting';
 
 // Límites de payload para evitar que requests grandes agoten memoria en un
 // servidor con 2 GB RAM / 16 GB eMMC. Ajusta si la app sube archivos médicos.
 const REQUEST_SIZE_LIMIT = process.env.REQUEST_SIZE_LIMIT || '100kb';
 
 async function bootstrap() {
+  const monitoring = initErrorReporting();
   const logger = new AppLogger();
   registerProcessErrorHandlers(logger);
+  if (monitoring) logger.log('Error reporting enabled', {}, 'Bootstrap');
 
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
@@ -113,7 +116,7 @@ function registerProcessErrorHandlers(logger: AppLogger) {
 
   process.on('uncaughtException', (error) => {
     logger.fatal('Uncaught exception', error, 'Process');
-    process.exit(1);
+    void flushErrorReporting().finally(() => process.exit(1));
   });
 }
 
@@ -124,5 +127,5 @@ function isEnabled(value?: string) {
 void bootstrap().catch((error) => {
   const logger = new AppLogger();
   logger.fatal('Backend bootstrap failed', error, 'Bootstrap');
-  process.exit(1);
+  void flushErrorReporting().finally(() => process.exit(1));
 });

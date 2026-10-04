@@ -64,6 +64,30 @@ const CARE_APPOINTMENTS_PAST_MS = 14 * 24 * 60 * 60 * 1000;
 const CARE_APPOINTMENTS_FUTURE_MS = 60 * 24 * 60 * 60 * 1000;
 const PERSON_NAME_SELECT = { id: true, fullName: true } as const;
 
+export const AUDIT_ACTIONS = ['LINK_CREATED', 'PERMISSIONS_CHANGED', 'LINK_REVOKED', 'DEPENDENT_CREATED', 'HANDOVER_STARTED'] as const;
+type AuditAction = (typeof AUDIT_ACTIONS)[number];
+type AuditEvent = {
+  ownerId: string;
+  actorId: string;
+  subjectId?: string | null;
+  linkId?: string | null;
+  action: AuditAction;
+  before?: CirclePermissions | null;
+  after?: CirclePermissions | null;
+};
+const HISTORY_LIMIT = 100;
+
+/** Fila del historial de permisos (CircleAuditEvent). */
+const auditRow = (event: AuditEvent): Prisma.CircleAuditEventCreateManyInput => ({
+  ownerId: event.ownerId,
+  actorId: event.actorId,
+  subjectId: event.subjectId ?? null,
+  linkId: event.linkId ?? null,
+  action: event.action,
+  before: event.before ?? Prisma.DbNull,
+  after: event.after ?? Prisma.DbNull,
+});
+
 /** El correo interno de un perfil a cargo nunca se muestra. */
 const publicPerson = (person: Person) => ({
   id: person.id,
@@ -319,13 +343,22 @@ export class CircleService {
             invitationId: invitation.id,
           },
         });
+        const inviterGrants = normalizePermissions(invitation.grantedPermissions as Record<string, unknown>);
+        // Un perfil a cargo no usa la app: no tiene sentido darle permisos.
+        const inviteeGrants = normalizePermissions(inviterIsManaged ? null : (dto.granted as Record<string, unknown>));
+        await tx.circleAuditEvent.createMany({
+          data: [
+            auditRow({ ownerId: invitation.inviterId, actorId: invitation.createdById ?? invitation.inviterId, subjectId: actorId, linkId: created.id, action: 'LINK_CREATED', after: inviterGrants }),
+            auditRow({ ownerId: actorId, actorId, subjectId: invitation.inviterId, linkId: created.id, action: 'LINK_CREATED', after: inviteeGrants }),
+          ],
+        });
         await tx.circleGrant.createMany({
           data: [
             {
               linkId: created.id,
               ownerId: invitation.inviterId,
               granteeId: actorId,
-              ...normalizePermissions(invitation.grantedPermissions as Record<string, unknown>),
+              ...inviterGrants,
               // Lo eligió quien acepta; si no, un perfil a cargo suena por defecto.
               reminderMode: dto.reminderMode ?? (inviterIsManaged ? 'ALARM' : 'OFF'),
             },
@@ -333,8 +366,7 @@ export class CircleService {
               linkId: created.id,
               ownerId: actorId,
               granteeId: invitation.inviterId,
-              // Un perfil a cargo no usa la app: no tiene sentido darle permisos.
-              ...normalizePermissions(inviterIsManaged ? null : (dto.granted as Record<string, unknown>)),
+              ...inviteeGrants,
               // Lo eligió quien invitó al crear la invitación.
               reminderMode: inviterIsManaged ? 'OFF' : invitation.inviterReminderMode,
             },
@@ -482,11 +514,21 @@ export class CircleService {
     }
 
     const permissions = normalizePermissions(dto.permissions as Record<string, unknown>);
-    await this.prisma.circleGrant.upsert({
-      where: { linkId_ownerId: { linkId: link.id, ownerId } },
-      create: { linkId: link.id, ownerId, granteeId, ...permissions },
-      update: permissions,
-    });
+    const previous = await this.prisma.circleGrant.findUnique({ where: { linkId_ownerId: { linkId: link.id, ownerId } } });
+    const before = previous ? pickPermissions(previous) : null;
+    await this.prisma.$transaction([
+      this.prisma.circleGrant.upsert({
+        where: { linkId_ownerId: { linkId: link.id, ownerId } },
+        create: { linkId: link.id, ownerId, granteeId, ...permissions },
+        update: permissions,
+      }),
+      // Guardar sin cambios no deja rastro en el historial.
+      ...(JSON.stringify(before) === JSON.stringify(permissions)
+        ? []
+        : [this.prisma.circleAuditEvent.create({
+          data: auditRow({ ownerId, actorId, subjectId: granteeId, linkId: link.id, action: 'PERMISSIONS_CHANGED', before, after: permissions }),
+        })]),
+    ]);
     const owner = await this.findPerson(ownerId);
     void this.push.notify([granteeId], {
       title: `${this.nameOf(owner)} actualizó lo que compartes`,
@@ -515,7 +557,12 @@ export class CircleService {
     if (!this.sideOf(link, targetId)) throw new NotFoundException('Vínculo no encontrado.');
     await this.assertNotLastGuardian(link);
 
+    const grants = await this.prisma.circleGrant.findMany({ where: { linkId: link.id } });
     await this.prisma.$transaction([
+      this.prisma.circleAuditEvent.createMany({
+        data: grants.map((grant) =>
+          auditRow({ ownerId: grant.ownerId, actorId, subjectId: grant.granteeId, linkId: link.id, action: 'LINK_REVOKED', before: pickPermissions(grant) })),
+      }),
       this.prisma.circleGrant.deleteMany({ where: { linkId: link.id } }),
       this.prisma.circleLink.update({
         where: { id: link.id },
@@ -535,6 +582,42 @@ export class CircleService {
     void this.push.requestSync([targetId, otherId].filter((id) => id !== actorId), 'revoked');
     this.logger.log('Circle link revoked', { linkId, actorId, targetId });
     return { message: 'Vínculo eliminado. Ya no comparten información.' };
+  }
+
+  // ─── Historial de permisos ─────────────────────────────────────────────────
+
+  /**
+   * Quién dio, cambió o quitó acceso a la información de una persona, y los
+   * accesos que otras personas le dieron o quitaron a ella. De otra persona
+   * (un perfil a cargo) solo con permiso para administrar su Círculo.
+   */
+  async history(actorId: string, ownerId?: string) {
+    const targetId = await this.access.resolveOwner(actorId, ownerId, 'manageCircle');
+    const events = await this.prisma.circleAuditEvent.findMany({
+      where: { OR: [{ ownerId: targetId }, { subjectId: targetId }] },
+      orderBy: { createdAt: 'desc' },
+      take: HISTORY_LIMIT,
+      include: {
+        owner: { select: PERSON_NAME_SELECT },
+        actor: { select: PERSON_NAME_SELECT },
+        subject: { select: PERSON_NAME_SELECT },
+      },
+    });
+    return {
+      targetId,
+      events: events.map((event) => ({
+      id: event.id,
+      action: event.action,
+      createdAt: event.createdAt,
+      // MINE: acceso a la información de esta persona; THEIRS: a la de otra.
+      direction: event.ownerId === targetId ? 'MINE' : 'THEIRS',
+      owner: event.owner,
+      actor: event.actor,
+      subject: event.subject,
+      before: event.before,
+      after: event.after,
+      })),
+    };
   }
 
   /** Información de salud relevante de otra persona (si la comparte). */
@@ -756,6 +839,9 @@ export class CircleService {
           { linkId: created.id, ownerId: actorId, granteeId: dependent.id },
         ],
       });
+      await tx.circleAuditEvent.create({
+        data: auditRow({ ownerId: dependent.id, actorId, subjectId: actorId, linkId: created.id, action: 'DEPENDENT_CREATED', after: ALL_PERMISSIONS }),
+      });
       const groupIds = await this.ownGroupIds(actorId, dto.groupIds);
       if (groupIds.length) {
         await tx.circleGroupMember.createMany({ data: groupIds.map((groupId) => ({ groupId, linkId: created.id })) });
@@ -829,6 +915,9 @@ export class CircleService {
           tokenHash: createHash('sha256').update(token).digest('hex'),
           expiresAt: new Date(Date.now() + HANDOVER_TTL_MS),
         },
+      });
+      await tx.circleAuditEvent.create({
+        data: auditRow({ ownerId: dependentId, actorId, action: 'HANDOVER_STARTED' }),
       });
       return tx.user.update({ where: { id: dependentId }, data: { email }, select: PERSON_SELECT });
     });

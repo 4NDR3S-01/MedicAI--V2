@@ -20,19 +20,36 @@ import {
 } from '../../../shared/ui';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 import { describeMedication, findDuplicateMedication } from '../utils/duplicates';
-import { isForeignTimeZone, zonedParts, zonedToDate } from '../../../shared/services/dose-schedule';
+import {
+  fromDayKey,
+  isForeignTimeZone,
+  toDayKey,
+  zonedParts,
+  zonedToDate,
+  type ScheduleType,
+} from '../../../shared/services/dose-schedule';
 import { getStoredSession } from '../../auth';
 import * as medicationsAPI from '../services/medications.service';
 import type { MedicationData } from '../services/medications.service';
 import {
+  AS_NEEDED_FREQUENCY,
   CUSTOM_INTERVAL_MAX,
   CUSTOM_INTERVAL_MIN,
+  DAY_INTERVAL_MAX,
+  DAY_INTERVAL_MIN,
   DOSAGE_UNITS,
   FREQUENCY_OPTIONS,
+  WEEK_DAYS,
   calculateDailyTimes,
+  defaultStockAlert,
+  defaultStockPerDose,
+  formatQuantity,
   formatTime,
   parseDosage,
+  stepsEndDate,
+  stockUnitLabel,
   timeToDate,
+  weekDaysLabel,
   type DosageUnit,
 } from '../utils/medication-form';
 
@@ -40,32 +57,84 @@ const CUSTOM = 'custom';
 const NAME_MAX = 100;
 const NOTES_MAX = 500;
 const UNIT_OPTIONS = DOSAGE_UNITS.map((unit) => ({ value: unit, label: unit }));
+const STEP_DAYS_MAX = 90;
+const STEPS_MAX = 10;
+const MAX_DAILY_LIMIT = 12;
+const MIN_HOURS_LIMIT = 24;
+
+const SCHEDULE_OPTIONS: { value: ScheduleType; label: string }[] = [
+  { value: 'DAILY', label: 'Todos los días' },
+  { value: 'WEEKDAYS', label: 'Algunos días' },
+  { value: 'INTERVAL', label: 'Cada varios días' },
+  { value: 'AS_NEEDED', label: 'Según necesidad' },
+];
+
+type DoseStepForm = { amount: string; days: number };
 
 type FormState = {
   name: string;
   dosageAmount: string;
   dosageUnit: DosageUnit;
+  scheduleType: ScheduleType;
+  weekDays: number[];
+  dayInterval: number;
+  /** Primer día (cada varios días y dosis que cambia). */
+  startDate: Date;
   frequency: string; // valor de FREQUENCY_OPTIONS o CUSTOM
   customInterval: number;
   firstDoseTime: string;
+  /** Según necesidad: 0 = sin límite / sin mínimo. */
+  maxDailyDoses: number;
+  minHoursBetween: number;
+  tapering: boolean;
+  steps: DoseStepForm[];
   hasEndDate: boolean;
   endDate: Date | null;
+  trackStock: boolean;
+  stockQuantity: string;
+  stockPerDose: string;
+  stockAlertAt: string;
   notes: string;
 };
 
-type FormErrors = Partial<Record<'name' | 'dosage' | 'firstDoseTime' | 'endDate', string>>;
+type FormErrors = Partial<
+  Record<'name' | 'dosage' | 'weekDays' | 'firstDoseTime' | 'steps' | 'endDate' | 'stockQuantity' | 'stockPerDose' | 'stockAlertAt', string>
+>;
+
+const today = () => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
 
 const emptyForm = (): FormState => ({
   name: '',
   dosageAmount: '',
   dosageUnit: 'mg',
+  scheduleType: 'DAILY',
+  weekDays: [],
+  dayInterval: 2,
+  startDate: today(),
   frequency: '',
   customInterval: 6,
   firstDoseTime: '',
+  maxDailyDoses: 0,
+  minHoursBetween: 0,
+  tapering: false,
+  steps: [],
   hasEndDate: false,
   endDate: null,
+  trackStock: false,
+  stockQuantity: '',
+  stockPerDose: '',
+  stockAlertAt: '',
   notes: '',
 });
+
+const toNumber = (value: string) => Number(value.trim().replace(',', '.'));
+const isPositive = (value: string) => value.trim() !== '' && Number.isFinite(toNumber(value)) && toNumber(value) > 0;
+const isNonNegative = (value: string) => value.trim() !== '' && Number.isFinite(toNumber(value)) && toNumber(value) >= 0;
+const cleanNumber = (value: string) => value.replace(/[^\d.,]/g, '').slice(0, 8);
 
 const formFromMedication = (medication: MedicationData, timeZone?: string | null): FormState => {
   const { amount, unit } = parseDosage(medication.dosage);
@@ -76,15 +145,30 @@ const formFromMedication = (medication: MedicationData, timeZone?: string | null
     const p = zonedParts(endDate, timeZone);
     endDate = new Date(p.year, p.month - 1, p.day);
   }
+  const scheduleType = medication.scheduleType ?? 'DAILY';
+  const steps = (medication.dosageSteps ?? []).map((step) => ({ amount: parseDosage(step.dosage).amount, days: step.days }));
+  const stockTracked = medication.stockQuantity != null;
   return {
     name: medication.name,
     dosageAmount: amount,
     dosageUnit: unit,
-    frequency: known ? medication.frequency : CUSTOM,
+    scheduleType,
+    weekDays: medication.weekDays ?? [],
+    dayInterval: medication.dayInterval && medication.dayInterval >= DAY_INTERVAL_MIN ? medication.dayInterval : 2,
+    startDate: (medication.startDate && fromDayKey(medication.startDate)) || today(),
+    frequency: scheduleType === 'AS_NEEDED' ? '' : known ? medication.frequency : CUSTOM,
     customInterval: medication.customIntervalHours ?? 6,
     firstDoseTime: medication.firstDoseTime || medication.times?.[0] || '',
+    maxDailyDoses: medication.maxDailyDoses ?? 0,
+    minHoursBetween: medication.minHoursBetween ?? 0,
+    tapering: steps.length > 0,
+    steps,
     hasEndDate: Boolean(endDate),
     endDate,
+    trackStock: stockTracked,
+    stockQuantity: stockTracked ? formatQuantity(medication.stockQuantity!) : '',
+    stockPerDose: stockTracked ? formatQuantity(medication.stockPerDose ?? 1) : '',
+    stockAlertAt: stockTracked && medication.stockAlertAt != null ? formatQuantity(medication.stockAlertAt) : '',
     notes: medication.notes ?? '',
   };
 };
@@ -96,20 +180,45 @@ const intervalFor = (form: FormState) =>
 
 function validate(form: FormState): FormErrors {
   const errors: FormErrors = {};
+  const asNeeded = form.scheduleType === 'AS_NEEDED';
+  const tapering = form.tapering && !asNeeded;
   if (!form.name.trim()) errors.name = 'Escribe el nombre del medicamento.';
-  const amount = Number(form.dosageAmount.replace(',', '.'));
-  if (!form.dosageAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
-    errors.dosage = 'Indica una cantidad válida.';
+  if (!tapering && !isPositive(form.dosageAmount)) errors.dosage = 'Indica una cantidad válida.';
+  if (form.scheduleType === 'WEEKDAYS' && !form.weekDays.length) errors.weekDays = 'Elige al menos un día.';
+  if (!asNeeded && !form.firstDoseTime) errors.firstDoseTime = 'Elige la hora de la primera toma.';
+  if (tapering && (!form.steps.length || form.steps.some((step) => !isPositive(step.amount)))) {
+    errors.steps = 'Indica la dosis de cada etapa.';
   }
-  if (!form.firstDoseTime) errors.firstDoseTime = 'Elige la hora de la primera toma.';
-  if (form.hasEndDate) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  if (form.hasEndDate && !tapering) {
     if (!form.endDate) errors.endDate = 'Elige la fecha de fin.';
-    else if (form.endDate.getTime() < today.getTime()) errors.endDate = 'La fecha de fin ya pasó.';
+    else if (form.endDate.getTime() < today().getTime()) errors.endDate = 'La fecha de fin ya pasó.';
+    else if (form.endDate.getTime() < form.startDate.getTime() && (form.scheduleType === 'INTERVAL')) {
+      errors.endDate = 'La fecha de fin es anterior al inicio.';
+    }
+  }
+  if (form.trackStock) {
+    if (!isNonNegative(form.stockQuantity)) errors.stockQuantity = 'Indica cuántas tienes.';
+    if (!isPositive(form.stockPerDose)) errors.stockPerDose = 'Indica cuántas usas por toma.';
+    if (form.stockAlertAt.trim() && !isNonNegative(form.stockAlertAt)) errors.stockAlertAt = 'Indica una cantidad válida.';
   }
   return errors;
 }
+
+const SCHEDULE_KEYS = [
+  'frequency',
+  'firstDoseTime',
+  'times',
+  'customIntervalHours',
+  'customEndDate',
+  'scheduleType',
+  'weekDays',
+  'dayInterval',
+  'startDate',
+  'dosageSteps',
+  'maxDailyDoses',
+  'minHoursBetween',
+] as const;
+const DETAIL_KEYS = ['name', 'dosage', 'notes', 'stockQuantity', 'stockPerDose', 'stockAlertAt'] as const;
 
 /**
  * Solo lo que cambió: al editar lo de otra persona, cada parte requiere su
@@ -122,27 +231,28 @@ function changedFields(
   const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   const sameDate = (a?: string | null, b?: string | null) =>
     (a ? new Date(a).toDateString() : null) === (b ? new Date(b).toDateString() : null);
-  const changes: Partial<medicationsAPI.CreateMedicationPayload> = {};
-  if (!same(original.name, next.name)) changes.name = next.name;
-  if (!same(original.dosage, next.dosage)) changes.dosage = next.dosage;
-  if (!same(original.notes ?? '', next.notes ?? '')) changes.notes = next.notes;
-  const scheduleChanged =
-    !same(original.frequency, next.frequency)
-    || !same(original.firstDoseTime ?? original.times?.[0], next.firstDoseTime)
-    || !same([...(original.times ?? [])].sort(), [...(next.times ?? [])].sort())
-    || !same(original.customIntervalHours ?? null, next.customIntervalHours ?? null)
-    || !sameDate(original.customEndDate, next.customEndDate);
-  if (scheduleChanged) {
-    Object.assign(changes, {
-      frequency: next.frequency,
-      firstDoseTime: next.firstDoseTime,
-      times: next.times,
-      customIntervalHours: next.customIntervalHours,
-      customEndDate: next.customEndDate,
-    });
+  const changes: Record<string, unknown> = {};
+  for (const key of DETAIL_KEYS) {
+    const before = key === 'notes' ? original.notes ?? '' : original[key];
+    const after = key === 'notes' ? next.notes ?? '' : next[key];
+    if (!same(before, after)) changes[key] = next[key];
   }
-  return changes;
+  const scheduleChanged = SCHEDULE_KEYS.some((key) => {
+    if (key === 'customEndDate') return !sameDate(original.customEndDate, next.customEndDate);
+    if (key === 'firstDoseTime') return !same(original.firstDoseTime ?? original.times?.[0], next.firstDoseTime);
+    if (key === 'times') return !same([...(original.times ?? [])].sort(), [...(next.times ?? [])].sort());
+    if (key === 'scheduleType') return !same(original.scheduleType ?? 'DAILY', next.scheduleType ?? 'DAILY');
+    if (key === 'weekDays') return !same([...(original.weekDays ?? [])].sort(), [...(next.weekDays ?? [])].sort());
+    return !same(original[key], next[key]);
+  });
+  if (scheduleChanged) {
+    for (const key of SCHEDULE_KEYS) changes[key] = next[key];
+  }
+  return changes as Partial<medicationsAPI.CreateMedicationPayload>;
 }
+
+const longDate = (date: Date) => date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+const shortDate = (date: Date) => date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
 
 export type MedicationFormSheetProps = {
   theme: AppTheme;
@@ -163,6 +273,8 @@ export type MedicationFormSheetProps = {
   existingMedications?: MedicationData[];
 };
 
+type PickerTarget = 'time' | 'date' | 'start';
+
 export function MedicationFormSheet({
   theme,
   visible,
@@ -180,7 +292,7 @@ export function MedicationFormSheet({
   const [showErrors, setShowErrors] = useState(false);
   const [frequencyError, setFrequencyError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [iosPicker, setIosPicker] = useState<'time' | 'date' | null>(null);
+  const [iosPicker, setIosPicker] = useState<PickerTarget | null>(null);
   const isEditing = Boolean(medication);
   // Crear incluye ficha y horarios; al editar, cada parte tiene su permiso.
   const detailsLocked = isEditing && !canEditDetails;
@@ -196,14 +308,69 @@ export function MedicationFormSheet({
 
   const update = (patch: Partial<FormState>) => setForm((current) => ({ ...current, ...patch }));
   const errors = showErrors ? validate(form) : {};
+  const asNeeded = form.scheduleType === 'AS_NEEDED';
+  const tapering = form.tapering && !asNeeded;
   const interval = intervalFor(form);
   const previewTimes = useMemo(
-    () => (form.firstDoseTime && interval ? calculateDailyTimes(form.firstDoseTime, interval) : []),
-    [form.firstDoseTime, interval],
+    () => (!asNeeded && form.firstDoseTime && interval ? calculateDailyTimes(form.firstDoseTime, interval) : []),
+    [asNeeded, form.firstDoseTime, interval],
   );
+  const usesStartDate = form.scheduleType === 'INTERVAL' || tapering;
+  const taperEnd = tapering && form.steps.length ? stepsEndDate(form.startDate, form.steps) : null;
+
+  // Dosis que se cuenta en las existencias (la de hoy o la primera etapa).
+  const referenceDosage = `${(tapering ? form.steps[0]?.amount : form.dosageAmount) || '1'} ${form.dosageUnit}`;
+  const stockUnit = stockUnitLabel(referenceDosage);
+  const dosesPerDay = asNeeded ? form.maxDailyDoses || 3 : previewTimes.length || 1;
 
   const timeColors = useFieldColors(theme, iosPicker === 'time', Boolean(errors.firstDoseTime));
   const dateColors = useFieldColors(theme, iosPicker === 'date', Boolean(errors.endDate));
+  const startColors = useFieldColors(theme, iosPicker === 'start', false);
+
+  const setScheduleType = (scheduleType: ScheduleType) => {
+    const patch: Partial<FormState> = { scheduleType };
+    // Al pasar a "algunos días", de lunes a viernes como punto de partida.
+    if (scheduleType === 'WEEKDAYS' && !form.weekDays.length) patch.weekDays = [1, 2, 3, 4, 5];
+    update(patch);
+    setFrequencyError(false);
+  };
+
+  const toggleWeekDay = (day: number) =>
+    update({ weekDays: form.weekDays.includes(day) ? form.weekDays.filter((item) => item !== day) : [...form.weekDays, day] });
+
+  const setTapering = (value: boolean) => {
+    if (value && !form.steps.length) {
+      const first = form.dosageAmount || '';
+      update({ tapering: true, steps: [{ amount: first, days: 7 }, { amount: '', days: 7 }], hasEndDate: false });
+    } else {
+      update({ tapering: value });
+    }
+  };
+
+  const updateStep = (index: number, patch: Partial<DoseStepForm>) =>
+    update({ steps: form.steps.map((step, i) => (i === index ? { ...step, ...patch } : step)) });
+
+  const setTrackStock = (value: boolean) => {
+    if (value && !form.stockPerDose) {
+      const perDose = defaultStockPerDose(referenceDosage);
+      update({
+        trackStock: true,
+        stockPerDose: formatQuantity(perDose),
+        stockAlertAt: form.stockAlertAt || String(defaultStockAlert(perDose, dosesPerDay)),
+      });
+    } else {
+      update({ trackStock: value });
+    }
+  };
+
+  const stockEstimate = useMemo(() => {
+    if (!form.trackStock || !isNonNegative(form.stockQuantity) || !isPositive(form.stockPerDose) || asNeeded) return null;
+    let daysPerWeek = 7;
+    if (form.scheduleType === 'WEEKDAYS') daysPerWeek = form.weekDays.length || 7;
+    else if (form.scheduleType === 'INTERVAL') daysPerWeek = 7 / form.dayInterval;
+    const perDay = (toNumber(form.stockPerDose) * dosesPerDay * daysPerWeek) / 7;
+    return perDay > 0 ? Math.floor(toNumber(form.stockQuantity) / perDay) : null;
+  }, [form, asNeeded, dosesPerDay]);
 
   const openTimePicker = () => {
     const value = form.firstDoseTime ? timeToDate(form.firstDoseTime) : timeToDate('08:00');
@@ -222,29 +389,33 @@ export function MedicationFormSheet({
     }
   };
 
-  const openDatePicker = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 7);
-    const value = form.endDate ?? tomorrow;
+  const openDatePicker = (target: 'date' | 'start') => {
+    const inAWeek = new Date();
+    inAWeek.setDate(inAWeek.getDate() + 7);
+    const value = target === 'start' ? form.startDate : form.endDate ?? inAWeek;
+    const apply = (selected: Date) => {
+      selected.setHours(0, 0, 0, 0);
+      update(target === 'start' ? { startDate: selected } : { endDate: selected });
+    };
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         value,
         mode: 'date',
-        minimumDate: new Date(),
+        minimumDate: target === 'start' ? undefined : new Date(),
         onChange: (event, selected) => {
-          if (event.type === 'set' && selected) update({ endDate: selected });
+          if (event.type === 'set' && selected) apply(selected);
         },
       });
     } else {
-      if (!form.endDate) update({ endDate: value });
-      setIosPicker((current) => (current === 'date' ? null : 'date'));
+      if (target === 'date' && !form.endDate) update({ endDate: value });
+      setIosPicker((current) => (current === target ? null : target));
     }
   };
 
   const handleSave = async (confirmedDuplicate = false) => {
     setShowErrors(true);
     const currentErrors = validate(form);
-    const missingFrequency = !form.frequency;
+    const missingFrequency = !asNeeded && !form.frequency;
     setFrequencyError(missingFrequency);
     if (Object.values(currentErrors).some(Boolean) || missingFrequency) return;
 
@@ -269,7 +440,7 @@ export function MedicationFormSheet({
     // Las alarmas solo funcionan con los permisos concedidos. Si el
     // medicamento es de otra persona, suenan en su teléfono, no en este.
     const willBeActive = medication ? medication.active : true;
-    if (willBeActive && !ownerId) {
+    if (willBeActive && !ownerId && !asNeeded) {
       const { ready } = await ensureAlarmPermissions();
       if (!ready) {
         Alert.alert(
@@ -287,30 +458,48 @@ export function MedicationFormSheet({
     }
 
     const isCustom = form.frequency === CUSTOM;
-    let endDate = form.hasEndDate && form.endDate ? new Date(form.endDate) : null;
+    // Con dosis que cambia, el tratamiento termina con la última etapa.
+    const lastDay = taperEnd ?? (form.hasEndDate && form.endDate ? new Date(form.endDate) : null);
+    let endDate = lastDay;
     if (endDate && isForeignTimeZone(ownerTimeZone)) {
       endDate = zonedToDate(endDate.getFullYear(), endDate.getMonth() + 1, endDate.getDate(), 23, 59, ownerTimeZone);
     } else {
       endDate?.setHours(23, 59, 0, 0);
     }
-    const payload = {
+    const dosageOf = (amount: string) => `${amount.trim().replace(',', '.')} ${form.dosageUnit}`;
+    let frequency = isCustom ? `Cada ${form.customInterval} horas` : form.frequency;
+    if (asNeeded) frequency = AS_NEEDED_FREQUENCY;
+    const payload: medicationsAPI.CreateMedicationPayload = {
       name: form.name.trim(),
-      dosage: `${form.dosageAmount.trim().replace(',', '.')} ${form.dosageUnit}`,
-      frequency: isCustom ? `Cada ${form.customInterval} horas` : form.frequency,
-      firstDoseTime: form.firstDoseTime,
-      times: previewTimes,
+      dosage: dosageOf(tapering ? form.steps[0].amount : form.dosageAmount),
+      frequency,
+      firstDoseTime: asNeeded ? undefined : form.firstDoseTime,
+      times: asNeeded ? [] : previewTimes,
       notes: form.notes.trim() || undefined,
-      customIntervalHours: isCustom ? form.customInterval : null,
+      customIntervalHours: isCustom && !asNeeded ? form.customInterval : null,
       customEndDate: endDate ? endDate.toISOString() : null,
+      scheduleType: form.scheduleType,
+      weekDays: form.scheduleType === 'WEEKDAYS' ? [...form.weekDays].sort() : [],
+      dayInterval: form.scheduleType === 'INTERVAL' ? form.dayInterval : null,
+      startDate: usesStartDate ? toDayKey(form.startDate) : null,
+      dosageSteps: tapering ? form.steps.map((step) => ({ days: step.days, dosage: dosageOf(step.amount) })) : null,
+      maxDailyDoses: asNeeded && form.maxDailyDoses ? form.maxDailyDoses : null,
+      minHoursBetween: asNeeded && form.minHoursBetween ? form.minHoursBetween : null,
+      stockQuantity: form.trackStock ? toNumber(form.stockQuantity) : null,
+      stockPerDose: form.trackStock ? toNumber(form.stockPerDose) : null,
+      stockAlertAt: form.trackStock && form.stockAlertAt.trim() ? toNumber(form.stockAlertAt) : null,
     };
 
     try {
       setIsSaving(true);
       let saved: MedicationData;
       if (medication) {
-        const changes = ownerId
+        const changes: Partial<medicationsAPI.CreateMedicationPayload> = ownerId
           ? changedFields(medication, { ...payload, notes: form.notes.trim() })
           : { ...payload, notes: form.notes.trim() };
+        // Las existencias bajan con cada toma: si no se tocaron, no se
+        // reenvían (una toma registrada mientras se editaba no se pierde).
+        if (!ownerId && (medication.stockQuantity ?? null) === payload.stockQuantity) delete changes.stockQuantity;
         if (!Object.keys(changes).length) {
           onClose();
           return;
@@ -330,6 +519,12 @@ export function MedicationFormSheet({
       setIsSaving(false);
     }
   };
+
+  let previewDays = 'a diario';
+  if (form.scheduleType === 'WEEKDAYS' && form.weekDays.length) previewDays = weekDaysLabel(form.weekDays).toLowerCase();
+  else if (form.scheduleType === 'INTERVAL') previewDays = `cada ${form.dayInterval} días`;
+  if (previewDays === 'todos los días') previewDays = 'a diario';
+  else if (form.scheduleType === 'WEEKDAYS' && !previewDays.startsWith('de ')) previewDays = `los ${previewDays}`;
 
   return (
     <FormSheet
@@ -354,14 +549,11 @@ export function MedicationFormSheet({
       }
     >
       {detailsLocked || scheduleLocked ? (
-        <View style={[styles.preview, { backgroundColor: `${theme.colors.accentTertiary}14` }]}>
-          <Ionicons name="lock-closed-outline" size={16} color={theme.colors.accentTertiary} />
-          <Text style={[styles.previewText, { color: theme.colors.textSecondary }]}>
-            {detailsLocked
-              ? 'Solo puedes cambiar los horarios y recordatorios de este medicamento.'
-              : 'Solo puedes cambiar el nombre, la dosis y las notas. Los horarios no.'}
-          </Text>
-        </View>
+        <Note theme={theme} icon="lock-closed-outline" color={theme.colors.accentTertiary}>
+          {detailsLocked
+            ? 'Solo puedes cambiar los horarios y recordatorios de este medicamento.'
+            : 'Solo puedes cambiar el nombre, la dosis, las existencias y las notas. Los horarios no.'}
+        </Note>
       ) : null}
 
       <View pointerEvents={detailsLocked ? 'none' : 'auto'} style={[styles.group, detailsLocked && styles.locked]}>
@@ -378,176 +570,413 @@ export function MedicationFormSheet({
           returnKeyType="next"
         />
 
-        <FieldShell theme={theme} label="Dosis" error={errors.dosage}>
+        <FieldShell
+          theme={theme}
+          label="Dosis"
+          error={errors.dosage}
+          helper={tapering ? 'La dosis de cada etapa se indica más abajo, en "La dosis va cambiando".' : undefined}
+        >
           <View style={styles.dosageRow}>
-            <View style={styles.flex}>
-              <TextField
-                theme={theme}
-                label=""
-                value={form.dosageAmount}
-                invalid={Boolean(errors.dosage)}
-                onChangeText={(dosageAmount) => update({ dosageAmount: dosageAmount.replace(/[^\d.,]/g, '').slice(0, 8) })}
-                placeholder="Ej. 500"
-                keyboardType="decimal-pad"
-                accessibilityLabel="Cantidad de la dosis"
-              />
-            </View>
+            {tapering ? null : (
+              <View style={styles.flex}>
+                <TextField
+                  theme={theme}
+                  label=""
+                  value={form.dosageAmount}
+                  invalid={Boolean(errors.dosage)}
+                  onChangeText={(dosageAmount) => update({ dosageAmount: cleanNumber(dosageAmount) })}
+                  placeholder="Ej. 500"
+                  keyboardType="decimal-pad"
+                  accessibilityLabel="Cantidad de la dosis"
+                />
+              </View>
+            )}
             <SelectField
               theme={theme}
               value={form.dosageUnit}
               options={UNIT_OPTIONS}
               onChange={(dosageUnit) => update({ dosageUnit })}
               accessibilityLabel="Unidad de la dosis"
-              style={styles.unitSelect}
+              style={tapering ? styles.flex : styles.unitSelect}
             />
           </View>
         </FieldShell>
-
       </View>
 
       {timeZoneNote ? (
-        <View style={[styles.preview, { backgroundColor: `${theme.colors.accentSecondary}14` }]}>
-          <Ionicons name="earth-outline" size={16} color={theme.colors.accentSecondary} />
-          <Text style={[styles.previewText, { color: theme.colors.textSecondary }]}>{timeZoneNote}</Text>
-        </View>
+        <Note theme={theme} icon="earth-outline" color={theme.colors.accentSecondary}>{timeZoneNote}</Note>
       ) : null}
 
       <View pointerEvents={scheduleLocked ? 'none' : 'auto'} style={[styles.group, scheduleLocked && styles.locked]}>
-        <FieldShell
-          theme={theme}
-          label="Frecuencia"
-          error={frequencyError && !form.frequency ? 'Elige cada cuánto se toma.' : null}
-        >
+        <FieldShell theme={theme} label="¿Qué días?" error={errors.weekDays}>
           <View style={styles.chipsWrap}>
-            {FREQUENCY_OPTIONS.map((option) => (
+            {SCHEDULE_OPTIONS.map((option) => (
               <SelectableChip
                 key={option.value}
                 theme={theme}
                 label={option.label}
-                selected={form.frequency === option.value}
-                onPress={() => update({ frequency: option.value })}
+                selected={form.scheduleType === option.value}
+                onPress={() => setScheduleType(option.value)}
               />
             ))}
-            <SelectableChip
+          </View>
+          {form.scheduleType === 'WEEKDAYS' ? (
+            <View style={styles.weekRow} accessibilityRole="none">
+              {WEEK_DAYS.map((day) => {
+                const selected = form.weekDays.includes(day.value);
+                return (
+                  <PressableScale
+                    key={day.value}
+                    onPress={() => toggleWeekDay(day.value)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={day.name}
+                    accessibilityState={{ checked: selected }}
+                    style={[
+                      styles.weekDay,
+                      selected
+                        ? { backgroundColor: theme.colors.accentPrimary, borderColor: theme.colors.accentPrimary }
+                        : { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder },
+                    ]}
+                  >
+                    <Text style={[styles.weekDayText, { color: selected ? '#fff' : theme.colors.textSecondary }]}>{day.short}</Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          ) : null}
+          {form.scheduleType === 'INTERVAL' ? (
+            <Stepper
               theme={theme}
-              label="Personalizada"
-              selected={form.frequency === CUSTOM}
-              onPress={() => update({ frequency: CUSTOM })}
+              label="Cada"
+              value={`${form.dayInterval} días`}
+              canDecrease={form.dayInterval > DAY_INTERVAL_MIN}
+              canIncrease={form.dayInterval < DAY_INTERVAL_MAX}
+              onDecrease={() => update({ dayInterval: form.dayInterval - 1 })}
+              onIncrease={() => update({ dayInterval: form.dayInterval + 1 })}
+              decreaseLabel="Menos días"
+              increaseLabel="Más días"
             />
-          </View>
-          {form.frequency === CUSTOM ? (
-            <View style={[styles.stepper, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}>
-              <Text style={[styles.stepperLabel, { color: theme.colors.textSecondary }]}>Cada</Text>
-              <StepperButton
+          ) : null}
+          {asNeeded ? (
+            <>
+              <Stepper
                 theme={theme}
-                icon="remove"
-                label="Menos horas"
-                disabled={form.customInterval <= CUSTOM_INTERVAL_MIN}
-                onPress={() => update({ customInterval: Math.max(CUSTOM_INTERVAL_MIN, form.customInterval - 1) })}
+                label="Máximo al día"
+                value={form.maxDailyDoses ? `${form.maxDailyDoses}` : 'Sin límite'}
+                canDecrease={form.maxDailyDoses > 0}
+                canIncrease={form.maxDailyDoses < MAX_DAILY_LIMIT}
+                onDecrease={() => update({ maxDailyDoses: form.maxDailyDoses - 1 })}
+                onIncrease={() => update({ maxDailyDoses: form.maxDailyDoses + 1 })}
+                decreaseLabel="Menos tomas al día"
+                increaseLabel="Más tomas al día"
               />
-              <Text style={[styles.stepperValue, { color: theme.colors.textPrimary }]} accessibilityLiveRegion="polite">
-                {form.customInterval} h
-              </Text>
-              <StepperButton
+              <Stepper
                 theme={theme}
-                icon="add"
-                label="Más horas"
-                disabled={form.customInterval >= CUSTOM_INTERVAL_MAX}
-                onPress={() => update({ customInterval: Math.min(CUSTOM_INTERVAL_MAX, form.customInterval + 1) })}
+                label="Entre tomas"
+                value={form.minHoursBetween ? `${form.minHoursBetween} h` : 'Sin mínimo'}
+                canDecrease={form.minHoursBetween > 0}
+                canIncrease={form.minHoursBetween < MIN_HOURS_LIMIT}
+                onDecrease={() => update({ minHoursBetween: form.minHoursBetween - 1 })}
+                onIncrease={() => update({ minHoursBetween: form.minHoursBetween + 1 })}
+                decreaseLabel="Menos horas entre tomas"
+                increaseLabel="Más horas entre tomas"
               />
-            </View>
+              <Note theme={theme} icon="hand-left-outline" color={theme.colors.accentPrimary}>
+                No sonarán alarmas. Registra cada toma desde la tarjeta y te avisaremos si superas el máximo o si
+                no ha pasado el tiempo indicado.
+              </Note>
+            </>
           ) : null}
         </FieldShell>
 
-        <FieldShell theme={theme} label="Primera toma" error={errors.firstDoseTime}>
-          <PressableScale
-            pressedScale={0.98}
-            onPress={openTimePicker}
-            accessibilityRole="button"
-            accessibilityLabel={form.firstDoseTime ? `Primera toma a las ${form.firstDoseTime}. Toca para cambiar.` : 'Elegir hora de la primera toma'}
-            style={[styles.selector, timeColors]}
-          >
-            <Ionicons name="time-outline" size={20} color={theme.colors.accentSecondary} />
-            <Text style={[styles.selectorText, { color: form.firstDoseTime ? theme.colors.textPrimary : theme.colors.inputPlaceholder }]}>
-              {form.firstDoseTime || 'Elegir hora'}
-            </Text>
-            <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
-          </PressableScale>
-          {Platform.OS === 'ios' && iosPicker === 'time' ? (
-            <DateTimePicker
-              value={timeToDate(form.firstDoseTime || '08:00')}
-              mode="time"
-              display="spinner"
-              is24Hour
-              locale="es-ES"
-              themeVariant={theme.mode}
-              onChange={(_event: DateTimePickerEvent, selected?: Date) => {
-                if (selected) update({ firstDoseTime: formatTime(selected) });
-              }}
-            />
-          ) : null}
-          {previewTimes.length ? (
-            <View style={[styles.preview, { backgroundColor: `${theme.colors.accentPrimary}12` }]}>
-              <Ionicons name="alarm-outline" size={16} color={theme.colors.accentPrimary} />
-              <Text style={[styles.previewText, { color: theme.colors.textSecondary }]}>
-                Sonará a diario a las{' '}
-                <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>{previewTimes.join(' · ')}</Text>
-              </Text>
-            </View>
-          ) : null}
-        </FieldShell>
-
-        <FieldShell theme={theme} label="Duración" error={errors.endDate}>
-          <View style={styles.chipsWrap}>
-            <SelectableChip theme={theme} label="Sin fecha de fin" selected={!form.hasEndDate} onPress={() => { update({ hasEndDate: false }); setIosPicker(null); }} />
-            <SelectableChip theme={theme} label="Hasta una fecha" selected={form.hasEndDate} onPress={() => { update({ hasEndDate: true }); if (!form.endDate) openDatePicker(); }} />
-          </View>
-          {form.hasEndDate ? (
-            <PressableScale
-              pressedScale={0.98}
-              onPress={openDatePicker}
-              accessibilityRole="button"
-              accessibilityLabel="Elegir fecha de fin del tratamiento"
-              style={[styles.selector, dateColors]}
+        {asNeeded ? null : (
+          <>
+            <FieldShell
+              theme={theme}
+              label="Veces al día"
+              error={frequencyError && !form.frequency ? 'Elige cada cuánto se toma.' : null}
             >
-              <Ionicons name="calendar-outline" size={20} color={theme.colors.accentSecondary} />
-              <Text style={[styles.selectorText, { color: form.endDate ? theme.colors.textPrimary : theme.colors.inputPlaceholder }]}>
-                {form.endDate
-                  ? `Hasta el ${form.endDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}`
-                  : 'Elegir fecha'}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
-            </PressableScale>
-          ) : null}
-          {Platform.OS === 'ios' && iosPicker === 'date' && form.hasEndDate ? (
-            <DateTimePicker
-              value={form.endDate ?? new Date()}
-              mode="date"
-              display="inline"
-              minimumDate={new Date()}
-              locale="es-ES"
-              themeVariant={theme.mode}
-              onChange={(_event: DateTimePickerEvent, selected?: Date) => {
-                if (selected) update({ endDate: selected });
-              }}
-            />
-          ) : null}
-        </FieldShell>
+              <View style={styles.chipsWrap}>
+                {FREQUENCY_OPTIONS.map((option) => (
+                  <SelectableChip
+                    key={option.value}
+                    theme={theme}
+                    label={option.label}
+                    selected={form.frequency === option.value}
+                    onPress={() => update({ frequency: option.value })}
+                  />
+                ))}
+                <SelectableChip
+                  theme={theme}
+                  label="Personalizada"
+                  selected={form.frequency === CUSTOM}
+                  onPress={() => update({ frequency: CUSTOM })}
+                />
+              </View>
+              {form.frequency === CUSTOM ? (
+                <Stepper
+                  theme={theme}
+                  label="Cada"
+                  value={`${form.customInterval} h`}
+                  canDecrease={form.customInterval > CUSTOM_INTERVAL_MIN}
+                  canIncrease={form.customInterval < CUSTOM_INTERVAL_MAX}
+                  onDecrease={() => update({ customInterval: Math.max(CUSTOM_INTERVAL_MIN, form.customInterval - 1) })}
+                  onIncrease={() => update({ customInterval: Math.min(CUSTOM_INTERVAL_MAX, form.customInterval + 1) })}
+                  decreaseLabel="Menos horas"
+                  increaseLabel="Más horas"
+                />
+              ) : null}
+            </FieldShell>
 
+            <FieldShell theme={theme} label="Primera toma" error={errors.firstDoseTime}>
+              <PressableScale
+                pressedScale={0.98}
+                onPress={openTimePicker}
+                accessibilityRole="button"
+                accessibilityLabel={form.firstDoseTime ? `Primera toma a las ${form.firstDoseTime}. Toca para cambiar.` : 'Elegir hora de la primera toma'}
+                style={[styles.selector, timeColors]}
+              >
+                <Ionicons name="time-outline" size={20} color={theme.colors.accentSecondary} />
+                <Text style={[styles.selectorText, { color: form.firstDoseTime ? theme.colors.textPrimary : theme.colors.inputPlaceholder }]}>
+                  {form.firstDoseTime || 'Elegir hora'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+              </PressableScale>
+              {Platform.OS === 'ios' && iosPicker === 'time' ? (
+                <DateTimePicker
+                  value={timeToDate(form.firstDoseTime || '08:00')}
+                  mode="time"
+                  display="spinner"
+                  is24Hour
+                  locale="es-ES"
+                  themeVariant={theme.mode}
+                  onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+                    if (selected) update({ firstDoseTime: formatTime(selected) });
+                  }}
+                />
+              ) : null}
+              {previewTimes.length ? (
+                <Note theme={theme} icon="alarm-outline" color={theme.colors.accentPrimary}>
+                  Sonará {previewDays} a las{' '}
+                  <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>{previewTimes.join(' · ')}</Text>
+                </Note>
+              ) : null}
+            </FieldShell>
+
+            <FieldShell theme={theme} label="Dosis" error={errors.steps}>
+              <View style={styles.chipsWrap}>
+                <SelectableChip theme={theme} label="Siempre la misma" selected={!form.tapering} onPress={() => setTapering(false)} />
+                <SelectableChip theme={theme} label="La dosis va cambiando" selected={form.tapering} onPress={() => setTapering(true)} />
+              </View>
+              {tapering ? (
+                <View style={styles.steps}>
+                  {form.steps.map((step, index) => (
+                    <View
+                      key={index}
+                      style={[styles.stepCard, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}
+                    >
+                      <View style={styles.stepHeader}>
+                        <Text style={[styles.stepTitle, { color: theme.colors.textPrimary }]}>Etapa {index + 1}</Text>
+                        {form.steps.length > 1 ? (
+                          <PressableScale
+                            onPress={() => update({ steps: form.steps.filter((_, i) => i !== index) })}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Quitar etapa ${index + 1}`}
+                          >
+                            <Ionicons name="close-circle" size={22} color={theme.colors.textMuted} />
+                          </PressableScale>
+                        ) : null}
+                      </View>
+                      <View style={styles.dosageRow}>
+                        <View style={styles.flex}>
+                          <TextField
+                            theme={theme}
+                            label=""
+                            value={step.amount}
+                            invalid={Boolean(errors.steps) && !isPositive(step.amount)}
+                            onChangeText={(amount) => updateStep(index, { amount: cleanNumber(amount) })}
+                            placeholder="Ej. 20"
+                            keyboardType="decimal-pad"
+                            accessibilityLabel={`Dosis de la etapa ${index + 1}`}
+                          />
+                        </View>
+                        <Text style={[styles.stepUnit, { color: theme.colors.textSecondary }]}>{form.dosageUnit}</Text>
+                      </View>
+                      <Stepper
+                        theme={theme}
+                        label="Durante"
+                        value={`${step.days} ${step.days === 1 ? 'día' : 'días'}`}
+                        canDecrease={step.days > 1}
+                        canIncrease={step.days < STEP_DAYS_MAX}
+                        onDecrease={() => updateStep(index, { days: step.days - 1 })}
+                        onIncrease={() => updateStep(index, { days: step.days + 1 })}
+                        decreaseLabel={`Menos días en la etapa ${index + 1}`}
+                        increaseLabel={`Más días en la etapa ${index + 1}`}
+                      />
+                    </View>
+                  ))}
+                  {form.steps.length < STEPS_MAX ? (
+                    <AppButton
+                      theme={theme}
+                      label="Agregar etapa"
+                      icon="add"
+                      iconPosition="left"
+                      variant="secondary"
+                      onPress={() => update({ steps: [...form.steps, { amount: '', days: form.steps[form.steps.length - 1]?.days ?? 7 }] })}
+                    />
+                  ) : null}
+                  <Note theme={theme} icon="trending-down-outline" color={theme.colors.accentSecondary}>
+                    Por ejemplo, un corticoide que se va reduciendo. Cada alarma dirá la dosis de ese día.
+                  </Note>
+                </View>
+              ) : null}
+            </FieldShell>
+
+            {usesStartDate ? (
+              <FieldShell theme={theme} label="Empieza">
+                <PressableScale
+                  pressedScale={0.98}
+                  onPress={() => openDatePicker('start')}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Empieza el ${longDate(form.startDate)}. Toca para cambiar.`}
+                  style={[styles.selector, startColors]}
+                >
+                  <Ionicons name="play-circle-outline" size={20} color={theme.colors.accentSecondary} />
+                  <Text style={[styles.selectorText, { color: theme.colors.textPrimary }]}>
+                    {form.startDate.getTime() === today().getTime() ? 'Hoy' : longDate(form.startDate)}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+                </PressableScale>
+                {Platform.OS === 'ios' && iosPicker === 'start' ? (
+                  <DateTimePicker
+                    value={form.startDate}
+                    mode="date"
+                    display="inline"
+                    locale="es-ES"
+                    themeVariant={theme.mode}
+                    onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+                      if (selected) {
+                        selected.setHours(0, 0, 0, 0);
+                        update({ startDate: selected });
+                      }
+                    }}
+                  />
+                ) : null}
+              </FieldShell>
+            ) : null}
+          </>
+        )}
+
+        <FieldShell theme={theme} label="Duración" error={tapering ? null : errors.endDate}>
+          {taperEnd ? (
+            <Note theme={theme} icon="flag-outline" color={theme.colors.accentPrimary}>
+              Termina el <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>{shortDate(taperEnd)}</Text>, al
+              acabar la última etapa.
+            </Note>
+          ) : (
+            <>
+              <View style={styles.chipsWrap}>
+                <SelectableChip theme={theme} label="Sin fecha de fin" selected={!form.hasEndDate} onPress={() => { update({ hasEndDate: false }); setIosPicker(null); }} />
+                <SelectableChip theme={theme} label="Hasta una fecha" selected={form.hasEndDate} onPress={() => { update({ hasEndDate: true }); if (!form.endDate) openDatePicker('date'); }} />
+              </View>
+              {form.hasEndDate ? (
+                <PressableScale
+                  pressedScale={0.98}
+                  onPress={() => openDatePicker('date')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Elegir fecha de fin del tratamiento"
+                  style={[styles.selector, dateColors]}
+                >
+                  <Ionicons name="calendar-outline" size={20} color={theme.colors.accentSecondary} />
+                  <Text style={[styles.selectorText, { color: form.endDate ? theme.colors.textPrimary : theme.colors.inputPlaceholder }]}>
+                    {form.endDate ? `Hasta el ${longDate(form.endDate)}` : 'Elegir fecha'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+                </PressableScale>
+              ) : null}
+              {Platform.OS === 'ios' && iosPicker === 'date' && form.hasEndDate ? (
+                <DateTimePicker
+                  value={form.endDate ?? new Date()}
+                  mode="date"
+                  display="inline"
+                  minimumDate={new Date()}
+                  locale="es-ES"
+                  themeVariant={theme.mode}
+                  onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+                    if (selected) update({ endDate: selected });
+                  }}
+                />
+              ) : null}
+            </>
+          )}
+        </FieldShell>
       </View>
 
-      <TextField
-        theme={theme}
-        label="Notas"
-        editable={!detailsLocked}
-        optional
-        value={form.notes}
-        onChangeText={(notes) => update({ notes })}
-        placeholder="Ej. Tomar con comida"
-        maxLength={NOTES_MAX}
-        multiline
-        textAlignVertical="top"
-      />
+      <View pointerEvents={detailsLocked ? 'none' : 'auto'} style={[styles.group, detailsLocked && styles.locked]}>
+        <FieldShell theme={theme} label="Existencias" optional>
+          <View style={styles.chipsWrap}>
+            <SelectableChip theme={theme} label="No llevar la cuenta" selected={!form.trackStock} onPress={() => setTrackStock(false)} />
+            <SelectableChip theme={theme} label="Avisarme cuando queden pocas" selected={form.trackStock} onPress={() => setTrackStock(true)} />
+          </View>
+        </FieldShell>
+        {form.trackStock ? (
+          <>
+            <View style={styles.stockRow}>
+              <View style={styles.flex}>
+                <TextField
+                  theme={theme}
+                  label={`Tienes (${stockUnit})`}
+                  value={form.stockQuantity}
+                  error={errors.stockQuantity}
+                  onChangeText={(stockQuantity) => update({ stockQuantity: cleanNumber(stockQuantity) })}
+                  placeholder="Ej. 30"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={styles.flex}>
+                <TextField
+                  theme={theme}
+                  label="Usas por toma"
+                  value={form.stockPerDose}
+                  error={errors.stockPerDose}
+                  onChangeText={(stockPerDose) => update({ stockPerDose: cleanNumber(stockPerDose) })}
+                  placeholder="Ej. 1"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+            <TextField
+              theme={theme}
+              label={`Avisarme cuando queden (${stockUnit})`}
+              value={form.stockAlertAt}
+              error={errors.stockAlertAt}
+              onChangeText={(stockAlertAt) => update({ stockAlertAt: cleanNumber(stockAlertAt) })}
+              placeholder="Ej. 5"
+              keyboardType="decimal-pad"
+            />
+            <Note theme={theme} icon="cube-outline" color={theme.colors.accentSecondary}>
+              {stockEstimate !== null
+                ? `Te alcanza para unos ${stockEstimate} ${stockEstimate === 1 ? 'día' : 'días'}. `
+                : ''}
+              Cada toma registrada como tomada se descuenta sola. Cuando compres más, actualiza la cantidad aquí.
+            </Note>
+          </>
+        ) : null}
+
+        <TextField
+          theme={theme}
+          label="Notas"
+          editable={!detailsLocked}
+          optional
+          value={form.notes}
+          onChangeText={(notes) => update({ notes })}
+          placeholder="Ej. Tomar con comida"
+          maxLength={NOTES_MAX}
+          multiline
+          textAlignVertical="top"
+        />
+      </View>
 
       {showErrors && Object.values(validate(form)).some(Boolean) ? (
         <Text style={[styles.formError, { color: ERROR_COLOR }]} accessibilityLiveRegion="polite">
@@ -555,6 +984,53 @@ export function MedicationFormSheet({
         </Text>
       ) : null}
     </FormSheet>
+  );
+}
+
+function Note({
+  theme,
+  icon,
+  color,
+  children,
+}: Readonly<{ theme: AppTheme; icon: keyof typeof Ionicons.glyphMap; color: string; children: React.ReactNode }>) {
+  return (
+    <View style={[styles.preview, { backgroundColor: `${color}14` }]}>
+      <Ionicons name={icon} size={16} color={color} />
+      <Text style={[styles.previewText, { color: theme.colors.textSecondary }]}>{children}</Text>
+    </View>
+  );
+}
+
+function Stepper({
+  theme,
+  label,
+  value,
+  canDecrease,
+  canIncrease,
+  onDecrease,
+  onIncrease,
+  decreaseLabel,
+  increaseLabel,
+}: Readonly<{
+  theme: AppTheme;
+  label: string;
+  value: string;
+  canDecrease: boolean;
+  canIncrease: boolean;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  decreaseLabel: string;
+  increaseLabel: string;
+}>) {
+  return (
+    <View style={[styles.stepper, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}>
+      <Text style={[styles.stepperLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
+      <StepperButton theme={theme} icon="remove" label={decreaseLabel} disabled={!canDecrease} onPress={onDecrease} />
+      <Text style={[styles.stepperValue, { color: theme.colors.textPrimary }]} accessibilityLiveRegion="polite">
+        {value}
+      </Text>
+      <StepperButton theme={theme} icon="add" label={increaseLabel} disabled={!canIncrease} onPress={onIncrease} />
+    </View>
   );
 }
 
@@ -586,10 +1062,19 @@ const styles = StyleSheet.create({
   dosageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   unitSelect: { width: 140 },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
+  weekDay: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  weekDayText: { fontSize: 14, fontWeight: '800' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 14, padding: 8, paddingLeft: 14 },
-  stepperLabel: { fontSize: 15, fontWeight: '600' },
+  stepperLabel: { fontSize: 15, fontWeight: '600', minWidth: 44 },
   stepperButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  stepperValue: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  stepperValue: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  steps: { gap: 10 },
+  stepCard: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12 },
+  stepHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  stepTitle: { fontSize: 14, fontWeight: '800' },
+  stepUnit: { fontSize: 15, fontWeight: '700', minWidth: 60, paddingTop: 15 },
+  stockRow: { flexDirection: 'row', gap: 10 },
   selector: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14 },
   selectorText: { flex: 1, fontSize: 16 },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12 },

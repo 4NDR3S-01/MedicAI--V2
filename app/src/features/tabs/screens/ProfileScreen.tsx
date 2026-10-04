@@ -1,130 +1,29 @@
+import { useCallback, useEffect, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { useEffect, useMemo, useState } from 'react';
+import Constants from 'expo-constants';
+import { Alert, Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import {
-  fetchProfileFromBackend,
-  requestPasswordReset,
-  updateAvatarOnBackend,
-  updateProfileOnBackend,
-  type ProfileUpdatePayload,
-  type ProfileUser,
-} from '../../auth/services/auth.service';
-import { getStoredSession, MedicalInfoEditor } from '../../auth';
-import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
-import { SessionsSheet } from '../components/SessionsSheet';
-import { fetchMedications } from '../services/medications.service';
-import { fetchAppointments } from '../services/appointments.service';
+import type { AppTheme, ThemePreference } from '../../../shared/theme';
+import { getThemePreference, onThemePreference, setThemePreference } from '../../../shared/theme';
+import { AppButton, PressableScale, useEnterAnimation } from '../../../shared/ui';
 import {
   getAppointmentReminderLeadMinutes,
   getMedicationReminderLeadMinutes,
-  registerForPushNotificationsAsync,
-  scheduleAppointmentReminder,
-  syncMedicationAlarms,
-  setAppointmentReminderLeadMinutes,
-  setMedicationReminderLeadMinutes,
 } from '../../../shared/services/notifications.service';
-import type { AppTheme } from '../../../shared/theme';
-import { PRIVACY_POLICY_URL } from '../../../shared/config/links';
-
-const PREDEFINED_SEEDS = [
-  { seed: 'Alexander', bg: 'e0f2fe' },
-  { seed: 'Sophia', bg: 'fce7f3' },
-  { seed: 'Oliver', bg: 'dcfce7' },
-  { seed: 'Isabella', bg: 'fef3c7' },
-  { seed: 'William', bg: 'e0e7ff' },
-  { seed: 'Mia', bg: 'ffedd5' },
-  { seed: 'James', bg: 'f3f4f6' },
-  { seed: 'Charlotte', bg: 'cffafe' },
-  { seed: 'Benjamin', bg: 'fae8ff' },
-  { seed: 'Amelia', bg: 'ecfccb' },
-  { seed: 'Lucas', bg: 'ffedd5' },
-  { seed: 'Harper', bg: 'e0f2fe' },
-];
-
-const PREDEFINED_AVATARS = PREDEFINED_SEEDS.map((s, i) => ({
-  id: `db-avt-${i}`,
-  url: `https://api.dicebear.com/9.x/avataaars/png?seed=${s.seed}&backgroundColor=${s.bg}`,
-}));
-
-const MEDICATION_LEAD_OPTIONS = [0, 5, 10, 15, 30, 60];
-const APPOINTMENT_LEAD_OPTIONS = [30, 60, 120, 1440];
-
-const SPECIAL_CONDITIONS: Array<{
-  key: keyof Pick<
-    ProfileForm,
-    'pregnancy' | 'lactation' | 'recentSurgeries' | 'immunosuppression' | 'anticoagulantTreatment'
-  >;
-  label: string;
-  description: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-}> = [
-  {
-    key: 'pregnancy',
-    label: 'Embarazo',
-    description: 'Ajusta recomendaciones y alertas de seguridad.',
-    icon: 'human-pregnant',
-  },
-  {
-    key: 'lactation',
-    label: 'Lactancia',
-    description: 'Útil para revisar compatibilidad de medicamentos.',
-    icon: 'baby-bottle-outline',
-  },
-  {
-    key: 'recentSurgeries',
-    label: 'Cirugías recientes',
-    description: 'Ayuda a contextualizar síntomas y tratamientos.',
-    icon: 'hospital-box-outline',
-  },
-  {
-    key: 'immunosuppression',
-    label: 'Inmunosupresión',
-    description: 'Prioriza señales de riesgo en consultas.',
-    icon: 'shield-alert-outline',
-  },
-  {
-    key: 'anticoagulantTreatment',
-    label: 'Anticoagulantes',
-    description: 'Marca precauciones por interacciones o sangrado.',
-    icon: 'water-outline',
-  },
-];
-
-type ProfileForm = {
-  fullName: string;
-  birthDate: string;
-  phone: string;
-  conditions: string;
-  allergies: string;
-  pregnancy: boolean;
-  lactation: boolean;
-  recentSurgeries: boolean;
-  immunosuppression: boolean;
-  anticoagulantTreatment: boolean;
-  aiHealthContextConsent: boolean;
-};
-
-const AI_CONSENT_ITEM = {
-  label: 'Usar en el asistente de IA',
-  description: 'Comparte edad, condiciones, alergias y situaciones especiales (nunca nombre, correo ni teléfono) con el proveedor de IA para personalizar respuestas.',
-  icon: 'robot-outline',
-} as const;
-
-type NotificationTab = 'medications' | 'appointments';
+import { fetchProfileFromBackend, requestPasswordReset, type ProfileUser } from '../../auth/services/auth.service';
+import { formatPhone, parseMedicalSelection } from '../../auth/utils/register.utils';
+import { SPECIAL_CONDITIONS } from '../../auth/config/register.constants';
+import { PermissionHistorySheet } from '../../circle/components/PermissionHistorySheet';
+import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
+import { SessionsSheet } from '../components/SessionsSheet';
+import { AlarmStatusCard } from '../components/profile/AlarmStatusCard';
+import { AvatarSheet } from '../components/profile/AvatarSheet';
+import { initialsOf, parseAvatar } from '../components/profile/avatar';
+import { EditProfileSheet } from '../components/profile/EditProfileSheet';
+import { HelpSheet } from '../components/profile/HelpSheet';
+import { PrivacySheet } from '../components/profile/PrivacySheet';
+import { SettingsGroup, SettingsItem } from '../components/profile/ProfileParts';
+import { formatLead, RemindersSheet } from '../components/profile/RemindersSheet';
 
 export type ProfileScreenProps = {
   theme: AppTheme;
@@ -140,253 +39,30 @@ export type ProfileScreenProps = {
   onAccountDeleted?: () => void;
 };
 
-function getSafeAvatar(data: string | null | undefined) {
-  if (!data) return null;
-  try {
-    const parsed = JSON.parse(data) as { url?: string; id?: string };
-    if (parsed?.url) return parsed;
-  } catch {
-    return null;
-  }
-  return null;
+type Sheet = 'avatar' | 'edit' | 'reminders' | 'sessions' | 'privacy' | 'history' | 'help' | 'delete' | null;
+
+const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }[] = [
+  { value: 'system', label: 'Sistema', icon: 'theme-light-dark' },
+  { value: 'light', label: 'Claro', icon: 'white-balance-sunny' },
+  { value: 'dark', label: 'Oscuro', icon: 'weather-night' },
+];
+
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+
+function nameFromEmail(email: string | null): string {
+  const local = email?.split('@')[0] ?? '';
+  if (!local) return 'Tu perfil';
+  return local.replace(/[._-]+/g, ' ').trim().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function displayNameFromEmail(email: string | null): string {
-  if (!email) return 'Usuario';
-  const local = email.split('@')[0] ?? '';
-  if (!local) return 'Usuario';
-  const spaced = local.replaceAll(/[._-]+/g, ' ').trim();
-  return spaced.replaceAll(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function initialFromName(name: string): string {
-  const trimmed = name.trim();
-  return trimmed ? trimmed[0].toUpperCase() : '?';
-}
-
-function profileFormFromUser(user?: Partial<ProfileUser> | null): ProfileForm {
-  return {
-    fullName: user?.fullName ?? '',
-    birthDate: user?.birthDate ?? '',
-    phone: user?.phone ?? '',
-    conditions: user?.conditions ?? '',
-    allergies: user?.allergies ?? '',
-    pregnancy: Boolean(user?.pregnancy),
-    lactation: Boolean(user?.lactation),
-    recentSurgeries: Boolean(user?.recentSurgeries),
-    immunosuppression: Boolean(user?.immunosuppression),
-    anticoagulantTreatment: Boolean(user?.anticoagulantTreatment),
-    aiHealthContextConsent: Boolean(user?.aiHealthContextConsent),
-  };
-}
-
-const hasMedicalValue = (value?: string | null) =>
-  Boolean(value && !['ninguna', 'ninguno'].includes(value.trim().toLowerCase()));
-
-function calculateAgeLabel(birthDate: string) {
-  const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate.trim());
-  if (!parsed) return null;
-  const date = new Date(Number(parsed[1]), Number(parsed[2]) - 1, Number(parsed[3]));
-  if (Number.isNaN(date.getTime())) return null;
+function ageOf(birthDate?: string | null): number | null {
+  const match = birthDate ? /^(\d{4})-(\d{2})-(\d{2})/.exec(birthDate) : null;
+  if (!match) return null;
   const today = new Date();
-  let age = today.getFullYear() - date.getFullYear();
-  const birthdayPassed = today.getMonth() > date.getMonth()
-    || (today.getMonth() === date.getMonth() && today.getDate() >= date.getDate());
-  if (!birthdayPassed) age -= 1;
-  if (age < 0 || age > 120) return null;
-  return `${age} años`;
-}
-
-function formatLeadOption(minutes: number) {
-  if (minutes === 0) return 'Sin aviso previo';
-  if (minutes < 60) return `${minutes} min antes`;
-  if (minutes === 60) return '1 hora antes';
-  if (minutes === 120) return '2 horas antes';
-  if (minutes === 1440) return '1 día antes';
-  return `${minutes} min antes`;
-}
-
-function ModalHeader({
-  title,
-  subtitle,
-  theme,
-  onClose,
-}: Readonly<{
-  title: string;
-  subtitle?: string;
-  theme: AppTheme;
-  onClose: () => void;
-}>) {
-  return (
-    <View style={styles.modalHeader}>
-      <View style={styles.modalHeaderText}>
-        <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]}>{subtitle}</Text> : null}
-      </View>
-      <Pressable onPress={onClose} style={[styles.closeButton, { backgroundColor: `${theme.colors.textMuted}14` }]}>
-        <MaterialCommunityIcons name="close" size={22} color={theme.colors.textPrimary} />
-      </Pressable>
-    </View>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  placeholder,
-  theme,
-  multiline,
-  keyboardType,
-  onChangeText,
-}: Readonly<{
-  label: string;
-  value: string;
-  placeholder: string;
-  theme: AppTheme;
-  multiline?: boolean;
-  keyboardType?: 'default' | 'phone-pad';
-  onChangeText: (value: string) => void;
-}>) {
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
-      <TextInput
-        value={value}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.textMuted}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        multiline={multiline}
-        textAlignVertical={multiline ? 'top' : 'center'}
-        style={[
-          styles.input,
-          multiline && styles.inputMultiline,
-          {
-            color: theme.colors.textPrimary,
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.surfaceBorder,
-          },
-        ]}
-      />
-    </View>
-  );
-}
-
-function ProfileMetric({
-  icon,
-  label,
-  value,
-  theme,
-}: Readonly<{
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  label: string;
-  value: string;
-  theme: AppTheme;
-}>) {
-  return (
-    <View style={[styles.metricCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-      <MaterialCommunityIcons name={icon} size={18} color={theme.colors.accentPrimary} />
-      <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]} numberOfLines={1}>{value}</Text>
-      <Text style={[styles.metricLabel, { color: theme.colors.textMuted }]}>{label}</Text>
-    </View>
-  );
-}
-
-function SettingsRow({
-  icon,
-  title,
-  subtitle,
-  accent,
-  onPress,
-  theme,
-}: Readonly<{
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  title: string;
-  subtitle: string;
-  accent: string;
-  onPress: () => void;
-  theme: AppTheme;
-}>) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.settingsRow,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-        pressed && { transform: [{ scale: 0.985 }], backgroundColor: `${accent}10` },
-      ]}
-      onPress={onPress}
-    >
-      <View style={[styles.settingsIconWrap, { backgroundColor: `${accent}18` }]}>
-        <MaterialCommunityIcons name={icon} size={22} color={accent} />
-      </View>
-      <View style={styles.settingsTextWrap}>
-        <Text style={[styles.settingsRowTitle, { color: theme.colors.textPrimary }]}>{title}</Text>
-        <Text style={[styles.settingsRowSubtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text>
-      </View>
-      <MaterialCommunityIcons name="chevron-right" size={24} color={theme.colors.textMuted} />
-    </Pressable>
-  );
-}
-
-function ToggleRow({
-  item,
-  value,
-  theme,
-  onChange,
-}: Readonly<{
-  item: Pick<(typeof SPECIAL_CONDITIONS)[number], 'label' | 'description' | 'icon'>;
-  value: boolean;
-  theme: AppTheme;
-  onChange: (value: boolean) => void;
-}>) {
-  return (
-    <View style={[styles.toggleRow, { borderColor: theme.colors.surfaceBorder }]}>
-      <View style={[styles.toggleIcon, { backgroundColor: value ? `${theme.colors.accentPrimary}16` : `${theme.colors.textMuted}12` }]}>
-        <MaterialCommunityIcons name={item.icon} size={20} color={value ? theme.colors.accentPrimary : theme.colors.textSecondary} />
-      </View>
-      <View style={styles.toggleTextWrap}>
-        <Text style={[styles.toggleTitle, { color: theme.colors.textPrimary }]}>{item.label}</Text>
-        <Text style={[styles.toggleSubtitle, { color: theme.colors.textMuted }]}>{item.description}</Text>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        accessibilityLabel={item.label}
-        trackColor={{ false: theme.colors.inputBorder, true: theme.colors.accentPrimary }}
-      />
-    </View>
-  );
-}
-
-function LeadOption({
-  minutes,
-  selected,
-  accent,
-  theme,
-  onPress,
-}: Readonly<{
-  minutes: number;
-  selected: boolean;
-  accent: string;
-  theme: AppTheme;
-  onPress: () => void;
-}>) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.leadOption,
-        {
-          borderColor: selected ? accent : theme.colors.surfaceBorder,
-          backgroundColor: selected ? `${accent}16` : theme.colors.surface,
-        },
-      ]}
-    >
-      <Text style={[styles.leadOptionText, { color: selected ? accent : theme.colors.textPrimary }]}>
-        {formatLeadOption(minutes)}
-      </Text>
-    </Pressable>
-  );
+  let age = today.getFullYear() - Number(match[1]);
+  const month = today.getMonth() + 1;
+  if (month < Number(match[2]) || (month === Number(match[2]) && today.getDate() < Number(match[3]))) age -= 1;
+  return age >= 0 && age <= 120 ? age : null;
 }
 
 export function ProfileScreen({
@@ -401,28 +77,44 @@ export function ProfileScreen({
   onSignOut,
   onAccountDeleted,
 }: Readonly<ProfileScreenProps>) {
-  const [deleteVisible, setDeleteVisible] = useState(false);
-  const [sessionsVisible, setSessionsVisible] = useState(false);
   const [profile, setProfile] = useState<Partial<ProfileUser>>({
     fullName: userFullName,
     email: userEmail ?? undefined,
     avatar: avatarData,
   });
-  const [profileForm, setProfileForm] = useState<ProfileForm>(() => profileFormFromUser({ fullName: userFullName }));
-  const [profileModalVisible, setProfileModalVisible] = useState(false);
-  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isEditingAvatar, setIsEditingAvatar] = useState(false);
-  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
-  const [notificationSettingsVisible, setNotificationSettingsVisible] = useState(false);
-  const [notificationTab, setNotificationTab] = useState<NotificationTab>('medications');
-  const [isSavingNotificationSettings, setIsSavingNotificationSettings] = useState(false);
-  const [medicationReminderLeadMinutes, setMedicationReminderLeadMinutesState] = useState(5);
-  const [appointmentReminderLeadMinutes, setAppointmentReminderLeadMinutesState] = useState(60);
-  const [medicationCount, setMedicationCount] = useState(0);
-  const [appointmentCount, setAppointmentCount] = useState(0);
-  const [supportVisible, setSupportVisible] = useState(false);
-  const [privacyVisible, setPrivacyVisible] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lead, setLead] = useState<{ medication: number; appointment: number } | null>(null);
+  const [appearance, setAppearance] = useState<ThemePreference>(getThemePreference);
+  const [alarmIssue, setAlarmIssue] = useState(false);
+  const enter = useEnterAnimation(true);
+
+  const applyUser = useCallback((user: ProfileUser) => {
+    setProfile(user);
+    onProfileUpdated?.(user);
+  }, [onProfileUpdated]);
+
+  const loadProfile = useCallback(async (showErrors: boolean) => {
+    try {
+      const response = await fetchProfileFromBackend();
+      if (response.user) applyUser(response.user);
+    } catch (error) {
+      if (showErrors) {
+        Alert.alert('No se pudo actualizar', error instanceof Error ? error.message : 'Revisa tu conexión e inténtalo de nuevo.');
+      }
+    }
+  }, [applyUser]);
+
+  const loadLead = useCallback(async () => {
+    const [medication, appointment] = await Promise.all([getMedicationReminderLeadMinutes(), getAppointmentReminderLeadMinutes()]);
+    setLead({ medication, appointment });
+  }, []);
+
+  useEffect(() => {
+    void loadProfile(false);
+    void loadLead();
+    return onThemePreference(setAppearance);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setProfile((current) => ({
@@ -433,701 +125,395 @@ export function ProfileScreen({
     }));
   }, [avatarData, userEmail, userFullName]);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchProfileFromBackend()
-      .then((res) => {
-        if (!cancelled && res.user) {
-          setProfile(res.user);
-          setProfileForm(profileFormFromUser(res.user));
-          onProfileUpdated?.(res.user);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const email = profile.email ?? userEmail;
+  const name = profile.fullName?.trim() || userFullName?.trim() || nameFromEmail(email ?? null);
+  const avatar = parseAvatar(profile.avatar ?? avatarData);
+  const age = ageOf(profile.birthDate);
+  const phone = formatPhone(profile.phone);
+  const conditions = parseMedicalSelection(profile.conditions);
+  const allergies = parseMedicalSelection(profile.allergies);
+  const special = SPECIAL_CONDITIONS.filter((item) => Boolean(profile[item.key]));
+  const healthEmpty = !conditions.none && !conditions.items.length && !allergies.none && !allergies.items.length && !special.length;
 
-  const currentAvatarData = profile.avatar ?? avatarData;
-  const parsedAvatar = useMemo(() => getSafeAvatar(currentAvatarData), [currentAvatarData]);
-  const name = profile.fullName || userFullName || displayNameFromEmail(userEmail);
-  const initial = initialFromName(name);
-  const ageLabel = calculateAgeLabel(profile.birthDate ?? '');
-  const activeRiskCount = SPECIAL_CONDITIONS.filter((item) => Boolean(profile[item.key])).length;
-  const medicalSummary = profile.conditions || profile.allergies || activeRiskCount > 0
-    ? `${hasMedicalValue(profile.conditions) ? 'Condiciones registradas' : 'Sin condiciones'} · ${hasMedicalValue(profile.allergies) ? 'alergias registradas' : 'sin alergias'} · ${activeRiskCount} alertas`
-    : 'Completa tu contexto médico para consultas más precisas';
+  const close = () => setSheet(null);
 
-  const loadProfile = async (openModal: boolean) => {
-    if (openModal) setProfileModalVisible(true);
-    setIsLoadingProfile(true);
-    try {
-      const response = await fetchProfileFromBackend();
-      if (response.user) {
-        setProfile(response.user);
-        setProfileForm(profileFormFromUser(response.user));
-        onProfileUpdated?.(response.user);
-      }
-    } catch (error) {
-      if (openModal) {
-        setProfileForm(profileFormFromUser(profile));
-      }
-      Alert.alert(
-        'No se pudo cargar el perfil',
-        error instanceof Error ? error.message : 'Revisa tu conexión e intenta nuevamente.',
-      );
-    } finally {
-      setIsLoadingProfile(false);
-    }
-  };
-
-  const openProfileEditor = () => {
-    setProfileForm(profileFormFromUser(profile));
-    void loadProfile(true);
-  };
-
-  const saveProfile = async () => {
-    if (profileForm.birthDate.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(profileForm.birthDate.trim())) {
-      Alert.alert('Fecha inválida', 'Usa el formato AAAA-MM-DD para la fecha de nacimiento.');
+  const changePassword = () => {
+    if (!email) {
+      Alert.alert('Correo no disponible', 'No encontramos el correo de esta cuenta.');
       return;
     }
-
-    const payload: ProfileUpdatePayload = {
-      fullName: profileForm.fullName.trim(),
-      birthDate: profileForm.birthDate.trim(),
-      phone: profileForm.phone.trim(),
-      conditions: profileForm.conditions.trim(),
-      allergies: profileForm.allergies.trim(),
-      pregnancy: profileForm.pregnancy,
-      lactation: profileForm.lactation,
-      recentSurgeries: profileForm.recentSurgeries,
-      immunosuppression: profileForm.immunosuppression,
-      anticoagulantTreatment: profileForm.anticoagulantTreatment,
-      aiHealthContextConsent: profileForm.aiHealthContextConsent,
-    };
-
-    setIsSavingProfile(true);
-    try {
-      const response = await updateProfileOnBackend(payload);
-      if (response.user) {
-        setProfile(response.user);
-        onProfileUpdated?.(response.user);
-      } else {
-        setProfile((current) => ({ ...current, ...payload }));
-      }
-      setProfileModalVisible(false);
-      Alert.alert('Perfil actualizado', 'Tus datos personales y médicos se guardaron correctamente.');
-    } catch (error) {
-      Alert.alert(
-        'No se pudo guardar',
-        error instanceof Error ? error.message : 'Intenta nuevamente en unos minutos.',
-      );
-    } finally {
-      setIsSavingProfile(false);
-    }
-  };
-
-  const openNotificationSettings = async () => {
-    setNotificationSettingsVisible(true);
-    const [medicationLeadMinutes, appointmentLeadMinutes] = await Promise.all([
-      getMedicationReminderLeadMinutes(),
-      getAppointmentReminderLeadMinutes(),
-    ]);
-    setMedicationReminderLeadMinutesState(medicationLeadMinutes);
-    setAppointmentReminderLeadMinutesState(appointmentLeadMinutes);
-
-    const session = await getStoredSession();
-    if (!session?.accessToken) return;
-    try {
-      const [medications, appointments] = await Promise.all([
-        fetchMedications(session.accessToken),
-        fetchAppointments(session.accessToken),
-      ]);
-      setMedicationCount(medications.filter((medication) => medication.active).length);
-      setAppointmentCount(appointments.filter((appointment) => {
-        const date = new Date(appointment.scheduledAt);
-        return appointment.active !== false
-          && appointment.attendanceStatus === 'PENDING'
-          && !Number.isNaN(date.getTime())
-          && date.getTime() > Date.now();
-      }).length);
-    } catch {
-      setMedicationCount(0);
-      setAppointmentCount(0);
-    }
-  };
-
-  const saveNotificationSettings = async () => {
-    try {
-      setIsSavingNotificationSettings(true);
-      const permission = await registerForPushNotificationsAsync();
-      if (permission !== 'granted') {
-        Alert.alert('Permiso requerido', 'Activa las notificaciones del sistema para recibir recordatorios.');
-        return;
-      }
-
-      await setMedicationReminderLeadMinutes(medicationReminderLeadMinutes);
-      await setAppointmentReminderLeadMinutes(appointmentReminderLeadMinutes);
-
-      const session = await getStoredSession();
-      if (session?.accessToken) {
-        try {
-          const response = await updateProfileOnBackend({ notificationLeadMinutes: medicationReminderLeadMinutes });
-          if (response.user) onProfileUpdated?.(response.user);
-        } catch (syncError) {
-          console.warn('[MedicAI] Failed to sync lead minutes with backend:', syncError);
-        }
-
-        const [medications, appointments] = await Promise.all([
-          fetchMedications(session.accessToken),
-          fetchAppointments(session.accessToken),
-        ]);
-        // Replanifica todas las alarmas de medicamentos con la nueva antelación.
-        await syncMedicationAlarms(medications, { force: true });
-        for (const appointment of appointments) {
-          await scheduleAppointmentReminder(appointment);
-        }
-      }
-
-      setNotificationSettingsVisible(false);
-      Alert.alert('Recordatorios actualizados', 'Se reprogramaron medicamentos y citas con tus preferencias.');
-    } catch (error) {
-      Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'No se pudieron actualizar las preferencias de notificación.',
-      );
-    } finally {
-      setIsSavingNotificationSettings(false);
-    }
-  };
-
-  const handleAvatarSelect = async (avatar: (typeof PREDEFINED_AVATARS)[0]) => {
-    setIsSavingAvatar(true);
-    try {
-      const avatarStr = JSON.stringify(avatar);
-      await updateAvatarOnBackend(avatarStr);
-      setProfile((current) => ({ ...current, avatar: avatarStr }));
-      onSetAvatar?.(avatarStr);
-      setIsEditingAvatar(false);
-    } catch (error) {
-      Alert.alert(
-        'Error al guardar avatar',
-        error instanceof Error ? error.message : 'No se pudo guardar el avatar. Intenta de nuevo.',
-      );
-    } finally {
-      setIsSavingAvatar(false);
-    }
-  };
-
-  const handleSecurityPress = () => {
-    if (!userEmail) {
-      Alert.alert('Correo no disponible', 'No encontramos un correo asociado a esta sesión.');
-      return;
-    }
-
-    Alert.alert(
-      'Seguridad de la cuenta',
-      `Enviaremos un enlace de cambio de contraseña a ${userEmail}.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Enviar enlace',
-          onPress: () => {
-            void requestPasswordReset(userEmail)
-              .then(() => Alert.alert('Correo enviado', 'Revisa tu bandeja de entrada y spam.'))
-              .catch((error: unknown) => Alert.alert(
-                'No se pudo enviar',
-                error instanceof Error ? error.message : 'Intenta nuevamente más tarde.',
-              ));
-          },
+    Alert.alert('Cambiar contraseña', `Te enviaremos un enlace seguro a ${email} para crear una contraseña nueva.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Enviar enlace',
+        onPress: () => {
+          void requestPasswordReset(email)
+            .then(() => Alert.alert('Revisa tu correo', 'Abre el enlace para crear tu contraseña nueva. Si no lo ves, busca en spam.'))
+            .catch((error: unknown) =>
+              Alert.alert('No se pudo enviar', error instanceof Error ? error.message : 'Inténtalo más tarde.'));
         },
-      ],
-    );
+      },
+    ]);
   };
 
-  const openSupportEmail = () => {
-    const subject = encodeURIComponent('Soporte MedicAI');
-    const body = encodeURIComponent(`Hola, necesito ayuda con mi cuenta ${userEmail ?? ''}.`);
-    void Linking.openURL(`mailto:soporte@medicai.lat?subject=${subject}&body=${body}`);
+  const confirmSignOut = () => {
+    Alert.alert('¿Cerrar sesión?', 'En este teléfono dejarán de sonar tus alarmas hasta que vuelvas a entrar.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Cerrar sesión', style: 'destructive', onPress: onSignOut },
+    ]);
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: contentBottomInset + 20 }]}
-      >
-        <View style={[styles.heroCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
-          <View style={styles.heroTopRow}>
-            <Pressable
-              style={[styles.avatar, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}
-              onPress={() => setIsEditingAvatar(true)}
-            >
-              {parsedAvatar ? (
-                <Image source={{ uri: parsedAvatar.url }} style={styles.avatarImage} />
-              ) : (
-                <Text style={[styles.avatarLetter, { color: theme.colors.accentPrimary }]}>{initial}</Text>
-              )}
-              <View style={[styles.editBadge, { backgroundColor: theme.colors.accentPrimary }]}> 
-                <MaterialCommunityIcons name="camera-outline" size={14} color="#fff" />
-              </View>
-            </Pressable>
-            <View style={styles.heroIdentity}>
-              <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>{name}</Text>
-              {userEmail ? <Text style={[styles.email, { color: theme.colors.textMuted }]} numberOfLines={1}>{userEmail}</Text> : null}
-              <View style={styles.heroPills}>
-                <View style={[styles.statusPill, { backgroundColor: `${theme.colors.accentPrimary}14` }]}>
-                  <MaterialCommunityIcons name="shield-check-outline" size={14} color={theme.colors.accentPrimary} />
-                  <Text style={[styles.statusPillText, { color: theme.colors.accentPrimary }]}>Cuenta activa</Text>
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+      <Animated.View style={[styles.screen, enter.style]}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, { paddingBottom: contentBottomInset + 24 }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void Promise.all([loadProfile(true), loadLead()]).finally(() => setRefreshing(false));
+              }}
+              tintColor={theme.colors.accentPrimary}
+              colors={[theme.colors.accentPrimary]}
+            />
+          }
+        >
+          {/* Identidad */}
+          <View style={[styles.heroCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+            <View style={styles.heroTopRow}>
+              <PressableScale
+                onPress={() => setSheet('avatar')}
+                accessibilityRole="button"
+                accessibilityLabel="Cambiar foto de perfil"
+                style={[styles.avatar, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}
+              >
+                {avatar ? (
+                  <Image source={{ uri: avatar.url }} style={styles.avatarImage} accessibilityIgnoresInvertColors />
+                ) : (
+                  <Text style={[styles.avatarLetter, { color: theme.colors.accentPrimary }]}>{initialsOf(name)}</Text>
+                )}
+                <View style={[styles.editBadge, { backgroundColor: theme.colors.accentPrimary, borderColor: theme.colors.surface }]}>
+                  <MaterialCommunityIcons name="camera-outline" size={14} color="#fff" />
+                </View>
+              </PressableScale>
+              <View style={styles.heroIdentity}>
+                <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>{name}</Text>
+                {email ? <Text style={[styles.email, { color: theme.colors.textMuted }]} numberOfLines={1}>{email}</Text> : null}
+                <View style={styles.heroPills}>
+                  {phone ? (
+                    <View style={[styles.statusPill, { backgroundColor: `${theme.colors.accentPrimary}14` }]} accessibilityLabel={`Teléfono ${phone}`}>
+                      <Text style={[styles.statusPillText, { color: theme.colors.accentPrimary }]}>{phone}</Text>
+                    </View>
+                  ) : (
+                    <PressableScale
+                      onPress={() => setSheet('edit')}
+                      accessibilityRole="button"
+                      style={[styles.statusPill, { backgroundColor: `${theme.colors.textMuted}14` }]}
+                    >
+                      <MaterialCommunityIcons name="phone-plus-outline" size={14} color={theme.colors.textSecondary} />
+                      <Text style={[styles.statusPillText, { color: theme.colors.textSecondary }]}>Agregar teléfono</Text>
+                    </PressableScale>
+                  )}
                 </View>
               </View>
             </View>
+
+            <View style={styles.metricsRow}>
+              <ProfileMetric theme={theme} icon="calendar-account-outline" label="Edad" value={age !== null ? `${age} años` : 'Sin dato'} />
+              <ProfileMetric theme={theme} icon="alert-decagram-outline" label="Alertas" value={special.length ? String(special.length) : 'Ninguna'} />
+              <ProfileMetric
+                theme={theme}
+                icon="bell-ring-outline"
+                label="Aviso meds"
+                value={lead ? formatLead(lead.medication).replace(' antes', '') : '—'}
+              />
+            </View>
           </View>
 
-          <View style={styles.metricsRow}>
-            <ProfileMetric icon="calendar-account-outline" label="Edad" value={ageLabel ?? 'Sin dato'} theme={theme} />
-            <ProfileMetric icon="alert-decagram-outline" label="Alertas" value={activeRiskCount > 0 ? String(activeRiskCount) : 'Ninguna'} theme={theme} />
-            <ProfileMetric icon="bell-ring-outline" label="Aviso meds" value={formatLeadOption(profile.notificationLeadMinutes ?? medicationReminderLeadMinutes).replace(' antes', '')} theme={theme} />
+          <AppButton theme={theme} label="Editar datos personales" variant="secondary" icon="create-outline" iconPosition="left" onPress={() => setSheet('edit')} />
+
+          {/* Salud */}
+          <PressableScale
+            onPress={() => setSheet('edit')}
+            pressedScale={0.99}
+            accessibilityRole="button"
+            accessibilityLabel="Información de salud. Toca para editar."
+            style={[styles.health, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+          >
+            <View style={styles.healthHeader}>
+              <MaterialCommunityIcons name="clipboard-pulse-outline" size={20} color={theme.colors.accentPrimary} />
+              <Text style={[styles.healthTitle, { color: theme.colors.textPrimary }]}>Información de salud</Text>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textMuted} />
+            </View>
+            {healthEmpty ? (
+              <Text style={[styles.healthEmpty, { color: theme.colors.textSecondary }]}>
+                Agrega tus condiciones y alergias: ayudan a tus cuidadores y al asistente a darte información segura.
+              </Text>
+            ) : (
+              <>
+                <HealthRow theme={theme} label="Alergias" selection={allergies} noneLabel="Ninguna conocida" color={theme.colors.accentTertiary} />
+                <HealthRow theme={theme} label="Condiciones" selection={conditions} noneLabel="Ninguna" color={theme.colors.accentSecondary} />
+                {special.length ? (
+                  <HealthRow theme={theme} label="Situaciones" selection={{ none: false, items: special.map((item) => item.label) }} noneLabel="" color={theme.colors.accentPrimary} />
+                ) : null}
+              </>
+            )}
+          </PressableScale>
+
+          <AlarmStatusCard theme={theme} onIssueChange={setAlarmIssue} />
+
+          <SettingsGroup theme={theme} title="Preferencias">
+            <SettingsItem
+              theme={theme}
+              icon="bell-ring-outline"
+              title="Recordatorios"
+              subtitle={lead ? `Medicamentos: ${formatLead(lead.medication).toLowerCase()} · Citas: ${formatLead(lead.appointment).toLowerCase()}` : undefined}
+              color="#F59E0B"
+              badge={alarmIssue}
+              onPress={() => setSheet('reminders')}
+            />
+            <View style={styles.appearance}>
+              <View style={styles.appearanceHeader}>
+                <View style={[styles.appearanceIcon, { backgroundColor: `${theme.colors.accentSecondary}18` }]}>
+                  <MaterialCommunityIcons name="palette-outline" size={20} color={theme.colors.accentSecondary} />
+                </View>
+                <Text style={[styles.appearanceTitle, { color: theme.colors.textPrimary }]}>Apariencia</Text>
+              </View>
+              <View style={[styles.segment, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder }]} accessibilityRole="radiogroup">
+                {APPEARANCE_OPTIONS.map((option) => {
+                  const selected = appearance === option.value;
+                  return (
+                    <PressableScale
+                      key={option.value}
+                      onPress={() => setThemePreference(option.value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`Apariencia: ${option.label}`}
+                      style={[styles.segmentItem, selected && { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+                    >
+                      <MaterialCommunityIcons name={option.icon} size={16} color={selected ? theme.colors.accentPrimary : theme.colors.textMuted} />
+                      <Text style={[styles.segmentText, { color: selected ? theme.colors.textPrimary : theme.colors.textMuted }]}>{option.label}</Text>
+                    </PressableScale>
+                  );
+                })}
+              </View>
+            </View>
+          </SettingsGroup>
+
+          <SettingsGroup theme={theme} title="Cuenta y seguridad">
+            <SettingsItem
+              theme={theme}
+              icon="lock-reset"
+              title="Cambiar contraseña"
+              subtitle="Te enviamos un enlace seguro a tu correo"
+              color={theme.colors.accentSecondary}
+              onPress={changePassword}
+            />
+            <SettingsItem
+              theme={theme}
+              icon="cellphone-key"
+              title="Dispositivos con sesión"
+              subtitle="Dónde está abierta tu cuenta"
+              color="#0EA5E9"
+              onPress={() => setSheet('sessions')}
+            />
+          </SettingsGroup>
+
+          <SettingsGroup theme={theme} title="Privacidad y ayuda">
+            <SettingsItem
+              theme={theme}
+              icon="shield-lock-outline"
+              title="Privacidad"
+              subtitle="Asistente de IA, historial de accesos y tus datos"
+              color="#8B5CF6"
+              onPress={() => setSheet('privacy')}
+            />
+            <SettingsItem
+              theme={theme}
+              icon="lifebuoy"
+              title="Ayuda y soporte"
+              subtitle="Preguntas frecuentes y contacto"
+              color={theme.colors.success}
+              onPress={() => setSheet('help')}
+            />
+          </SettingsGroup>
+
+          <AppButton
+            theme={theme}
+            label={isSigningOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
+            variant="secondary"
+            icon="log-out-outline"
+            iconPosition="left"
+            onPress={confirmSignOut}
+            loading={isSigningOut}
+          />
+
+          <PressableScale onPress={() => setSheet('delete')} accessibilityRole="button" style={styles.deleteLink}>
+            <Text style={[styles.deleteText, { color: theme.colors.accentTertiary }]}>Eliminar mi cuenta</Text>
+          </PressableScale>
+
+          <View style={styles.footer}>
+            <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>MedicAI {APP_VERSION}</Text>
+            <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>
+              MedicAI te ayuda a organizar tu tratamiento, pero no reemplaza la atención médica profesional. En una emergencia, llama al 123.
+            </Text>
           </View>
-        </View>
+        </ScrollView>
+      </Animated.View>
 
-        <View style={[styles.summaryCard, { backgroundColor: `${theme.colors.accentPrimary}10`, borderColor: `${theme.colors.accentPrimary}24` }]}> 
-          <MaterialCommunityIcons name="clipboard-pulse-outline" size={22} color={theme.colors.accentPrimary} />
-          <View style={styles.summaryTextWrap}>
-            <Text style={[styles.summaryTitle, { color: theme.colors.textPrimary }]}>Contexto médico</Text>
-            <Text style={[styles.summaryBody, { color: theme.colors.textSecondary }]}>{medicalSummary}</Text>
-          </View>
-        </View>
+      <AvatarSheet
+        theme={theme}
+        visible={sheet === 'avatar'}
+        name={name}
+        avatarData={profile.avatar ?? avatarData}
+        onClose={close}
+        onSaved={(data) => {
+          setProfile((current) => ({ ...current, avatar: data }));
+          onSetAvatar?.(data);
+        }}
+      />
 
-        <View style={styles.sectionGroup}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>Cuenta</Text>
-          <SettingsRow
-            icon="account-heart-outline"
-            title="Datos personales y médicos"
-            subtitle="Nombre, teléfono, alergias y condiciones de riesgo"
-            accent={theme.colors.accentPrimary}
-            onPress={openProfileEditor}
-            theme={theme}
-          />
-          <SettingsRow
-            icon="lock-reset"
-            title="Seguridad"
-            subtitle="Solicita un enlace seguro para cambiar tu contraseña"
-            accent={theme.colors.accentSecondary}
-            onPress={handleSecurityPress}
-            theme={theme}
-          />
-          <SettingsRow
-            icon="cellphone-key"
-            title="Dispositivos con sesión"
-            subtitle="Dónde está abierta tu cuenta; ciérrala en un teléfono perdido"
-            accent="#0EA5E9"
-            onPress={() => setSessionsVisible(true)}
-            theme={theme}
-          />
-          <SettingsRow
-            icon="bell-badge-outline"
-            title="Notificaciones"
-            subtitle="Anticipación, permisos y reprogramación de recordatorios"
-            accent="#F59E0B"
-            onPress={() => { void openNotificationSettings(); }}
-            theme={theme}
-          />
-        </View>
+      <EditProfileSheet
+        theme={theme}
+        visible={sheet === 'edit'}
+        profile={profile}
+        onClose={close}
+        onSaved={(user, payload) => {
+          if (user) applyUser(user);
+          else setProfile((current) => ({ ...current, ...payload }));
+        }}
+      />
 
-        <View style={styles.sectionGroup}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>Soporte y privacidad</Text>
-          <SettingsRow
-            icon="lifebuoy"
-            title="Centro de ayuda"
-            subtitle="Guías rápidas, permisos Android y contacto de soporte"
-            accent="#10B981"
-            onPress={() => setSupportVisible(true)}
-            theme={theme}
-          />
-          <SettingsRow
-            icon="file-lock-outline"
-            title="Privacidad y uso de datos"
-            subtitle="Consulta qué datos guarda MedicAI y cómo se usan"
-            accent="#8B5CF6"
-            onPress={() => setPrivacyVisible(true)}
-            theme={theme}
-          />
-        </View>
+      <RemindersSheet
+        theme={theme}
+        visible={sheet === 'reminders'}
+        onClose={close}
+        onSaved={(next, user) => {
+          setLead(next);
+          if (user) applyUser(user);
+        }}
+      />
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.signOut,
-            {
-              backgroundColor: `${theme.colors.accentTertiary}10`,
-              borderColor: `${theme.colors.accentTertiary}30`,
-              transform: [{ scale: pressed && !isSigningOut ? 0.98 : 1 }],
-            },
-            isSigningOut && styles.signOutDisabled,
-          ]}
-          onPress={onSignOut}
-          disabled={isSigningOut}
-          accessibilityRole="button"
-          accessibilityLabel="Cerrar sesión"
-          accessibilityState={{ disabled: isSigningOut }}
-        >
-          <MaterialCommunityIcons name="logout" size={20} color={theme.colors.accentTertiary} />
-          <Text style={[styles.signOutText, { color: theme.colors.accentTertiary }]}> 
-            {isSigningOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
-          </Text>
-        </Pressable>
+      <SessionsSheet theme={theme} visible={sheet === 'sessions'} onClose={close} />
 
-        <Pressable
-          onPress={() => setDeleteVisible(true)}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.deleteAccount, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={[styles.deleteAccountText, { color: theme.colors.textMuted }]}>Eliminar mi cuenta</Text>
-        </Pressable>
+      <PrivacySheet
+        theme={theme}
+        visible={sheet === 'privacy'}
+        email={email ?? null}
+        aiConsent={Boolean(profile.aiHealthContextConsent)}
+        onClose={close}
+        onConsentChanged={(value, user) => {
+          if (user) applyUser(user);
+          else setProfile((current) => ({ ...current, aiHealthContextConsent: value }));
+        }}
+        onOpenHistory={() => setSheet('history')}
+      />
 
-        <Text style={[styles.versionText, { color: theme.colors.textMuted }]}>MedicAI v1.0.0</Text>
-      </ScrollView>
+      {/* Al cerrar el historial se vuelve a Privacidad, de donde se abrió. */}
+      <PermissionHistorySheet theme={theme} visible={sheet === 'history'} onClose={() => setSheet('privacy')} />
 
-      <SessionsSheet theme={theme} visible={sessionsVisible} onClose={() => setSessionsVisible(false)} />
+      <HelpSheet theme={theme} visible={sheet === 'help'} onClose={close} />
 
       <DeleteAccountSheet
         theme={theme}
-        visible={deleteVisible}
-        onClose={() => setDeleteVisible(false)}
+        visible={sheet === 'delete'}
+        onClose={close}
         onDeleted={() => {
-          setDeleteVisible(false);
+          close();
           (onAccountDeleted ?? onSignOut)();
           Alert.alert('Cuenta eliminada', 'Tu cuenta y todos tus datos fueron eliminados.');
         }}
       />
+    </View>
+  );
+}
 
-      <Modal visible={isEditingAvatar} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsEditingAvatar(false)}>
-        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}> 
-          <ModalHeader title="Elige tu avatar" subtitle="Se guardará en tu cuenta" theme={theme} onClose={() => setIsEditingAvatar(false)} />
-          <ScrollView contentContainerStyle={styles.galleryGrid}>
-            {PREDEFINED_AVATARS.map((avatar) => {
-              const isSelected = parsedAvatar?.id === avatar.id;
-              return (
-                <Pressable
-                  key={avatar.id}
-                  style={[styles.galleryItem, { borderColor: isSelected ? theme.colors.accentPrimary : 'transparent' }]}
-                  onPress={() => handleAvatarSelect(avatar)}
-                  disabled={isSavingAvatar}
-                >
-                  <Image source={{ uri: avatar.url }} style={styles.galleryImage} />
-                  {isSavingAvatar && isSelected ? (
-                    <View style={styles.galleryLoadingOverlay}>
-                      <ActivityIndicator color="#fff" />
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      </Modal>
+function ProfileMetric({
+  theme,
+  icon,
+  label,
+  value,
+}: Readonly<{ theme: AppTheme; icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }>) {
+  return (
+    <View style={[styles.metricCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]} accessible accessibilityLabel={`${label}: ${value}`}>
+      <MaterialCommunityIcons name={icon} size={18} color={theme.colors.accentPrimary} />
+      <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]} numberOfLines={1}>{value}</Text>
+      <Text style={[styles.metricLabel, { color: theme.colors.textMuted }]}>{label}</Text>
+    </View>
+  );
+}
 
-      <Modal visible={profileModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setProfileModalVisible(false)}>
-        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}> 
-          <ModalHeader
-            title="Datos personales"
-            subtitle="Esta información queda asociada a tu cuenta MedicAI"
-            theme={theme}
-            onClose={() => setProfileModalVisible(false)}
-          />
-          <ScrollView contentContainerStyle={styles.profileFormScroll} showsVerticalScrollIndicator={false}>
-            {isLoadingProfile ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={theme.colors.accentPrimary} />
-                <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Actualizando datos...</Text>
-              </View>
-            ) : null}
-
-            <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
-              <Text style={[styles.formSectionTitle, { color: theme.colors.textPrimary }]}>Perfil</Text>
-              <TextField label="Nombre completo" value={profileForm.fullName} placeholder="Tu nombre" theme={theme} onChangeText={(value) => setProfileForm((current) => ({ ...current, fullName: value }))} />
-              <TextField label="Fecha de nacimiento" value={profileForm.birthDate} placeholder="AAAA-MM-DD" theme={theme} onChangeText={(value) => setProfileForm((current) => ({ ...current, birthDate: value }))} />
-              <TextField label="Teléfono" value={profileForm.phone} placeholder="Número de contacto" theme={theme} keyboardType="phone-pad" onChangeText={(value) => setProfileForm((current) => ({ ...current, phone: value }))} />
+/** Fila de la tarjeta de salud: chips con lo registrado, o "Ninguna". */
+function HealthRow({
+  theme,
+  label,
+  selection,
+  noneLabel,
+  color,
+}: Readonly<{ theme: AppTheme; label: string; selection: { none: boolean; items: string[] }; noneLabel: string; color: string }>) {
+  const MAX = 4;
+  const shown = selection.items.slice(0, MAX);
+  const hidden = selection.items.length - shown.length;
+  return (
+    <View style={styles.healthRow}>
+      <Text style={[styles.healthLabel, { color: theme.colors.textMuted }]}>{label}</Text>
+      <View style={styles.chips}>
+        {shown.length ? (
+          shown.map((item) => (
+            <View key={item} style={[styles.chip, { backgroundColor: `${color}14`, borderColor: `${color}30` }]}>
+              <Text style={[styles.chipText, { color: theme.colors.textPrimary }]} numberOfLines={1}>{item}</Text>
             </View>
-
-            <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-              <Text style={[styles.formSectionTitle, { color: theme.colors.textPrimary }]}>Información médica</Text>
-              {/* Mismos controles que en el registro y en los perfiles a cargo. */}
-              <MedicalInfoEditor
-                theme={theme}
-                value={{
-                  conditions: profileForm.conditions,
-                  allergies: profileForm.allergies,
-                  pregnancy: profileForm.pregnancy,
-                  lactation: profileForm.lactation,
-                  recentSurgeries: profileForm.recentSurgeries,
-                  immunosuppression: profileForm.immunosuppression,
-                  anticoagulantTreatment: profileForm.anticoagulantTreatment,
-                }}
-                onChange={(medical) => setProfileForm((current) => ({ ...current, ...medical }))}
-              />
-            </View>
-
-            <View style={[styles.formSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
-              <Text style={[styles.formSectionTitle, { color: theme.colors.textPrimary }]}>Privacidad</Text>
-              <ToggleRow
-                item={AI_CONSENT_ITEM}
-                value={profileForm.aiHealthContextConsent}
-                theme={theme}
-                onChange={(value) => setProfileForm((current) => ({ ...current, aiHealthContextConsent: value }))}
-              />
-            </View>
-
-            <View style={styles.modalActionRow}>
-              <Pressable
-                style={[styles.secondaryButton, { borderColor: theme.colors.surfaceBorder }]}
-                onPress={() => setProfileModalVisible(false)}
-                disabled={isSavingProfile}
-              >
-                <Text style={[styles.secondaryButtonText, { color: theme.colors.textPrimary }]}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.primaryButton, { backgroundColor: theme.colors.accentPrimary }, isSavingProfile && styles.disabledButton]}
-                onPress={() => { void saveProfile(); }}
-                disabled={isSavingProfile}
-              >
-                {isSavingProfile ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Guardar</Text>}
-              </Pressable>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      <Modal visible={notificationSettingsVisible} transparent animationType="slide" onRequestClose={() => setNotificationSettingsVisible(false)}>
-        <View style={styles.sheetOverlay}>
-          <View style={[styles.notificationSheet, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}> 
-            <ModalHeader
-              title="Notificaciones"
-              subtitle="Controla recordatorios sin saturar tu agenda"
-              theme={theme}
-              onClose={() => setNotificationSettingsVisible(false)}
-            />
-
-            <View style={[styles.segmentedControl, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
-              {(['medications', 'appointments'] as NotificationTab[]).map((tab) => {
-                const selected = notificationTab === tab;
-                const label = tab === 'medications' ? 'Medicamentos' : 'Citas';
-                return (
-                  <Pressable
-                    key={tab}
-                    style={[styles.segmentButton, selected && { backgroundColor: theme.colors.accentPrimary }]}
-                    onPress={() => setNotificationTab(tab)}
-                  >
-                    <Text style={[styles.segmentText, { color: selected ? '#fff' : theme.colors.textSecondary }]}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {notificationTab === 'medications' ? (
-              <View style={styles.notificationContent}>
-                <View style={[styles.notificationInfoCard, { backgroundColor: `${theme.colors.accentPrimary}10`, borderColor: `${theme.colors.accentPrimary}24` }]}> 
-                  <MaterialCommunityIcons name="alarm-light-outline" size={24} color={theme.colors.accentPrimary} />
-                  <View style={styles.summaryTextWrap}>
-                    <Text style={[styles.summaryTitle, { color: theme.colors.textPrimary }]}>Alarmas críticas</Text>
-                    <Text style={[styles.summaryBody, { color: theme.colors.textSecondary }]}>La toma exacta usa alarma nativa. El ajuste inferior sólo cambia el aviso previo.</Text>
-                  </View>
-                </View>
-                <Text style={[styles.notificationSectionTitle, { color: theme.colors.textPrimary }]}>Aviso previo</Text>
-                <View style={styles.leadGrid}>
-                  {MEDICATION_LEAD_OPTIONS.map((minutes) => (
-                    <LeadOption
-                      key={minutes}
-                      minutes={minutes}
-                      selected={medicationReminderLeadMinutes === minutes}
-                      accent={theme.colors.accentPrimary}
-                      theme={theme}
-                      onPress={() => setMedicationReminderLeadMinutesState(minutes)}
-                    />
-                  ))}
-                </View>
-                <Text style={[styles.notificationFootnote, { color: theme.colors.textMuted }]}>Medicamentos activos que se reprogramarán: {medicationCount}</Text>
-              </View>
-            ) : (
-              <View style={styles.notificationContent}>
-                <View style={[styles.notificationInfoCard, { backgroundColor: `${theme.colors.accentSecondary}10`, borderColor: `${theme.colors.accentSecondary}24` }]}> 
-                  <MaterialCommunityIcons name="calendar-clock" size={24} color={theme.colors.accentSecondary} />
-                  <View style={styles.summaryTextWrap}>
-                    <Text style={[styles.summaryTitle, { color: theme.colors.textPrimary }]}>Tres avisos útiles</Text>
-                    <Text style={[styles.summaryBody, { color: theme.colors.textSecondary }]}>Recibirás un aviso previo, otro a la hora exacta y un cierre de día si sigue pendiente.</Text>
-                  </View>
-                </View>
-                <Text style={[styles.notificationSectionTitle, { color: theme.colors.textPrimary }]}>Aviso previo</Text>
-                <View style={styles.leadGrid}>
-                  {APPOINTMENT_LEAD_OPTIONS.map((minutes) => (
-                    <LeadOption
-                      key={minutes}
-                      minutes={minutes}
-                      selected={appointmentReminderLeadMinutes === minutes}
-                      accent={theme.colors.accentSecondary}
-                      theme={theme}
-                      onPress={() => setAppointmentReminderLeadMinutesState(minutes)}
-                    />
-                  ))}
-                </View>
-                <Text style={[styles.notificationFootnote, { color: theme.colors.textMuted }]}>Citas pendientes futuras que se reprogramarán: {appointmentCount}</Text>
-              </View>
-            )}
-
-            <View style={styles.modalActionRow}>
-              <Pressable
-                onPress={() => setNotificationSettingsVisible(false)}
-                style={[styles.secondaryButton, { borderColor: theme.colors.surfaceBorder }]}
-                disabled={isSavingNotificationSettings}
-              >
-                <Text style={[styles.secondaryButtonText, { color: theme.colors.textPrimary }]}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => { void saveNotificationSettings(); }}
-                style={[styles.primaryButton, { backgroundColor: theme.colors.accentPrimary }, isSavingNotificationSettings && styles.disabledButton]}
-                disabled={isSavingNotificationSettings}
-              >
-                {isSavingNotificationSettings ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Guardar y reprogramar</Text>}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={supportVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSupportVisible(false)}>
-        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}> 
-          <ModalHeader title="Centro de ayuda" subtitle="Acciones rápidas para resolver problemas comunes" theme={theme} onClose={() => setSupportVisible(false)} />
-          <ScrollView contentContainerStyle={styles.helpScroll}>
-            {[
-              ['Las alarmas no suenan', 'Verifica permisos de notificación, alarma exacta, autoinicio y batería sin restricciones en Android.'],
-              ['No veo mis cambios', 'Cierra y abre la sección; la app sincroniza datos del backend al entrar al perfil.'],
-              ['Necesito soporte', 'Envíanos un correo con tu cuenta y una descripción corta del problema.'],
-            ].map(([title, body]) => (
-              <View key={title} style={[styles.helpCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
-                <Text style={[styles.helpTitle, { color: theme.colors.textPrimary }]}>{title}</Text>
-                <Text style={[styles.helpBody, { color: theme.colors.textSecondary }]}>{body}</Text>
-              </View>
-            ))}
-            <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.accentPrimary }]} onPress={openSupportEmail}>
-              <Text style={styles.primaryButtonText}>Escribir a soporte</Text>
-            </Pressable>
-            <Pressable style={[styles.secondaryButton, { borderColor: theme.colors.surfaceBorder }]} onPress={() => { void Linking.openSettings(); }}>
-              <Text style={[styles.secondaryButtonText, { color: theme.colors.textPrimary }]}>Abrir ajustes del sistema</Text>
-            </Pressable>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      <Modal visible={privacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyVisible(false)}>
-        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}> 
-          <ModalHeader title="Privacidad" subtitle="Resumen claro del uso de datos" theme={theme} onClose={() => setPrivacyVisible(false)} />
-          <ScrollView contentContainerStyle={styles.helpScroll}>
-            {[
-              ['Datos de cuenta', 'Guardamos correo, nombre, avatar y datos básicos necesarios para identificar tu sesión.'],
-              ['Datos de salud', 'Medicamentos, citas, alergias y condiciones se usan para tus recordatorios. Solo se comparten con el asistente de IA si lo autorizas.'],
-              ['Control del usuario', 'Puedes editar datos personales desde esta pantalla o cerrar sesión para remover la sesión local del dispositivo.'],
-              ['Seguridad', 'La autenticación usa JWT y el cambio de contraseña se realiza con enlace temporal enviado al correo.'],
-            ].map(([title, body]) => (
-              <View key={title} style={[styles.helpCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}> 
-                <Text style={[styles.helpTitle, { color: theme.colors.textPrimary }]}>{title}</Text>
-                <Text style={[styles.helpBody, { color: theme.colors.textSecondary }]}>{body}</Text>
-              </View>
-            ))}
-            <Pressable
-              onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
-              accessibilityRole="link"
-              style={[styles.helpCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
-            >
-              <Text style={[styles.helpTitle, { color: theme.colors.accentSecondary }]}>Leer la política de privacidad completa</Text>
-              <Text style={[styles.helpBody, { color: theme.colors.textSecondary }]}>Qué datos tratamos, con quién se comparten y cómo eliminar tu cuenta.</Text>
-            </Pressable>
-          </ScrollView>
-        </View>
-      </Modal>
+          ))
+        ) : (
+          <Text style={[styles.healthValue, { color: theme.colors.textSecondary }]}>{selection.none ? noneLabel : 'Sin indicar'}</Text>
+        )}
+        {hidden > 0 ? <Text style={[styles.healthValue, { color: theme.colors.textMuted }]}>+{hidden}</Text> : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  scroll: { paddingHorizontal: 18, paddingTop: 24, gap: 18 },
+  content: { paddingHorizontal: 18, paddingTop: 24, gap: 16 },
   heroCard: { borderRadius: 32, borderWidth: 1, padding: 18, gap: 18 },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatar: { width: 86, height: 86, borderRadius: 28, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: 84, height: 84, borderRadius: 27 },
-  avatarLetter: { fontSize: 36, fontWeight: '900' },
-  editBadge: { position: 'absolute', bottom: -3, right: -3, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff' },
+  avatarLetter: { fontSize: 32, fontWeight: '900' },
+  editBadge: { position: 'absolute', bottom: -3, right: -3, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
   heroIdentity: { flex: 1, gap: 6 },
   name: { fontSize: 25, fontWeight: '900', letterSpacing: -0.6 },
   email: { fontSize: 13, fontWeight: '700' },
   heroPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  statusPillText: { fontSize: 12, fontWeight: '800' },
+  statusPillText: { fontSize: 12.5, fontWeight: '800', fontVariant: ['tabular-nums'] },
   metricsRow: { flexDirection: 'row', gap: 10 },
   metricCard: { flex: 1, borderRadius: 20, borderWidth: 1, padding: 12, gap: 5 },
   metricValue: { fontSize: 14, fontWeight: '900' },
   metricLabel: { fontSize: 11, fontWeight: '700' },
-  summaryCard: { flexDirection: 'row', borderRadius: 24, borderWidth: 1, padding: 16, gap: 12 },
-  summaryTextWrap: { flex: 1, gap: 3 },
-  summaryTitle: { fontSize: 15, fontWeight: '900' },
-  summaryBody: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  sectionGroup: { gap: 10 },
-  sectionTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 0.9, textTransform: 'uppercase', paddingLeft: 8 },
-  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 24, borderWidth: 1, padding: 14 },
-  settingsIconWrap: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  settingsTextWrap: { flex: 1, gap: 3 },
-  settingsRowTitle: { fontSize: 16, fontWeight: '900' },
-  settingsRowSubtitle: { fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
-  signOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 24, borderWidth: 1, marginTop: 2 },
-  signOutText: { fontSize: 16, fontWeight: '900' },
-  deleteAccount: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16 },
-  deleteAccountText: { fontSize: 13.5, fontWeight: '700', textDecorationLine: 'underline' },
-  signOutDisabled: { opacity: 0.5 },
-  versionText: { textAlign: 'center', fontSize: 12, fontWeight: '700', marginTop: 4 },
-  modalContainer: { flex: 1 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14, gap: 12 },
-  modalHeaderText: { flex: 1, gap: 3 },
-  modalTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4 },
-  modalSubtitle: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  closeButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 24, gap: 22, justifyContent: 'center' },
-  galleryItem: { width: 82, height: 82, borderRadius: 41, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  galleryImage: { width: 74, height: 74, borderRadius: 37 },
-  galleryLoadingOverlay: { position: 'absolute', width: '100%', height: '100%', borderRadius: 41, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.45)' },
-  profileFormScroll: { padding: 18, gap: 14, paddingBottom: 34 },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8 },
-  loadingText: { fontSize: 13, fontWeight: '700' },
-  formSection: { borderWidth: 1, borderRadius: 24, padding: 14, gap: 12 },
-  formSectionTitle: { fontSize: 16, fontWeight: '900' },
-  fieldWrap: { gap: 7 },
-  fieldLabel: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { minHeight: 48, borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, fontSize: 15, fontWeight: '600' },
-  inputMultiline: { minHeight: 92, paddingTop: 12, paddingBottom: 12 },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
-  toggleIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  toggleTextWrap: { flex: 1, gap: 2 },
-  toggleTitle: { fontSize: 14, fontWeight: '900' },
-  toggleSubtitle: { fontSize: 12, lineHeight: 16, fontWeight: '600' },
-  modalActionRow: { flexDirection: 'row', gap: 10, paddingTop: 4 },
-  primaryButton: { flex: 1, minHeight: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
-  primaryButtonText: { color: '#fff', fontSize: 14, fontWeight: '900', textAlign: 'center' },
-  secondaryButton: { flex: 1, minHeight: 50, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
-  secondaryButtonText: { fontSize: 14, fontWeight: '900', textAlign: 'center' },
-  disabledButton: { opacity: 0.6 },
-  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.48)' },
-  notificationSheet: { borderTopLeftRadius: 30, borderTopRightRadius: 30, borderWidth: 1, paddingHorizontal: 16, paddingBottom: 18, gap: 14, maxHeight: '88%' },
-  segmentedControl: { flexDirection: 'row', borderWidth: 1, borderRadius: 18, padding: 4, gap: 4 },
-  segmentButton: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 14 },
-  segmentText: { fontSize: 13, fontWeight: '900' },
-  notificationContent: { gap: 12 },
-  notificationInfoCard: { flexDirection: 'row', gap: 12, borderWidth: 1, borderRadius: 22, padding: 14 },
-  notificationSectionTitle: { fontSize: 15, fontWeight: '900' },
-  leadGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  leadOption: { width: '48%', borderWidth: 1, borderRadius: 16, paddingVertical: 13, paddingHorizontal: 10, alignItems: 'center' },
-  leadOptionText: { fontSize: 13, fontWeight: '900', textAlign: 'center' },
-  notificationFootnote: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  helpScroll: { padding: 18, gap: 12, paddingBottom: 34 },
-  helpCard: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 6 },
-  helpTitle: { fontSize: 16, fontWeight: '900' },
-  helpBody: { fontSize: 13.5, lineHeight: 19, fontWeight: '600' },
+  health: { borderRadius: 22, borderWidth: 1, padding: 14, gap: 12 },
+  healthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  healthTitle: { flex: 1, fontSize: 15.5, fontWeight: '900' },
+  healthEmpty: { fontSize: 13.5, lineHeight: 19, fontWeight: '600' },
+  healthRow: { gap: 6 },
+  healthLabel: { fontSize: 11.5, fontWeight: '900', letterSpacing: 0.6, textTransform: 'uppercase' },
+  healthValue: { fontSize: 13.5, fontWeight: '700' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, maxWidth: '100%' },
+  chipText: { fontSize: 12.5, fontWeight: '700' },
+  appearance: { paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
+  appearanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  appearanceIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  appearanceTitle: { fontSize: 15.5, fontWeight: '800' },
+  segment: { flexDirection: 'row', borderRadius: 14, borderWidth: 1, padding: 3, gap: 3 },
+  segmentItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: 'transparent' },
+  segmentText: { fontSize: 13, fontWeight: '800' },
+  deleteLink: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
+  deleteText: { fontSize: 14, fontWeight: '800' },
+  footer: { alignItems: 'center', gap: 6, paddingHorizontal: 12 },
+  footerText: { fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
 });

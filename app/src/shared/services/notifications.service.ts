@@ -27,7 +27,7 @@ import { Platform, PermissionsAndroid } from 'react-native';
 
 import { appStorage } from '../storage';
 import AlarmNative from '../native/AlarmNative';
-import { doseKey, getDoseDatesBetween, type DoseScheduleInput } from './dose-schedule';
+import { doseKey, dosageOnDay, getDoseDatesBetween, type DosageStep, type DoseScheduleInput } from './dose-schedule';
 
 // ─── Public constants ─────────────────────────────────────────────────────────
 
@@ -87,6 +87,8 @@ const APPOINTMENT_SNOOZE_MINUTES = 10;
 export type MedicationScheduleInput = DoseScheduleInput & {
   name: string;
   dosage: string;
+  /** Dosis que cambia con el tiempo: el aviso dice la de ese día. */
+  dosageSteps?: DosageStep[] | null;
   /**
    * Medicamento de otra persona del Círculo cuyos recordatorios recibo:
    * ALARM = alarma completa (p. ej. un hijo sin teléfono), NOTIFY = solo aviso.
@@ -117,9 +119,10 @@ const scheduleDoseAlarm = async (
   dose: Date,
 ): Promise<{ nativeId?: string }> => {
   const title = medication.ownerName ? `${medication.ownerName} · ${medication.name}` : medication.name;
+  const dosage = dosageOnDay(medication, dose);
   const body = medication.ownerName
-    ? `Es hora de la dosis de ${medication.ownerName}: ${medication.dosage}`
-    : `Es hora de tu dosis: ${medication.dosage}`;
+    ? `Es hora de la dosis de ${medication.ownerName}: ${dosage}`
+    : `Es hora de tu dosis: ${dosage}`;
 
   // Solo aviso: una notificación normal, sin pantalla de alarma.
   if (medication.careMode === 'NOTIFY') {
@@ -191,7 +194,7 @@ const scheduleDoseReminder = async (
   await Notifications.scheduleNotificationAsync({
     content: {
       title: `Recordatorio: ${medication.name}`,
-      body: `Tu dosis (${medication.dosage}) es en unos minutos.`,
+      body: `Tu dosis (${dosageOnDay(medication, dose)}) es en unos minutos.`,
       data: {
         id: medication.id,
         type: SCHEDULE_TYPES.REMINDER,
@@ -479,6 +482,11 @@ const buildPlanSignature = (medications: MedicationScheduleInput[], leadMinutes:
         med.ownerName ?? null,
         med.careMode ?? null,
         med.timeZone ?? null,
+        med.scheduleType ?? null,
+        med.weekDays ?? null,
+        med.dayInterval ?? null,
+        med.startDate ?? null,
+        med.dosageSteps ?? null,
       ])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
   });
@@ -902,6 +910,29 @@ export async function snoozeNotificationWithDuration(
 
 let appointmentSyncChain: Promise<unknown> = Promise.resolve();
 
+/**
+ * Solo se programan los avisos de las citas más próximas: una serie (p. ej.
+ * diálisis 3 veces por semana) agotaría el cupo de avisos del sistema (64 en
+ * iPhone). Las siguientes se programan en sincronizaciones posteriores.
+ */
+const APPOINTMENT_HORIZON_MS = 14 * 86_400_000;
+const MAX_OWN_APPOINTMENTS = 8;
+const MAX_CARE_APPOINTMENTS = 6;
+
+/** Las citas pendientes más próximas dentro del horizonte (las que llevan aviso). */
+function nearestPendingAppointments<T extends AppointmentReminderInput>(appointments: T[], limit: number, now = Date.now()): T[] {
+  return appointments
+    .filter((appointment) => appointment.active !== false && (!appointment.attendanceStatus || appointment.attendanceStatus === 'PENDING'))
+    .map((appointment) => ({ appointment, at: new Date(appointment.scheduledAt).getTime() }))
+    .filter(({ appointment, at }) =>
+      Number.isFinite(at)
+      && at - now <= APPOINTMENT_HORIZON_MS
+      && getAppointmentEndOfDayReminderDate(new Date(appointment.scheduledAt)).getTime() > now)
+    .sort((a, b) => a.at - b.at)
+    .slice(0, limit)
+    .map(({ appointment }) => appointment);
+}
+
 type AppointmentReminderInput = {
   id: string;
   title: string;
@@ -916,8 +947,11 @@ type AppointmentReminderInput = {
  * llamadas se encadenan (pantalla de Citas + sincronización al abrir la app)
  * para no programar dos veces el mismo aviso.
  */
-export function rescheduleAppointmentsAfterLaunch(appointments: AppointmentReminderInput[]): Promise<void> {
-  const run = appointmentSyncChain.then(() => runAppointmentReminderSync(appointments));
+export function rescheduleAppointmentsAfterLaunch(
+  appointments: AppointmentReminderInput[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  const run = appointmentSyncChain.then(() => runAppointmentReminderSync(appointments, options.force ?? false));
   appointmentSyncChain = run.catch(() => undefined);
   return run;
 }
@@ -931,34 +965,29 @@ async function runAppointmentReminderSync(
     active?: boolean;
     attendanceStatus?: 'PENDING' | 'ATTENDED' | 'MISSED';
   }>,
+  force: boolean,
 ): Promise<void> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  const byId = new Map(appointments.map((appointment) => [appointment.id, appointment]));
+  const wanted = nearestPendingAppointments(appointments, MAX_OWN_APPOINTMENTS);
+  const byId = new Map(wanted.map((appointment) => [appointment.id, appointment]));
 
-  // Recordatorios huérfanos: citas eliminadas, ya marcadas o desactivadas
-  // (p. ej. por alguien del Círculo desde otro teléfono).
+  // Recordatorios que sobran: citas eliminadas, ya marcadas o desactivadas
+  // (p. ej. por alguien del Círculo desde otro teléfono) o que ya no están
+  // entre las más próximas.
   const orphanIds = new Set<string>();
   for (const notification of scheduled) {
     const data = notification.content.data as { id?: string; type?: string } | undefined;
     if (data?.type !== 'APPOINTMENT' || typeof data.id !== 'string') continue;
-    const appointment = byId.get(data.id);
-    if (!appointment || appointment.active === false || (appointment.attendanceStatus && appointment.attendanceStatus !== 'PENDING')) {
-      orphanIds.add(data.id);
-    }
+    if (!byId.has(data.id)) orphanIds.add(data.id);
   }
   for (const id of orphanIds) await cancelNotificationsByDataId(id);
 
-  for (const appointment of appointments) {
-    if (appointment.active === false) continue;
-    if (appointment.attendanceStatus && appointment.attendanceStatus !== 'PENDING') continue;
-
+  for (const appointment of wanted) {
     const appointmentDate = new Date(appointment.scheduledAt);
-    if (Number.isNaN(appointmentDate.getTime())) continue;
-    if (getAppointmentEndOfDayReminderDate(appointmentDate).getTime() <= Date.now()) continue;
 
     // Programado y para la misma hora → nada que hacer. Si la hora cambió
     // (también desde otro teléfono), se reprograma.
-    const upToDate = scheduled.some((notification) => {
+    const upToDate = !force && scheduled.some((notification) => {
       const data = notification.content.data as { id?: string; type?: string; scheduledAt?: string } | undefined;
       return data?.id === appointment.id
         && data.type === 'APPOINTMENT'
@@ -1010,10 +1039,8 @@ async function runCareAppointmentSync(appointments: CareAppointmentInput[]): Pro
   const leadMinutes = await getAppointmentReminderLeadMinutes();
   const now = Date.now();
   const wanted = new Map<string, { appointment: CareAppointmentInput; at: Date; kind: 'LEAD' | 'TIME' }>();
-  for (const appointment of appointments) {
-    if (appointment.active === false || (appointment.attendanceStatus && appointment.attendanceStatus !== 'PENDING')) continue;
+  for (const appointment of nearestPendingAppointments(appointments, MAX_CARE_APPOINTMENTS, now)) {
     const date = new Date(appointment.scheduledAt);
-    if (Number.isNaN(date.getTime())) continue;
     const lead = new Date(date.getTime() - leadMinutes * 60_000);
     if (lead.getTime() > now) wanted.set(`${appointment.id}|LEAD|${lead.getTime()}`, { appointment, at: lead, kind: 'LEAD' });
     if (date.getTime() > now) wanted.set(`${appointment.id}|TIME|${date.getTime()}`, { appointment, at: date, kind: 'TIME' });

@@ -99,6 +99,12 @@ export class CircleController {
   }
 
   /** Datos de seguimiento de todas las personas que comparten conmigo. */
+  /** Historial de permisos (propio, o de un perfil a cargo con ?ownerId=). */
+  @Get('history')
+  history(@Query() query: OwnerQueryDto, @Request() req: any) {
+    return this.circleService.history(req.user?.sub, query.ownerId);
+  }
+
   @Get('care-data')
   careData(@Query() query: CareDataQueryDto, @Request() req: any) {
     return this.circleService.careData(req.user?.sub, new Date(query.since));

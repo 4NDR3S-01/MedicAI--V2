@@ -43,3 +43,11 @@ export async function closeOtherSessions(accessToken: string) {
   if (!response.ok) throw new Error(await parseApiErrorMessage(response, 'No se pudieron cerrar las sesiones'));
   return readResponseBody<{ message: string }>(response);
 }
+
+/** "Descargar mis datos": el servidor envía una copia al correo de la cuenta. */
+export async function requestDataExport(accessToken: string) {
+  ensureApiBaseUrl();
+  const response = await requestWithAutoRefresh('/auth/account/export', 'POST', accessToken);
+  if (!response.ok) throw new Error(await parseApiErrorMessage(response, 'No se pudo enviar la copia de tus datos'));
+  return readResponseBody<{ message: string }>(response);
+}

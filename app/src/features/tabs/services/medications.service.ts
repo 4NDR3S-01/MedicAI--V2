@@ -1,3 +1,4 @@
+import type { DosageStep, ScheduleType } from '../../../shared/services/dose-schedule';
 import {
   ensureApiBaseUrl,
   parseApiErrorMessage,
@@ -23,6 +24,7 @@ type MedicationData = {
   active: boolean;
   /** Última activación: las tomas anteriores no cuentan. */
   activeSince?: string | null;
+} & ScheduleFields & {
   createdBy?: ActorRef;
   updatedBy?: ActorRef;
   /** Solo en la app: zona horaria del dueño (si es otra persona del Círculo). */
@@ -31,7 +33,21 @@ type MedicationData = {
   updatedAt: string;
 };
 
-type CreateMedicationPayload = {
+/** Horario flexible y existencias (ver Medication en schema.prisma). */
+type ScheduleFields = {
+  scheduleType?: ScheduleType | null;
+  weekDays?: number[] | null;
+  dayInterval?: number | null;
+  startDate?: string | null;
+  dosageSteps?: DosageStep[] | null;
+  maxDailyDoses?: number | null;
+  minHoursBetween?: number | null;
+  stockQuantity?: number | null;
+  stockPerDose?: number | null;
+  stockAlertAt?: number | null;
+};
+
+type CreateMedicationPayload = ScheduleFields & {
   name: string;
   dosage: string;
   frequency: string;
@@ -185,6 +201,8 @@ export type MedicationLog = {
   takenAt: string;
   scheduledFor: string | null;
   loggedBy?: ActorRef;
+  /** Unidades descontadas de las existencias por esta toma. */
+  stockUnits?: number | null;
   /** Registrada sin conexión: se enviará al servidor cuando vuelva la red. */
   pending?: boolean;
 };

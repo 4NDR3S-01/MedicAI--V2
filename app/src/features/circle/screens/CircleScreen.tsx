@@ -8,6 +8,7 @@ import { syncOwnReminders } from '../../tabs/services/reminders-sync';
 import { EmptyState, SkeletonList } from '../../tabs/components/ScreenStates';
 import { CareTodayPanel, useCareData } from '../components/CareTodayPanel';
 import { GroupsSheet } from '../components/CircleGroups';
+import { PermissionHistorySheet } from '../components/PermissionHistorySheet';
 import { CircleSections } from '../components/CircleSections';
 import { DependentSheet } from '../components/DependentSheets';
 import { ReceivedInvitationCard } from '../components/CircleCards';
@@ -89,6 +90,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
   const [dependentVisible, setDependentVisible] = useState(false);
   const [groupFilter, setGroupFilter] = useState<GroupFilter>('all');
   const [groupsVisible, setGroupsVisible] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(false);
 
   const groups = overview?.groups ?? [];
   const setGroups = (next: CircleGroup[]) => circle.update((current) => ({ ...current, groups: next }));
@@ -351,6 +353,18 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
           ) : null}
 
           {body}
+
+          {overview ? (
+            <Pressable
+              onPress={() => setHistoryVisible(true)}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.historyLink, pressed && styles.pressed]}
+            >
+              <MaterialCommunityIcons name="history" size={18} color={theme.colors.textSecondary} />
+              <Text style={[styles.historyLinkText, { color: theme.colors.textSecondary }]}>Historial de accesos a tu información</Text>
+              <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
+            </Pressable>
+          ) : null}
         </ScrollView>
       </Animated.View>
 
@@ -365,6 +379,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
       ) : null}
 
       <GroupsSheet theme={theme} visible={groupsVisible} groups={groups} onClose={() => setGroupsVisible(false)} onChange={setGroups} />
+      <PermissionHistorySheet theme={theme} visible={historyVisible} onClose={() => setHistoryVisible(false)} />
 
       <InviteSheet
         theme={theme}
@@ -525,6 +540,8 @@ function HowItWorks({ theme, icon, text }: Readonly<{ theme: AppTheme; icon: key
 }
 
 const styles = StyleSheet.create({
+  historyLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, marginTop: 8 },
+  historyLinkText: { fontSize: 13.5, fontWeight: '700' },
   screen: { flex: 1 },
   content: { paddingHorizontal: 18, paddingTop: 14, gap: 18 },
   pressed: { opacity: 0.7 },

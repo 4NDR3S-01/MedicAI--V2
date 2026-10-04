@@ -123,6 +123,30 @@ export function toE164(phone: string, country: CountryOption): string | undefine
   return phone ? `${country.code}${phone}` : undefined;
 }
 
+/**
+ * Inverso de toE164: "+593987654321" → Ecuador + "987654321". Un número sin
+ * código conocido (p. ej. guardado a mano antes) queda con el país por defecto.
+ */
+export function parsePhone(value: string | null | undefined): { country: CountryOption; national: string } {
+  const text = (value ?? "").replace(/[^\d+]/g, "");
+  // El código más largo primero: +593 antes que +5…
+  const byLength = [...PHONE_COUNTRIES].sort((a, b) => b.code.length - a.code.length);
+  const country = text.startsWith("+") ? byLength.find((option) => text.startsWith(option.code)) : undefined;
+  if (country) return { country, national: text.slice(country.code.length) };
+  const fallback = getPhoneCountry(DEFAULT_PHONE_COUNTRY_ISO);
+  return { country: fallback, national: text.replace(/\D/g, "").replace(/^0+/, "") };
+}
+
+/** "🇪🇨 +593 987 654 321" para mostrar, o null si no hay teléfono. */
+export function formatPhone(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null;
+  const { country, national } = parsePhone(value);
+  if (!national) return null;
+  // 3-3-resto: "987 654 321", "300 123 4567".
+  const grouped = [national.slice(0, 3), national.slice(3, 6), national.slice(6)].filter(Boolean).join(" ");
+  return `${countryFlag(country.iso)} ${country.code} ${grouped}`;
+}
+
 export const EMPTY_MEDICAL_SELECTION: MedicalSelection = { none: false, items: [] };
 
 /** Texto que se guarda en el backend; undefined si no se respondió. */

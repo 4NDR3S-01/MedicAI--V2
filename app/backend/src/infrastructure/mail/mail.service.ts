@@ -181,6 +181,35 @@ export class MailService {
     this.logger.log('Account handover email sent', { recipientDomain: this.getEmailDomain(params.to) });
   }
 
+  /** Copia de los datos de la cuenta (derecho de acceso), como adjunto JSON. */
+  async sendDataExportEmail(params: { to: string; fullName?: string | null; fileName: string; json: string }) {
+    const greeting = params.fullName?.trim() ? `Hola, ${this.escapeHtml(params.fullName.trim())}:` : 'Hola:';
+    const text = [
+      params.fullName?.trim() ? `Hola, ${params.fullName.trim()}:` : 'Hola:',
+      '',
+      'Adjuntamos una copia de todos tus datos en MedicAI: perfil, información de salud, medicamentos y tomas, citas, Círculo e historial de accesos.',
+      'El archivo es JSON: se puede abrir con cualquier editor de texto.',
+      '',
+      'Contiene información de salud: guárdalo en un lugar seguro y no lo reenvíes.',
+      'Si no pediste esta copia, cambia tu contraseña desde la app.',
+    ].join('\n');
+    const html = `<!doctype html><html lang="es"><body style="font-family:Arial,sans-serif;color:#10243A;line-height:1.5;">
+      <p>${greeting}</p>
+      <p>Adjuntamos una copia de <strong>todos tus datos en MedicAI</strong>: perfil, información de salud, medicamentos y tomas, citas, Círculo e historial de accesos.</p>
+      <p>El archivo es JSON: se puede abrir con cualquier editor de texto.</p>
+      <p style="color:#58728B;">Contiene información de salud: guárdalo en un lugar seguro y no lo reenvíes. Si no pediste esta copia, cambia tu contraseña desde la app.</p>
+    </body></html>`;
+    await this.resend.emails.send({
+      from: this.fromEmail,
+      to: params.to,
+      subject: 'Tu copia de datos de MedicAI',
+      html,
+      text,
+      attachments: [{ filename: params.fileName, content: Buffer.from(params.json, 'utf8') }],
+    });
+    this.logger.log('Data export email sent', { recipientDomain: this.getEmailDomain(params.to) });
+  }
+
   private buildActionEmailTemplate(params: ActionEmailTemplateParams) {
     const brandColor = '#12A594';
     const brandDark = '#10243A';
