@@ -6,6 +6,7 @@ import {
   AppState,
   BackHandler,
   Easing,
+  Image,
   Linking,
   ScrollView,
   Share,
@@ -18,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import type { AppTheme } from '../../shared/theme';
-import { Portal, PressableScale, useKeyboardInset, useReducedMotion } from '../../shared/ui';
+import { Portal, PressableScale, Reveal, useKeyboardInset, useReducedMotion } from '../../shared/ui';
 import { BufferedTextInput } from '../../shared/ui/BufferedTextInput';
 import { appStorage } from '../../shared/storage';
 import { emitDoseAction } from '../../shared/services/dose-refresh-bus';
@@ -37,6 +38,7 @@ import { VoicePanel, type VoicePhase } from './components/VoicePanel';
 import { isExitPhrase, isNo, isYes, speak, stopSpeaking, useVoiceRecorder } from './hooks/useVoice';
 import { askAssistant, transcribeAudio, type AssistantReply, type Proposal } from './services/assistant.service';
 import { EMERGENCY_NUMBER, looksLikeEmergency } from './utils/emergency';
+import { pickPhoto, type ChatPhoto } from './utils/photo';
 
 const STORAGE_KEY = 'medicai_assistant_chat_v1';
 const MAX_STORED = 60;
@@ -52,6 +54,8 @@ type ChatMessage = {
   dismissed?: number[];
   /** Mensaje del usuario que no llegó (sin conexión, error). */
   failed?: boolean;
+  /** Foto adjunta (archivo local, solo para mostrarla). */
+  image?: string;
 };
 
 const SUGGESTIONS: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }[] = [
@@ -63,6 +67,8 @@ const SUGGESTIONS: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: s
 
 const newId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const KEEP_AWAKE_TAG = 'medicai-assistant-voice';
+/** El saludo aparece cuando el panel ya casi terminó de subir. */
+const WELCOME_DELAY_MS = 180;
 
 /** Propuesta de toma pendiente en la ÚLTIMA respuesta (a la que se responde "sí" / "no"). */
 function pendingDoseOf(messages: ChatMessage[]) {
@@ -97,6 +103,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   const [review, setReview] = useState<{ messageId: string; index: number; proposal: Proposal } | null>(null);
   const [existingMedications, setExistingMedications] = useState<MedicationData[]>([]);
   const [busyDose, setBusyDose] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<ChatPhoto | null>(null);
 
   // Voz
   const voice = useVoiceRecorder();
@@ -111,12 +118,15 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   // ── Apertura y cierre animados ───────────────────────────────────────────
   useEffect(() => {
     if (visible) setMounted(true);
-    const animation = Animated.timing(progress, {
-      toValue: visible ? 1 : 0,
-      duration: reducedMotion ? 0 : visible ? 300 : 220,
-      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-      useNativeDriver: true,
-    });
+    // Abre con un resorte suave (sin rebote) y cierra deslizando hacia abajo.
+    let animation: Animated.CompositeAnimation;
+    if (reducedMotion) {
+      animation = Animated.timing(progress, { toValue: visible ? 1 : 0, duration: 160, useNativeDriver: true });
+    } else if (visible) {
+      animation = Animated.spring(progress, { toValue: 1, damping: 24, stiffness: 190, mass: 1, overshootClamping: true, useNativeDriver: true });
+    } else {
+      animation = Animated.timing(progress, { toValue: 0, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true });
+    }
     animation.start(({ finished }) => {
       if (finished && !visible) setMounted(false);
     });
@@ -161,25 +171,33 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   /** Envía un mensaje; devuelve la respuesta (o null si falló). */
   const send = async (
     raw: string,
-    { retryOf, mode = 'text', quiet = false }: { retryOf?: string; mode?: 'text' | 'voice'; quiet?: boolean } = {},
+    {
+      retryOf,
+      mode = 'text',
+      quiet = false,
+      image,
+    }: { retryOf?: string; mode?: 'text' | 'voice'; quiet?: boolean; image?: ChatPhoto | null } = {},
   ): Promise<AssistantReply | null> => {
-    const text = raw.trim();
+    const text = raw.trim() || (image ? '¿Qué me puedes decir de esta foto?' : '');
     if (!text || sending) return null;
     if (looksLikeEmergency(text)) setEmergency(true);
 
     const history = messagesRef.current
       .filter((message) => !message.failed && message.id !== retryOf)
       .map(({ role, content }) => ({ role, content }));
-    const userMessage: ChatMessage = { id: retryOf ?? newId('user'), role: 'user', content: text };
+    const userMessage: ChatMessage = { id: retryOf ?? newId('user'), role: 'user', content: text, image: image?.uri };
     setMessages((current) => (retryOf ? current.map((item) => (item.id === retryOf ? userMessage : item)) : [...current, userMessage]));
-    if (!retryOf && mode === 'text') setInput('');
+    if (!retryOf && mode === 'text') {
+      setInput('');
+      setPhoto(null);
+    }
     setSending(true);
     scrollToEnd();
 
     try {
       const session = await getStoredSession();
       if (!session?.accessToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
-      const answer = await askAssistant(session.accessToken, text, history, mode);
+      const answer = await askAssistant(session.accessToken, text, history, mode, image ? [image.dataUrl] : []);
       setPersonal(answer.usedPersonalContext);
       setMessages((current) => [
         ...current,
@@ -376,6 +394,19 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
     if (!visible) voice.cancel();
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const attachPhoto = () => {
+    const choose = (source: 'camera' | 'library') => {
+      void pickPhoto(source)
+        .then((picked) => picked && setPhoto(picked))
+        .catch(() => Alert.alert('No se pudo usar la foto', 'Inténtalo de nuevo.'));
+    };
+    Alert.alert('Mostrarle una foto', 'Por ejemplo, la caja de un medicamento o una receta. La foto no se guarda en el servidor.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Elegir de la galería', onPress: () => choose('library') },
+      { text: 'Tomar foto', onPress: () => choose('camera') },
+    ]);
+  };
+
   const clearChat = () => {
     Alert.alert('Borrar conversación', 'Se borrará esta conversación del teléfono. No se puede deshacer.', [
       { text: 'Cancelar', style: 'cancel' },
@@ -420,11 +451,13 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   if (!mounted) return null;
 
   const bubbleAssistant = theme.mode === 'dark' ? '#10253D' : '#F1F6FB';
-  const canSend = input.trim().length > 0 && !sending;
+  const canSend = (input.trim().length > 0 || Boolean(photo)) && !sending;
 
   return (
     <>
       <Portal>
+        {/* La pantalla de atrás se oscurece mientras el chat sube. */}
+        <Animated.View pointerEvents="none" style={[styles.backdrop, { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] }) }]} />
         <Animated.View
           accessibilityViewIsModal
           style={[
@@ -433,8 +466,13 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
               backgroundColor: theme.colors.background,
               paddingTop: insets.top,
               paddingBottom: keyboardVisible ? screenInset : insets.bottom,
-              opacity: progress.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] }),
-              transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height * 0.25, 0] }) }],
+              opacity: reducedMotion ? progress : progress.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0, 1, 1] }),
+              transform: reducedMotion
+                ? []
+                : [
+                  { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) },
+                  { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                ],
             },
           ]}
         >
@@ -490,18 +528,22 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
           >
             {!messages.length && loaded ? (
               <View style={styles.welcome}>
+                <Reveal index={0} delay={WELCOME_DELAY_MS} style={styles.center}>
                 <View style={[styles.welcomeIcon, { backgroundColor: `${theme.colors.accentPrimary}14` }]}>
                   <MaterialCommunityIcons name="robot-happy-outline" size={38} color={theme.colors.accentPrimary} />
                 </View>
                 <Text style={[styles.welcomeTitle, { color: theme.colors.textPrimary }]}>¿En qué te ayudo?</Text>
+                </Reveal>
+                <Reveal index={1} delay={WELCOME_DELAY_MS}>
                 <Text style={[styles.welcomeBody, { color: theme.colors.textSecondary }]}>
-                  Pregúntame sobre tus medicamentos, efectos, interacciones o cómo prepararte para una cita. También puedo
+                  Pregúntame sobre tus medicamentos, efectos, interacciones o cómo prepararte para una cita. Puedes mostrarme la foto de una caja o una receta. También puedo
                   agregar un medicamento o una cita, o registrar una toma: tú confirmas antes de guardar. Toca el ícono de audífonos para conversar por voz.
                 </Text>
+                </Reveal>
                 <View style={styles.suggestions}>
-                  {SUGGESTIONS.map((suggestion) => (
+                  {SUGGESTIONS.map((suggestion, index) => (
+                    <Reveal key={suggestion.text} index={index + 2} delay={WELCOME_DELAY_MS}>
                     <PressableScale
-                      key={suggestion.text}
                       onPress={() => void send(suggestion.text)}
                       pressedScale={0.98}
                       accessibilityRole="button"
@@ -510,6 +552,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                       <MaterialCommunityIcons name={suggestion.icon} size={20} color={theme.colors.accentPrimary} />
                       <Text style={[styles.suggestionText, { color: theme.colors.textPrimary }]}>{suggestion.text}</Text>
                     </PressableScale>
+                    </Reveal>
                   ))}
                 </View>
               </View>
@@ -531,6 +574,9 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                       message.failed && { opacity: 0.6 },
                     ]}
                   >
+                    {mine && message.image ? (
+                      <Image source={{ uri: message.image }} style={styles.photo} accessibilityLabel="Foto enviada" />
+                    ) : null}
                     {mine ? (
                       <Text style={[styles.mineText, { color: theme.colors.buttonText }]}>{message.content}</Text>
                     ) : (
@@ -626,7 +672,26 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                   ) : null}
                 </View>
               ) : (
+                <>
+                {photo ? (
+                  <View style={styles.preview}>
+                    <Image source={{ uri: photo.uri }} style={styles.previewImage} accessibilityLabel="Foto para enviar" />
+                    <Text style={[styles.previewText, { color: theme.colors.textSecondary }]}>Foto lista para enviar. Puedes agregar una pregunta.</Text>
+                    <PressableScale onPress={() => setPhoto(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Quitar foto">
+                      <MaterialCommunityIcons name="close-circle" size={22} color={theme.colors.textMuted} />
+                    </PressableScale>
+                  </View>
+                ) : null}
                 <View style={styles.inputRow}>
+                  <PressableScale
+                    onPress={attachPhoto}
+                    disabled={sending}
+                    accessibilityRole="button"
+                    accessibilityLabel="Adjuntar foto"
+                    style={[styles.attach, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder }]}
+                  >
+                    <MaterialCommunityIcons name="camera-outline" size={22} color={theme.colors.textSecondary} />
+                  </PressableScale>
                   <BufferedTextInput
                     value={input}
                     onChangeText={(text) => setInput(text.slice(0, MESSAGE_MAX))}
@@ -642,7 +707,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                   />
                   {canSend ? (
                     <PressableScale
-                      onPress={() => void send(input)}
+                      onPress={() => void send(input, { image: photo })}
                       accessibilityRole="button"
                       accessibilityLabel="Enviar"
                       style={[styles.send, { backgroundColor: theme.colors.accentPrimary }]}
@@ -661,6 +726,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                     </PressableScale>
                   )}
                 </View>
+                </>
               )}
               <Text style={[styles.disclaimer, { color: theme.colors.textMuted }]}>
                 Orientación general: no reemplaza a tu médico. Puede equivocarse.
@@ -692,6 +758,8 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   root: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
+  center: { alignItems: 'center', gap: 10 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   botAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
@@ -725,6 +793,11 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   input: { flex: 1, minHeight: 48, maxHeight: 130, borderRadius: 22, borderWidth: 1, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 13, fontSize: 15.5, textAlignVertical: 'top' },
   send: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  attach: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  photo: { width: 200, height: 150, borderRadius: 14, marginBottom: 8 },
+  preview: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  previewImage: { width: 52, height: 52, borderRadius: 12 },
+  previewText: { flex: 1, fontSize: 13, fontWeight: '600' },
   voiceButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   dictation: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, borderRadius: 26, borderWidth: 1, paddingHorizontal: 16 },
   recDot: { width: 12, height: 12, borderRadius: 6 },

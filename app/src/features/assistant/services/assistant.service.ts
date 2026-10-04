@@ -26,20 +26,22 @@ export type AssistantReply = {
   usedPersonalContext: boolean;
 };
 
-/** Mensajes previos que se envían (el servidor acepta hasta 20). */
-export const HISTORY_LIMIT = 16;
+/** Mensajes previos que se envían (el servidor acepta 12; el plan gratuito tiene poco cupo por minuto). */
+export const HISTORY_LIMIT = 10;
 
 export async function askAssistant(
   accessToken: string,
   message: string,
   history: ChatTurn[],
   mode: 'text' | 'voice' = 'text',
+  images: string[] = [],
 ): Promise<AssistantReply> {
   ensureApiBaseUrl();
   const response = await requestWithAutoRefresh('/ai/chat', 'POST', accessToken, {
     message,
     history: history.slice(-HISTORY_LIMIT),
     mode,
+    ...(images.length ? { images } : {}),
   });
   if (!response.ok) {
     throw new Error(await parseApiErrorMessage(response, 'El asistente no pudo responder. Inténtalo de nuevo.'));

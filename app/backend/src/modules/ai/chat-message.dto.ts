@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ChatMessageDto {
@@ -21,7 +21,7 @@ export class ChatRequestDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDto)
-  @ArrayMaxSize(20)
+  @ArrayMaxSize(12)
   @IsOptional()
   history?: ChatMessageDto[];
 
@@ -29,4 +29,13 @@ export class ChatRequestDto {
   @IsOptional()
   @IsIn(['text', 'voice'])
   mode?: 'text' | 'voice';
+
+  /** Fotos del mensaje actual (caja de un medicamento, receta…), como data URL JPEG/PNG. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(2)
+  @IsString({ each: true })
+  @MaxLength(3_000_000, { each: true })
+  @Matches(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, { each: true, message: 'Imagen no válida.' })
+  images?: string[];
 }

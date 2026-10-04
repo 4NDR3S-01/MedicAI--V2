@@ -131,6 +131,12 @@ export default function PrivacyPolicyPage() {
             en el teléfono ni en nuestros servidores. Las respuestas habladas las genera la voz de tu propio
             teléfono.
           </p>
+          <h3>Fotos</h3>
+          <p>
+            Si le muestras una foto al asistente (por ejemplo, la caja de un medicamento o una receta), se
+            reduce en tu teléfono y se envía al proveedor de IA solo para responder esa pregunta. No la
+            guardamos en nuestros servidores. Evita fotografiar documentos con datos que no quieras compartir.
+          </p>
           <h3>Ubicación</h3>
           <p>
             Solo si usas el mapa para elegir el lugar de una cita y das permiso. Tu ubicación se usa en tu
@@ -205,7 +211,7 @@ export default function PrivacyPolicyPage() {
           <p>Solo con proveedores que necesitamos para prestar el servicio, y solo lo imprescindible:</p>
           <ul>
             <li>
-              <strong>Groq</strong> (Estados Unidos): procesa los mensajes (y la voz, para convertirla en texto) del asistente de IA y, si lo
+              <strong>Groq</strong> (Estados Unidos): procesa los mensajes, las fotos que le muestres y la voz (para convertirla en texto) del asistente de IA y, si lo
               autorizas, tu perfil de salud, medicamentos y próximas citas.
             </li>
             <li>

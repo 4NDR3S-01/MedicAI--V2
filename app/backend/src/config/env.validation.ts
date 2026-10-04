@@ -97,6 +97,10 @@ class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
+  GROQ_FALLBACK_MODEL?: string;
+
+  @IsString()
+  @IsOptional()
   MAIL_FROM!: string;
 
   @IsUrl({ require_tld: false })
