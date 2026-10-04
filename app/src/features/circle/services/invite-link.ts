@@ -65,4 +65,4 @@ export function onOpenCircle(listener: OpenListener): () => void {
 
 /** Tipos de aviso push que se abren en Círculo. */
 export const isCirclePushType = (type: unknown) =>
-  type === 'CIRCLE' || type === 'CIRCLE_INVITE' || type === 'MISSED_DOSE';
+  type === 'CIRCLE' || type === 'CIRCLE_INVITE' || type === 'MISSED_DOSE' || type === 'CARE_LOW_STOCK';

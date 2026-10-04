@@ -1,6 +1,8 @@
 import { IsBoolean, IsOptional, IsString, Matches, MaxLength, IsInt, Min, IsISO8601 } from 'class-validator';
 
-export class UpdateMedicationDto {
+import { ScheduleFieldsDto } from './schedule-fields';
+
+export class UpdateMedicationDto extends ScheduleFieldsDto {
   @IsString()
   @IsOptional()
   @MaxLength(100)

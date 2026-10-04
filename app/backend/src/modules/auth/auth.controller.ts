@@ -21,6 +21,7 @@ import type { Request as ExpressRequest, Response } from 'express';
 
 type AuthBridgePageVariant = 'success' | 'warning' | 'error' | 'info';
 
+import { AccountExportService } from './account-export.service';
 import { AuthService } from './auth.service';
 import { CheckEmailDto } from './dto/check-email.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
@@ -43,6 +44,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly accountExport: AccountExportService,
   ) {}
 
   @UseGuards(IpThrottleGuard)
@@ -200,6 +202,18 @@ export class AuthController {
       throw new UnauthorizedException('Token inválido.');
     }
     return this.authService.deleteAccount(userId, dto.password);
+  }
+
+  /** "Descargar mis datos": se envían por correo, como adjunto, al dueño de la cuenta. */
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 60 * 60_000 } })
+  @Post('account/export')
+  exportData(@Request() req: any) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedException('Token inválido.');
+    }
+    return this.accountExport.sendExport(userId);
   }
 
   @UseGuards(JwtAuthGuard)

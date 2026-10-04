@@ -16,6 +16,7 @@ import {
 } from '../utils/appointment-status';
 import { changedByNote } from '../utils/audit';
 import { formatClockIn, isForeignTimeZone } from '../../../shared/services/dose-schedule';
+import { repeatLabel } from '../utils/appointment-series';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -120,6 +121,14 @@ function AppointmentCardBase({
             {appointment.doctorName}
           </Text>
         </View>
+        {appointment.repeatRule ? (
+          <View style={styles.detailRow}>
+            <MaterialCommunityIcons name="repeat" size={16} color={theme.colors.textMuted} />
+            <Text style={[styles.detailText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+              {repeatLabel(appointment.repeatRule)}
+            </Text>
+          </View>
+        ) : null}
         {appointment.location ? (
           <Pressable
             onPress={() => onDirections(appointment)}

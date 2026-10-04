@@ -18,7 +18,18 @@ export type DoseScheduleInput = {
    * hora local. Sin ella (o si es la del teléfono) se usa la del teléfono.
    */
   timeZone?: string | null;
+  /** DAILY (por defecto), WEEKDAYS, INTERVAL o AS_NEEDED (sin horario). */
+  scheduleType?: ScheduleType | null;
+  /** 0 = domingo … 6 = sábado (WEEKDAYS). */
+  weekDays?: number[] | null;
+  /** Cada cuántos días (INTERVAL). */
+  dayInterval?: number | null;
+  /** Primer día ("YYYY-MM-DD", calendario del dueño): antes no hay tomas. */
+  startDate?: string | null;
 };
+
+export type ScheduleType = 'DAILY' | 'WEEKDAYS' | 'INTERVAL' | 'AS_NEEDED';
+export type DosageStep = { days: number; dosage: string };
 
 // ─── Zonas horarias ──────────────────────────────────────────────────────────
 
@@ -120,6 +131,73 @@ export const endOfDay = (date: Date): Date => {
   return d;
 };
 
+// ─── Días de toma ────────────────────────────────────────────────────────────
+
+/** Número de día de una fecha de calendario (independiente de la zona). */
+export const dayNumber = (year: number, month: number, day: number) =>
+  Math.round(Date.UTC(year, month - 1, day) / 86_400_000);
+
+/** "2026-10-06" → número de día, o null. */
+export const parseDayKey = (value: string | null | undefined): number | null => {
+  const match = value ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+  return match ? dayNumber(Number(match[1]), Number(match[2]), Number(match[3])) : null;
+};
+
+/** Fecha local → "YYYY-MM-DD". */
+export const toDayKey = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+/** "YYYY-MM-DD" → fecha local a medianoche. */
+export const fromDayKey = (value: string): Date | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+};
+
+export const isAsNeeded = (medication: Pick<DoseScheduleInput, 'scheduleType'>) => medication.scheduleType === 'AS_NEEDED';
+
+/** Número de día (calendario del dueño) de un instante. */
+const ownerDayNumber = (date: Date, timeZone?: string | null) => {
+  if (isForeignTimeZone(timeZone)) {
+    const p = zonedParts(date, timeZone);
+    return dayNumber(p.year, p.month, p.day);
+  }
+  return dayNumber(date.getFullYear(), date.getMonth() + 1, date.getDate());
+};
+
+/** ¿Hay tomas ese día del calendario del dueño? */
+function isDoseDay(medication: DoseScheduleInput, year: number, month: number, day: number, anchor: number | null): boolean {
+  const n = dayNumber(year, month, day);
+  const start = parseDayKey(medication.startDate);
+  if (start !== null && n < start) return false;
+  if (medication.scheduleType === 'WEEKDAYS') {
+    return (medication.weekDays ?? []).includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
+  }
+  const interval = medication.dayInterval ?? 1;
+  if (medication.scheduleType === 'INTERVAL' && interval > 1 && anchor !== null) {
+    return (((n - anchor) % interval) + interval) % interval === 0;
+  }
+  return true;
+}
+
+/**
+ * Dosis de un día: la del tramo que toca de una dosis que cambia con el
+ * tiempo (el último, una vez terminados), o la dosis fija.
+ */
+export function dosageOnDay(
+  medication: { dosage: string; dosageSteps?: DosageStep[] | null; startDate?: string | null; timeZone?: string | null },
+  at: Date,
+): string {
+  const steps = medication.dosageSteps;
+  const start = parseDayKey(medication.startDate);
+  if (!steps?.length || start === null) return medication.dosage;
+  let index = ownerDayNumber(at, medication.timeZone) - start;
+  for (const step of steps) {
+    if (index < step.days) return step.dosage;
+    index -= step.days;
+  }
+  return steps[steps.length - 1].dosage;
+}
+
 /** Desde cuándo cuentan las tomas (activación, o creación en datos antiguos). */
 export const getDoseStart = (medication: DoseScheduleInput): Date | null => {
   const raw = medication.activeSince ?? medication.createdAt;
@@ -145,7 +223,7 @@ export const isTreatmentFinished = (medication: DoseScheduleInput, now = new Dat
  * periodo de tratamiento (desde la activación hasta la fecha de fin).
  */
 export function getDoseDatesBetween(medication: DoseScheduleInput, from: Date, to: Date): Date[] {
-  if (!medication.active || !medication.times?.length) return [];
+  if (!medication.active || !medication.times?.length || isAsNeeded(medication)) return [];
 
   const doseStart = getDoseStart(medication);
   const doseEnd = getDoseEnd(medication);
@@ -157,6 +235,9 @@ export function getDoseDatesBetween(medication: DoseScheduleInput, from: Date, t
     .map(parseTime)
     .filter((time): time is { hour: number; minute: number } => time !== null);
 
+  // Ancla de "cada N días": el día de inicio o, en su defecto, el de activación.
+  const anchor = parseDayKey(medication.startDate) ?? (doseStart ? ownerDayNumber(doseStart, medication.timeZone) : null);
+
   const result: Date[] = [];
   if (isForeignTimeZone(medication.timeZone)) {
     // Días de pared en la zona del dueño: sus "08:00" son 08:00 allí.
@@ -165,6 +246,8 @@ export function getDoseDatesBetween(medication: DoseScheduleInput, from: Date, t
     for (let offset = 0; ; offset += 1) {
       const dayStart = zonedToDate(first.year, first.month, first.day + offset, 0, 0, timeZone);
       if (dayStart.getTime() > upper) break;
+      const date = new Date(Date.UTC(first.year, first.month - 1, first.day + offset));
+      if (!isDoseDay(medication, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), anchor)) continue;
       for (const { hour, minute } of times) {
         const dose = zonedToDate(first.year, first.month, first.day + offset, hour, minute, timeZone);
         const ts = dose.getTime();
@@ -175,6 +258,7 @@ export function getDoseDatesBetween(medication: DoseScheduleInput, from: Date, t
   }
 
   for (let day = startOfDay(new Date(lower)); day.getTime() <= upper; day.setDate(day.getDate() + 1)) {
+    if (!isDoseDay(medication, day.getFullYear(), day.getMonth() + 1, day.getDate(), anchor)) continue;
     for (const { hour, minute } of times) {
       const dose = new Date(day);
       dose.setHours(hour, minute, 0, 0);

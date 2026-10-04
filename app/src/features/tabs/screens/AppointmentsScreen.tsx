@@ -25,7 +25,8 @@ import {
 } from '../../../shared/services/notifications.service';
 import { getStoredSession } from '../../auth';
 import * as appointmentsAPI from '../services/appointments.service';
-import type { AppointmentAttendanceStatus, AppointmentData } from '../services/appointments.service';
+import type { AppointmentAttendanceStatus, AppointmentData, SeriesScope } from '../services/appointments.service';
+import { askSeriesScope } from '../utils/appointment-series';
 import { AppointmentCard } from '../components/AppointmentCard';
 import { AppointmentFormSheet } from '../components/AppointmentFormSheet';
 import { AttendanceSheet } from '../components/AttendanceSheet';
@@ -210,39 +211,53 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
     setForm({ visible: true, appointment });
   }, []);
 
+  const removeAppointment = useCallback(async (appointment: AppointmentData, scope: SeriesScope) => {
+    try {
+      await appointmentsAPI.deleteAppointment(appointment.id, await withToken(), undefined, scope);
+      animateLayout(reducedMotion);
+      // "Esta y las siguientes": las de la misma serie desde esta fecha.
+      const from = new Date(appointment.scheduledAt).getTime();
+      const removed = (item: AppointmentData) =>
+        item.id === appointment.id
+        || (scope === 'FOLLOWING' && !!appointment.seriesId && item.seriesId === appointment.seriesId && new Date(item.scheduledAt).getTime() >= from);
+      appointmentsRef.current.filter(removed).forEach((item) => void cancelNotificationsByDataId(item.id).catch(() => undefined));
+      const nextList = appointmentsRef.current.filter((item) => !removed(item));
+      setAppointments(nextList);
+      persist(nextList);
+      void rescheduleAppointmentsAfterLaunch(nextList).catch(() => undefined);
+    } catch (error) {
+      Alert.alert('No se pudo eliminar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+    }
+  }, [persist, reducedMotion]);
+
   const handleDelete = useCallback((appointment: AppointmentData) => {
+    if (appointment.seriesId) {
+      void askSeriesScope(appointment, {
+        title: 'Eliminar cita que se repite',
+        message: `¿Eliminar solo esta cita de "${appointment.title}" o también las siguientes? No se puede deshacer.`,
+        destructive: true,
+      }).then((scope) => {
+        if (scope) void removeAppointment(appointment, scope);
+      });
+      return;
+    }
     Alert.alert(
       'Eliminar cita',
       `Se eliminará "${appointment.title}" y sus recordatorios. Esta acción no se puede deshacer.`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              try {
-                await appointmentsAPI.deleteAppointment(appointment.id, await withToken());
-                void cancelNotificationsByDataId(appointment.id).catch(() => undefined);
-                animateLayout(reducedMotion);
-                const nextList = appointmentsRef.current.filter((item) => item.id !== appointment.id);
-                setAppointments(nextList);
-                persist(nextList);
-              } catch (error) {
-                Alert.alert('No se pudo eliminar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
-              }
-            })();
-          },
-        },
+        { text: 'Eliminar', style: 'destructive', onPress: () => void removeAppointment(appointment, 'ONE') },
       ],
     );
-  }, [persist, reducedMotion]);
+  }, [removeAppointment]);
 
   const handleDirections = useCallback((appointment: AppointmentData) => {
     if (appointment.location) openDirections(appointment.location);
   }, []);
 
-  const handleSaved = (saved: AppointmentData, isNew: boolean) => {
+  const handleSaved = (saved: AppointmentData, isNew: boolean, reload = false) => {
+    // Serie creada o "esta y las siguientes": cambiaron varias citas.
+    if (reload) void load();
     const targetSegment: Segment = getAppointmentState(saved, new Date()) === 'upcoming' ? 'upcoming' : 'history';
     // Si cambia de pestaña, la transición la hace useSwapAnimation.
     if (targetSegment === segment) animateLayout(reducedMotion);

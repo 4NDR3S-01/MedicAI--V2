@@ -3,6 +3,7 @@ import {
   doseKey,
   formatClockIn,
   getDoseDatesBetween,
+  isAsNeeded,
   isForeignTimeZone,
   type DoseScheduleInput,
 } from '../../../shared/services/dose-schedule';
@@ -91,4 +92,70 @@ export const canRegisterDose = (slot: DoseSlot) => slot.state !== 'upcoming';
 /** Claves de tomas futuras ya registradas (no deben sonar). */
 export function getHandledDoseKeys(slots: DoseSlot[], now: Date): Set<string> {
   return new Set(slots.filter((slot) => slot.log && slot.at.getTime() > now.getTime()).map((slot) => slot.key));
+}
+
+/**
+ * Según necesidad: las tomas de hoy son las registradas (sin hora fija). Se
+ * devuelven como tomas "tomadas" para poder verlas y deshacerlas.
+ */
+export function getAsNeededSlots(medication: DoseScheduleInput, logs: MedicationLog[], now: Date): DoseSlot[] {
+  if (!isAsNeeded(medication)) return [];
+  const { start, end } = dayBoundsIn(now, medication.timeZone);
+  const foreign = isForeignTimeZone(medication.timeZone);
+  return logs
+    .filter((log) => log.medicationId === medication.id && log.action === 'TAKEN' && !log.scheduledFor)
+    .map((log) => ({ log, at: new Date(log.takenAt) }))
+    .filter(({ at }) => at >= start && at <= end)
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+    .map(({ log, at }) => ({
+      key: log.id,
+      medicationId: medication.id,
+      at,
+      time: formatClockIn(at, medication.timeZone),
+      viewerTime: foreign ? formatHHmm(at) : undefined,
+      state: 'taken' as const,
+      log,
+    }));
+}
+
+/** ¿Se puede tomar otra ahora? Si no, por qué (máximo diario o tiempo mínimo). */
+export function asNeededWarning(
+  medication: { maxDailyDoses?: number | null; minHoursBetween?: number | null },
+  slots: DoseSlot[],
+  now: Date,
+): string | null {
+  if (medication.maxDailyDoses && slots.length >= medication.maxDailyDoses) {
+    return `Hoy ya se registraron ${slots.length} tomas y el máximo indicado es ${medication.maxDailyDoses} al día.`;
+  }
+  const last = slots[slots.length - 1];
+  if (last && medication.minHoursBetween) {
+    const nextAt = last.at.getTime() + medication.minHoursBetween * 3_600_000;
+    if (nextAt > now.getTime()) {
+      const minutes = Math.ceil((nextAt - now.getTime()) / 60_000);
+      const wait = minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60 ? `${minutes % 60} min` : ''}`.trim() : `${minutes} min`;
+      return `La última fue a las ${last.time} y deben pasar al menos ${medication.minHoursBetween} h entre tomas (faltan ${wait}).`;
+    }
+  }
+  return null;
+}
+
+/** Slots de hoy de un medicamento: con horario, o las tomas registradas si es según necesidad. */
+export const getDaySlots = (medication: DoseScheduleInput, logs: MedicationLog[], now: Date): DoseSlot[] =>
+  isAsNeeded(medication) ? getAsNeededSlots(medication, logs, now) : getTodayDoseSlots(medication, logs, now);
+
+/**
+ * Existencias tras registrar (+1) o deshacer (-1) una toma, sin esperar a
+ * recargar: el servidor ya descontó o devolvió `log.stockUnits`.
+ */
+export function withStockChange<T extends { id: string; stockQuantity?: number | null }>(
+  medications: T[],
+  log: MedicationLog,
+  direction: 1 | -1,
+): T[] {
+  if (!log.stockUnits) return medications;
+  return medications.map((medication) =>
+    medication.id === log.medicationId && medication.stockQuantity != null
+      ? { ...medication, stockQuantity: Math.max(0, medication.stockQuantity - direction * log.stockUnits!) }
+      : medication,
+  );
 }

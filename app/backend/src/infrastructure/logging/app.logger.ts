@@ -1,6 +1,8 @@
 import { LoggerService } from '@nestjs/common';
 import { inspect } from 'node:util';
 
+import { reportError } from '../monitoring/error-reporting';
+
 type StructuredLogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'verbose';
 type StructuredLogFormat = 'pretty' | 'json';
 type LogMetadata = Record<string, unknown>;
@@ -50,7 +52,9 @@ export class AppLogger implements LoggerService {
   }
 
   error(message: unknown, ...optionalParams: unknown[]) {
-    this.write('error', message, this.parseParams(optionalParams));
+    const parsed = this.parseParams(optionalParams);
+    this.write('error', message, parsed);
+    this.report(message, optionalParams, parsed);
   }
 
   warn(message: unknown, ...optionalParams: unknown[]) {
@@ -66,7 +70,19 @@ export class AppLogger implements LoggerService {
   }
 
   fatal(message: unknown, ...optionalParams: unknown[]) {
-    this.write('fatal', message, this.parseParams(optionalParams));
+    const parsed = this.parseParams(optionalParams);
+    this.write('fatal', message, parsed);
+    this.report(message, optionalParams, parsed);
+  }
+
+  /** Todo error registrado llega también al monitoreo (si está activo). */
+  private report(message: unknown, params: unknown[], parsed: { context?: string; metadata: LogMetadata }) {
+    const error = [message, ...params].find((item): item is Error => item instanceof Error);
+    reportError(error ?? null, {
+      message: this.formatMessage(message),
+      context: parsed.context,
+      metadata: parsed.metadata,
+    });
   }
 
   private write(

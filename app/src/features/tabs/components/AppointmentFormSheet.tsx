@@ -13,6 +13,8 @@ import {
   FieldShell,
   FormSheet,
   PressableScale,
+  SelectField,
+  SelectableChip,
   TextField,
   useFieldColors,
 } from '../../../shared/ui';
@@ -24,15 +26,19 @@ import {
 } from '../../../shared/services/notifications.service';
 import { getStoredSession } from '../../auth';
 import * as appointmentsAPI from '../services/appointments.service';
-import type { AppointmentData } from '../services/appointments.service';
+import type { AppointmentData, RepeatFrequency } from '../services/appointments.service';
+import { askSeriesScope, repeatLabel } from '../utils/appointment-series';
 import { formatClock } from '../utils/appointment-status';
+import { WEEK_DAYS } from '../utils/medication-form';
 import { findDuplicateAppointment } from '../utils/duplicates';
-import { isForeignTimeZone, zonedParts, zonedToDate } from '../../../shared/services/dose-schedule';
+import { isForeignTimeZone, toDayKey, zonedParts, zonedToDate } from '../../../shared/services/dose-schedule';
 
 const TITLE_MAX = 120;
 const DOCTOR_MAX = 120;
 const LOCATION_MAX = 160;
 const NOTES_MAX = 500;
+
+type RepeatChoice = 'NONE' | RepeatFrequency;
 
 type FormState = {
   title: string;
@@ -41,11 +47,44 @@ type FormState = {
   time: string; // HH:mm
   location: string;
   notes: string;
+  /** Solo al crear: repetir la cita. */
+  repeat: RepeatChoice;
+  repeatWeekDays: number[];
+  repeatInterval: number;
+  repeatUntil: Date | null;
 };
 
-type FormErrors = Partial<Record<'title' | 'doctorName' | 'date' | 'time', string>>;
+type FormErrors = Partial<Record<'title' | 'doctorName' | 'date' | 'time' | 'repeat', string>>;
 
-const emptyForm = (): FormState => ({ title: '', doctorName: '', date: null, time: '', location: '', notes: '' });
+const REPEAT_OPTIONS: { value: RepeatChoice; label: string }[] = [
+  { value: 'NONE', label: 'No se repite' },
+  { value: 'DAILY', label: 'Cada día' },
+  { value: 'WEEKLY', label: 'Cada semana' },
+  { value: 'MONTHLY', label: 'Cada mes' },
+];
+const WEEK_INTERVAL_OPTIONS = [1, 2, 3, 4].map((weeks) => ({
+  value: String(weeks),
+  label: weeks === 1 ? 'Todas las semanas' : `Cada ${weeks} semanas`,
+}));
+
+const emptyForm = (): FormState => ({
+  title: '',
+  doctorName: '',
+  date: null,
+  time: '',
+  location: '',
+  notes: '',
+  repeat: 'NONE',
+  repeatWeekDays: [],
+  repeatInterval: 1,
+  repeatUntil: null,
+});
+
+const addMonths = (date: Date, months: number) => {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+};
 
 /** Fecha y hora "de pared" en la zona del dueño (o la del teléfono). */
 const wallClock = (instant: Date, timeZone?: string | null) => {
@@ -68,6 +107,10 @@ const formFromAppointment = (appointment: AppointmentData, timeZone?: string | n
     time: wall?.time ?? '',
     location: appointment.location ?? '',
     notes: appointment.notes ?? '',
+    repeat: 'NONE',
+    repeatWeekDays: [],
+    repeatInterval: 1,
+    repeatUntil: null,
   };
 };
 
@@ -99,6 +142,11 @@ function validate(form: FormState, original: AppointmentData | null | undefined,
     // Al editar se permite conservar una fecha ya pasada (p. ej. corregir el título).
     if (!unchanged && scheduled.getTime() <= Date.now()) errors.time = 'Esa fecha y hora ya pasaron.';
   }
+  if (form.repeat !== 'NONE') {
+    if (form.repeat === 'WEEKLY' && !form.repeatWeekDays.length) errors.repeat = 'Elige al menos un día.';
+    else if (!form.repeatUntil) errors.repeat = 'Elige hasta cuándo se repite.';
+    else if (form.date && form.repeatUntil.getTime() <= form.date.getTime()) errors.repeat = 'La fecha de fin debe ser posterior a la primera cita.';
+  }
   return errors;
 }
 
@@ -107,7 +155,8 @@ export type AppointmentFormSheetProps = {
   visible: boolean;
   appointment?: AppointmentData | null;
   onClose: () => void;
-  onSaved: (appointment: AppointmentData, isNew: boolean) => void;
+  /** `reload`: se crearon o cambiaron varias citas (serie): hay que recargar la lista. */
+  onSaved: (appointment: AppointmentData, isNew: boolean, reload?: boolean) => void;
   /** Cita de otra persona del Círculo: sus recordatorios suenan en su teléfono. */
   ownerId?: string;
   /** La otra persona no usa la app (perfil a cargo). */
@@ -132,7 +181,7 @@ export function AppointmentFormSheet({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [iosPicker, setIosPicker] = useState<'date' | 'time' | null>(null);
+  const [iosPicker, setIosPicker] = useState<'date' | 'time' | 'until' | null>(null);
   const [mapVisible, setMapVisible] = useState(false);
   const [leadMinutes, setLeadMinutes] = useState<number | null>(null);
   const isEditing = Boolean(appointment);
@@ -149,6 +198,41 @@ export function AppointmentFormSheet({
   const errors = showErrors ? validate(form, appointment, ownerTimeZone) : {};
   const dateColors = useFieldColors(theme, iosPicker === 'date', Boolean(errors.date));
   const timeColors = useFieldColors(theme, iosPicker === 'time', Boolean(errors.time));
+  const untilColors = useFieldColors(theme, iosPicker === 'until', Boolean(errors.repeat));
+
+  const setRepeat = (repeat: RepeatChoice) => {
+    const patch: Partial<FormState> = { repeat };
+    // Por defecto, el mismo día de la semana de la cita, durante 3 meses.
+    if (repeat === 'WEEKLY' && !form.repeatWeekDays.length) patch.repeatWeekDays = [(form.date ?? new Date()).getDay()];
+    if (repeat !== 'NONE' && !form.repeatUntil) patch.repeatUntil = addMonths(form.date ?? new Date(), 3);
+    update(patch);
+  };
+
+  const toggleRepeatDay = (day: number) =>
+    update({
+      repeatWeekDays: form.repeatWeekDays.includes(day)
+        ? form.repeatWeekDays.filter((item) => item !== day)
+        : [...form.repeatWeekDays, day],
+    });
+
+  const openUntilPicker = () => {
+    const value = form.repeatUntil ?? addMonths(form.date ?? new Date(), 3);
+    const minimumDate = new Date((form.date ?? new Date()).getTime() + 86_400_000);
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value,
+        mode: 'date',
+        minimumDate,
+        maximumDate: addMonths(form.date ?? new Date(), 12),
+        onChange: (event, selected) => {
+          if (event.type === 'set' && selected) update({ repeatUntil: selected });
+        },
+      });
+    } else {
+      if (!form.repeatUntil) update({ repeatUntil: value });
+      setIosPicker((current) => (current === 'until' ? null : 'until'));
+    }
+  };
 
   const openDatePicker = () => {
     const value = form.date ?? new Date();
@@ -206,6 +290,15 @@ export function AppointmentFormSheet({
       return;
     }
 
+    // Cita de una serie: ¿solo esta o también las siguientes?
+    const scope = appointment
+      ? await askSeriesScope(appointment, {
+        title: 'Cita que se repite',
+        message: '¿Aplicar los cambios solo a esta cita o también a las siguientes de la serie?',
+      })
+      : 'ONE';
+    if (!scope) return;
+
     const session = await getStoredSession();
     if (!session?.accessToken) {
       Alert.alert('Sesión expirada', 'Vuelve a iniciar sesión para continuar.');
@@ -225,21 +318,34 @@ export function AppointmentFormSheet({
 
     try {
       setIsSaving(true);
+      const repeat = !appointment && form.repeat !== 'NONE' && form.repeatUntil
+        ? {
+          frequency: form.repeat,
+          interval: form.repeat === 'WEEKLY' ? form.repeatInterval : 1,
+          weekDays: form.repeat === 'WEEKLY' ? [...form.repeatWeekDays].sort() : undefined,
+          until: toDayKey(form.repeatUntil),
+        }
+        : undefined;
       const saved = appointment
         ? await appointmentsAPI.updateAppointment(
           appointment.id,
           session.accessToken,
           { ...payload, scheduledAt: rescheduled ? payload.scheduledAt : undefined },
           ownerId,
+          scope,
         )
         : await appointmentsAPI.createAppointment(
           session.accessToken,
-          { ...payload, location: payload.location || undefined, notes: payload.notes || undefined },
+          { ...payload, location: payload.location || undefined, notes: payload.notes || undefined, repeat },
           ownerId,
         );
       // Los recordatorios no deben impedir guardar la cita.
       if (!ownerId) void scheduleAppointmentReminder(saved).catch(() => undefined);
-      onSaved(saved, !appointment);
+      const severalChanged = (saved.seriesCount ?? 1) > 1 || (saved.seriesUpdated ?? 1) > 1;
+      onSaved(saved, !appointment, severalChanged);
+      if ((saved.seriesCount ?? 1) > 1) {
+        Alert.alert('Citas creadas', `Se agendaron ${saved.seriesCount} citas. Cada una tiene su recordatorio y su asistencia.`);
+      }
       onClose();
     } catch (error) {
       Alert.alert('No se pudo guardar', error instanceof Error ? error.message : 'Inténtalo de nuevo en unos momentos.');
@@ -360,6 +466,99 @@ export function AppointmentFormSheet({
           />
         ) : null}
 
+        {isEditing ? (
+          appointment?.repeatRule ? (
+            <View style={[styles.info, { backgroundColor: `${theme.colors.accentPrimary}12` }]}>
+              <Ionicons name="repeat" size={16} color={theme.colors.accentPrimary} />
+              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
+                Esta cita se repite ({repeatLabel(appointment.repeatRule)?.toLowerCase()}). Al guardar podrás cambiar solo esta o
+                también las siguientes.
+              </Text>
+            </View>
+          ) : null
+        ) : (
+          <FieldShell theme={theme} label="Repetir" error={errors.repeat}>
+            <View style={styles.chipsWrap}>
+              {REPEAT_OPTIONS.map((option) => (
+                <SelectableChip
+                  key={option.value}
+                  theme={theme}
+                  label={option.label}
+                  selected={form.repeat === option.value}
+                  onPress={() => setRepeat(option.value)}
+                />
+              ))}
+            </View>
+            {form.repeat === 'WEEKLY' ? (
+              <>
+                <View style={styles.weekRow}>
+                  {WEEK_DAYS.map((day) => {
+                    const selected = form.repeatWeekDays.includes(day.value);
+                    return (
+                      <PressableScale
+                        key={day.value}
+                        onPress={() => toggleRepeatDay(day.value)}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={day.name}
+                        accessibilityState={{ checked: selected }}
+                        style={[
+                          styles.weekDay,
+                          selected
+                            ? { backgroundColor: theme.colors.accentPrimary, borderColor: theme.colors.accentPrimary }
+                            : { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder },
+                        ]}
+                      >
+                        <Text style={[styles.weekDayText, { color: selected ? '#fff' : theme.colors.textSecondary }]}>{day.short}</Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+                <SelectField
+                  theme={theme}
+                  value={String(form.repeatInterval)}
+                  options={WEEK_INTERVAL_OPTIONS}
+                  onChange={(value) => update({ repeatInterval: Number(value) })}
+                  accessibilityLabel="Cada cuántas semanas"
+                />
+              </>
+            ) : null}
+            {form.repeat !== 'NONE' ? (
+              <PressableScale
+                pressedScale={0.98}
+                onPress={openUntilPicker}
+                accessibilityRole="button"
+                accessibilityLabel={form.repeatUntil ? `Hasta el ${formatLongDate(form.repeatUntil)}. Toca para cambiar.` : 'Elegir hasta cuándo se repite'}
+                style={[styles.selector, untilColors]}
+              >
+                <Ionicons name="flag-outline" size={20} color={theme.colors.accentSecondary} />
+                <Text style={[styles.selectorText, { color: form.repeatUntil ? theme.colors.textPrimary : theme.colors.inputPlaceholder }]}>
+                  {form.repeatUntil ? `Hasta el ${formatLongDate(form.repeatUntil)}` : 'Hasta…'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+              </PressableScale>
+            ) : null}
+            {Platform.OS === 'ios' && iosPicker === 'until' && form.repeat !== 'NONE' ? (
+              <DateTimePicker
+                value={form.repeatUntil ?? addMonths(form.date ?? new Date(), 3)}
+                mode="date"
+                display="inline"
+                minimumDate={new Date((form.date ?? new Date()).getTime() + 86_400_000)}
+                maximumDate={addMonths(form.date ?? new Date(), 12)}
+                locale="es-ES"
+                themeVariant={theme.mode}
+                onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+                  if (selected) update({ repeatUntil: selected });
+                }}
+              />
+            ) : null}
+            {form.repeat !== 'NONE' ? (
+              <Text style={[styles.hint, { color: theme.colors.textMuted }]}>
+                Cada repetición será una cita propia, con su recordatorio y su asistencia. Hasta un año (máximo 104 citas).
+              </Text>
+            ) : null}
+          </FieldShell>
+        )}
+
         <TextField
           theme={theme}
           label="Lugar"
@@ -436,6 +635,11 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   row: { flexDirection: 'row', gap: 10 },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
+  weekDay: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  weekDayText: { fontSize: 14, fontWeight: '800' },
+  hint: { fontSize: 12.5, lineHeight: 17 },
   selector: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12 },
   selectorText: { flex: 1, fontSize: 15.5 },
   mapButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 6 },

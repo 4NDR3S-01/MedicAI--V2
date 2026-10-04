@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
-import { doseDatesBetween, isValidTimeZone, zonedParts } from '../../common/dose-schedule';
+import { doseDatesBetween, dosageOnDay, isValidTimeZone, zonedParts } from '../../common/dose-schedule';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { PushService } from './push.service';
 
@@ -66,7 +66,22 @@ export class MissedDoseService {
 
     const medications = await this.prisma.medication.findMany({
       where: { userId: { in: [...owners.keys()] }, active: true },
-      select: { id: true, userId: true, name: true, dosage: true, times: true, active: true, activeSince: true, createdAt: true, customEndDate: true },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        dosage: true,
+        dosageSteps: true,
+        times: true,
+        active: true,
+        activeSince: true,
+        createdAt: true,
+        customEndDate: true,
+        scheduleType: true,
+        weekDays: true,
+        dayInterval: true,
+        startDate: true,
+      },
     });
     if (!medications.length) return;
     const medicationIds = medications.map((medication) => medication.id);
@@ -116,7 +131,7 @@ export class MissedDoseService {
       await this.push.notify(owner.caregivers, {
         title: missed.length === 1 ? `${owner.name} no ha registrado su toma` : `${owner.name} tiene ${missed.length} tomas sin registrar`,
         body: missed.length === 1
-          ? `${first.medication.name} (${first.medication.dosage}) de las ${clock(first.at)}. Si ya la tomó, regístrala desde Círculo.`
+          ? `${first.medication.name} (${dosageOnDay(first.medication, first.at, owner.timezone)}) de las ${clock(first.at)}. Si ya la tomó, regístrala desde Círculo.`
           : missed.map(({ medication, at }) => `${medication.name} ${clock(at)}`).join(' · '),
         data: { type: 'MISSED_DOSE', ownerId },
       });

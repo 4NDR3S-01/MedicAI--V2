@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsDate, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsDate, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+
+import { RepeatDto } from './repeat.dto';
 
 export const APPOINTMENT_ATTENDANCE_STATUSES = ['PENDING', 'ATTENDED', 'MISSED'] as const;
 export type AppointmentAttendanceStatus = typeof APPOINTMENT_ATTENDANCE_STATUSES[number];
@@ -28,4 +30,10 @@ export class CreateAppointmentDto {
   @IsOptional()
   @MaxLength(500)
   notes?: string;
+
+  /** Crear una serie de citas que se repiten. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RepeatDto)
+  repeat?: RepeatDto;
 }

@@ -1,6 +1,6 @@
 import type { AppointmentData } from '../services/appointments.service';
 import type { MedicationData } from '../services/medications.service';
-import { frequencyLabel } from './medication-form';
+import { scheduleLabel } from './medication-form';
 
 /** "Ibuprofeno 400" ≈ "ibuprofeno"; sin tildes ni mayúsculas. */
 const normalize = (value: string) =>
@@ -25,7 +25,7 @@ export function findDuplicateMedication(name: string, existing: MedicationData[]
 }
 
 export const describeMedication = (medication: MedicationData) =>
-  `${medication.name} (${medication.dosage}, ${frequencyLabel(medication.frequency).toLowerCase()})`;
+  `${medication.name} (${medication.dosage}, ${scheduleLabel(medication).toLowerCase()})`;
 
 /** Cita activa el mismo día, a menos de 1 h y con el mismo profesional o motivo. */
 export function findDuplicateAppointment(

@@ -6,6 +6,7 @@ import { OwnerQueryDto } from '../circle/dto/owner-query.dto';
 import { CareNotifierService } from '../push/care-notifier.service';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { SeriesScopeQueryDto } from './dto/repeat.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
 /**
@@ -50,16 +51,20 @@ export class AppointmentsController {
   async update(
     @Param('id') appointmentId: string,
     @Body() dto: UpdateAppointmentDto,
-    @Query() query: OwnerQueryDto,
+    @Query() query: SeriesScopeQueryDto,
     @Request() req: any,
   ) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'manageAppointments');
-    return this.changed(ownerId, req.user?.sub, this.appointmentsService.update(appointmentId, ownerId, dto, req.user?.sub));
+    return this.changed(
+      ownerId,
+      req.user?.sub,
+      this.appointmentsService.update(appointmentId, ownerId, dto, req.user?.sub, query.scope),
+    );
   }
 
   @Delete(':id')
-  async delete(@Param('id') appointmentId: string, @Query() query: OwnerQueryDto, @Request() req: any) {
+  async delete(@Param('id') appointmentId: string, @Query() query: SeriesScopeQueryDto, @Request() req: any) {
     const ownerId = await this.access.resolveOwner(req.user?.sub, query.ownerId, 'manageAppointments');
-    return this.changed(ownerId, req.user?.sub, this.appointmentsService.delete(appointmentId, ownerId));
+    return this.changed(ownerId, req.user?.sub, this.appointmentsService.delete(appointmentId, ownerId, query.scope));
   }
 }
