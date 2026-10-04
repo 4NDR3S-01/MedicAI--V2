@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { LayoutAnimation, StyleSheet, Text, TextInput, View } from "react-native";
+import { LayoutAnimation, StyleSheet, Text, View } from "react-native";
+
+import { BufferedTextInput } from "../../../../shared/ui/BufferedTextInput";
 
 import type { AppTheme } from "../../../../shared/theme";
 import { PressableScale, useReducedMotion } from "../../../../shared/ui";
@@ -177,7 +179,7 @@ export function MedicalMultiSelect({
       ) : null}
 
       <View style={[styles.addRow, inputColors]}>
-        <TextInput
+        <BufferedTextInput
           value={customDraft}
           onChangeText={(text) => {
             setCustomDraft(text);

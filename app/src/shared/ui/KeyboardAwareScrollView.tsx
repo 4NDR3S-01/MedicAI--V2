@@ -12,6 +12,7 @@ import {
 
 import { useReducedMotion } from './motion';
 import { useKeyboardInset } from './useKeyboardInset';
+import { BufferedTextInput } from './BufferedTextInput';
 
 const RevealFocusedInputContext = createContext<() => void>(() => undefined);
 
@@ -27,8 +28,8 @@ export function KeyboardAwareTextInput({
 }: TextInputProps & { inputRef?: Ref<TextInput> }) {
   const reveal = useContext(RevealFocusedInputContext);
   return (
-    <TextInput
-      ref={inputRef}
+    <BufferedTextInput
+      inputRef={inputRef}
       {...props}
       onFocus={(event) => {
         onFocus?.(event);
