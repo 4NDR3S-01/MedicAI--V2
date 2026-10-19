@@ -3,7 +3,7 @@ export const SITE_URL = "https://medicai.lat";
 // Enlace para unirse a la prueba cerrada de Google Play; cámbialo a
 // https://play.google.com/store/apps/details?id=com.william20.medicai
 // cuando la app salga a producción.
-export const PLAY_URL = "https://play.google.com/apps/testing/com.william20.medicai";
+export const PLAY_URL = "https://play.google.com/apps/internaltest/4701715038985390223";
 
 export const SUPPORT_EMAIL = "soporte@medicai.lat";
 
