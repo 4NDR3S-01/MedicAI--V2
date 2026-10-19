@@ -167,57 +167,73 @@ public class AlarmActivity extends Activity {
         AlarmScheduler.scheduleExactAlarm(this, snoozeId, new Date(snoozeTime), snoozeTitle, alarmBody);
     }
 
+    // Paleta de la marca (teal), igual que la app y la web.
+    private static final int COLOR_BG_TOP = 0xFF042F2E;
+    private static final int COLOR_BG_BOTTOM = 0xFF020617;
+    private static final int COLOR_ACCENT = 0xFF2DD4BF;
+    private static final int COLOR_ACCENT_DARK = 0xFF0F766E;
+    private static final int COLOR_ON_ACCENT = 0xFF042F2E;
+    private static final int COLOR_TEXT_SOFT = 0xFFA7C4C2;
+    private static final int COLOR_DANGER = 0xFFF87171;
+
     private void buildAlarmUI(String title, String body) {
-        // ─── Root: full-screen dark gradient ───
+        // ─── Root: full-screen teal → night gradient ───
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(0xFF0B0F19);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setBackground(new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {COLOR_BG_TOP, COLOR_BG_BOTTOM}
+        ));
         int sidePad = dpToPx(28);
-        root.setPadding(sidePad, dpToPx(48), sidePad, dpToPx(48));
+        root.setPadding(sidePad, dpToPx(40), sidePad, dpToPx(28));
         setContentView(root);
+
+        getWindow().setStatusBarColor(COLOR_BG_TOP);
+        getWindow().setNavigationBarColor(COLOR_BG_BOTTOM);
 
         // ─── Entrance fade-in ───
         root.setAlpha(0f);
         root.animate().alpha(1f).setDuration(400).setInterpolator(new AccelerateDecelerateInterpolator()).start();
 
-        // ─── Top spacer ───
-        root.addView(spacer(dpToPx(16)));
+        root.addView(flexSpacer());
 
-        // ─── Alarm icon (emoji with pulse animation) ───
-        TextView icon = new TextView(this);
-        icon.setText("\u23F0");
-        icon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 72);
-        icon.setGravity(Gravity.CENTER);
-        icon.setTextColor(Color.WHITE);
-        icon.setAlpha(0.92f);
-        root.addView(icon);
+        // ─── Current time + date (respeta el formato 12/24 h del teléfono) ───
+        long now = System.currentTimeMillis();
+        TextView clock = new TextView(this);
+        clock.setText(android.text.format.DateFormat.getTimeFormat(this).format(new Date(now)));
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 56);
+        clock.setTextColor(Color.WHITE);
+        clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        clock.setGravity(Gravity.CENTER);
+        clock.setIncludeFontPadding(false);
+        root.addView(clock);
 
-        // Pulse animation on the icon
-        ObjectAnimator pulseX = ObjectAnimator.ofFloat(icon, "scaleX", 1f, 1.12f);
-        ObjectAnimator pulseY = ObjectAnimator.ofFloat(icon, "scaleY", 1f, 1.12f);
-        pulseX.setDuration(1200);
-        pulseY.setDuration(1200);
-        pulseX.setInterpolator(new AccelerateDecelerateInterpolator());
-        pulseY.setInterpolator(new AccelerateDecelerateInterpolator());
-        pulseX.setRepeatMode(ValueAnimator.REVERSE);
-        pulseX.setRepeatCount(ValueAnimator.INFINITE);
-        pulseY.setRepeatMode(ValueAnimator.REVERSE);
-        pulseY.setRepeatCount(ValueAnimator.INFINITE);
-        AnimatorSet pulse = new AnimatorSet();
-        pulse.playTogether(pulseX, pulseY);
-        pulse.start();
+        TextView date = new TextView(this);
+        date.setText(android.text.format.DateUtils.formatDateTime(this, now,
+            android.text.format.DateUtils.FORMAT_SHOW_WEEKDAY
+                | android.text.format.DateUtils.FORMAT_SHOW_DATE
+                | android.text.format.DateUtils.FORMAT_NO_YEAR));
+        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        date.setTextColor(COLOR_TEXT_SOFT);
+        date.setGravity(Gravity.CENTER);
+        root.addView(date);
 
-        root.addView(spacer(dpToPx(24)));
+        root.addView(spacer(dpToPx(32)));
 
-        // ─── "Recordatorio" label (small uppercase) ───
+        // ─── App logo with pulsing rings (antes: emoji ⏰) ───
+        root.addView(buildPulsingLogo());
+
+        root.addView(spacer(dpToPx(28)));
+
+        // ─── Kicker ───
         TextView kicker = new TextView(this);
-        kicker.setText("RECORDATORIO DE MEDICACI\u00D3N");
-        kicker.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        kicker.setTextColor(0xFF60A5FA);
+        kicker.setText("HORA DE TU MEDICAMENTO");
+        kicker.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        kicker.setTextColor(COLOR_ACCENT);
         kicker.setTypeface(null, Typeface.BOLD);
         kicker.setGravity(Gravity.CENTER);
-        kicker.setLetterSpacing(0.08f);
+        kicker.setLetterSpacing(0.12f);
         root.addView(kicker);
 
         root.addView(spacer(dpToPx(8)));
@@ -232,32 +248,35 @@ public class AlarmActivity extends Activity {
         titleView.setLineSpacing(0f, 1.1f);
         root.addView(titleView);
 
-        root.addView(spacer(dpToPx(8)));
+        root.addView(spacer(dpToPx(6)));
 
         // ─── Dose body ───
         TextView bodyView = new TextView(this);
         bodyView.setText(body);
         bodyView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        bodyView.setTextColor(0xFF94A3B8);
+        bodyView.setTextColor(COLOR_TEXT_SOFT);
         bodyView.setGravity(Gravity.CENTER);
-        bodyView.setLineSpacing(0f, 1.4f);
+        bodyView.setLineSpacing(0f, 1.35f);
         root.addView(bodyView);
 
-        root.addView(spacer(dpToPx(40)));
+        root.addView(flexSpacer());
+        root.addView(spacer(dpToPx(24)));
 
         // ─── Buttons container ───
         LinearLayout btnContainer = new LinearLayout(this);
         btnContainer.setOrientation(LinearLayout.VERTICAL);
         btnContainer.setGravity(Gravity.CENTER);
-        btnContainer.setPadding(0, 0, 0, 0);
 
-        // ── YA TOMÉ (primary, green) ──
+        // ── YA TOMÉ (primary, brand teal) ──
         Button takeBtn = createActionButton(
             "YA TOM\u00C9",
-            0xFF16A34A,
-            0xFF15803D,
+            COLOR_ACCENT,
+            COLOR_ACCENT_DARK,
             0.95f
         );
+        takeBtn.setTextColor(COLOR_ON_ACCENT);
+        takeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        takeBtn.getLayoutParams().height = dpToPx(64);
         takeBtn.setOnClickListener(v -> {
             userInteracted = true;
             storePendingAction("TAKEN");
@@ -267,11 +286,11 @@ public class AlarmActivity extends Activity {
 
         btnContainer.addView(spacer(dpToPx(12)));
 
-        // ── POSPONER (secondary, blue) ──
+        // ── POSPONER (secondary, translucent) ──
         Button snoozeBtn = createActionButton(
             "POSPONER 10 MIN",
-            0xFF2563EB,
-            0xFF1D4ED8,
+            0x24FFFFFF,
+            0x40FFFFFF,
             0.95f
         );
         snoozeBtn.setOnClickListener(v -> {
@@ -284,11 +303,11 @@ public class AlarmActivity extends Activity {
 
         btnContainer.addView(spacer(dpToPx(12)));
 
-        // ── OMITIR (destructive, red / outline style) ──
+        // ── OMITIR (destructive, outline) ──
         Button skipBtn = createOutlineButton(
             "OMITIR",
-            0xFFDC2626,
-            0xFFDC2626
+            COLOR_DANGER,
+            COLOR_DANGER
         );
         skipBtn.setOnClickListener(v -> {
             userInteracted = true;
@@ -299,16 +318,94 @@ public class AlarmActivity extends Activity {
 
         root.addView(btnContainer);
 
-        // ─── Bottom spacer ───
-        root.addView(spacer(dpToPx(24)));
+        root.addView(spacer(dpToPx(20)));
 
-        // ─── "Toca para abrir MedicAI" hint ───
-        TextView hint = new TextView(this);
-        hint.setText("Toca fuera para abrir la aplicaci\u00F3n");
-        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        hint.setTextColor(0xFF475569);
-        hint.setGravity(Gravity.CENTER);
-        root.addView(hint);
+        // ─── Brand footer ───
+        TextView brand = new TextView(this);
+        brand.setText("MedicAI");
+        brand.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        brand.setTextColor(0x99FFFFFF);
+        brand.setTypeface(null, Typeface.BOLD);
+        brand.setGravity(Gravity.CENTER);
+        brand.setLetterSpacing(0.04f);
+        root.addView(brand);
+    }
+
+    /**
+     * Logo de la app dentro de un círculo blanco, con dos anillos que se
+     * expanden y desvanecen en bucle (sensación de «sonando»).
+     */
+    private View buildPulsingLogo() {
+        int size = dpToPx(148);
+        int badge = dpToPx(100);
+
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        LinearLayout.LayoutParams frameParams = new LinearLayout.LayoutParams(size, size);
+        frameParams.gravity = Gravity.CENTER_HORIZONTAL;
+        frame.setLayoutParams(frameParams);
+        frame.setClipChildren(false);
+
+        for (int i = 0; i < 2; i++) {
+            View ring = new View(this);
+            GradientDrawable ringBg = new GradientDrawable();
+            ringBg.setShape(GradientDrawable.OVAL);
+            ringBg.setColor(0x1A2DD4BF);
+            ringBg.setStroke(dpToPx(2), COLOR_ACCENT);
+            ring.setBackground(ringBg);
+            android.widget.FrameLayout.LayoutParams rp = new android.widget.FrameLayout.LayoutParams(badge, badge, Gravity.CENTER);
+            frame.addView(ring, rp);
+
+            ObjectAnimator sx = ObjectAnimator.ofFloat(ring, "scaleX", 1f, 1.45f);
+            ObjectAnimator sy = ObjectAnimator.ofFloat(ring, "scaleY", 1f, 1.45f);
+            ObjectAnimator fade = ObjectAnimator.ofFloat(ring, "alpha", 0.9f, 0f);
+            for (ObjectAnimator anim : new ObjectAnimator[] {sx, sy, fade}) {
+                anim.setDuration(1800);
+                anim.setRepeatCount(ValueAnimator.INFINITE);
+                anim.setRepeatMode(ValueAnimator.RESTART);
+            }
+            AnimatorSet set = new AnimatorSet();
+            set.playTogether(sx, sy, fade);
+            set.setStartDelay(i * 900L);
+            set.start();
+        }
+
+        // Círculo blanco con el ícono de la app (el mismo del lanzador).
+        android.widget.ImageView logo = new android.widget.ImageView(this);
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setShape(GradientDrawable.OVAL);
+        badgeBg.setColor(Color.WHITE);
+        logo.setBackground(badgeBg);
+        logo.setClipToOutline(true);
+        logo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        logo.setElevation(dpToPx(8));
+        try {
+            logo.setImageDrawable(getPackageManager().getApplicationIcon(getApplicationInfo()));
+        } catch (Exception e) {
+            android.util.Log.w("MedicAI-Alarm", "App icon unavailable: " + e.getMessage());
+        }
+        frame.addView(logo, new android.widget.FrameLayout.LayoutParams(badge, badge, Gravity.CENTER));
+
+        // Latido suave del logo.
+        ObjectAnimator beatX = ObjectAnimator.ofFloat(logo, "scaleX", 1f, 1.06f);
+        ObjectAnimator beatY = ObjectAnimator.ofFloat(logo, "scaleY", 1f, 1.06f);
+        for (ObjectAnimator anim : new ObjectAnimator[] {beatX, beatY}) {
+            anim.setDuration(900);
+            anim.setInterpolator(new AccelerateDecelerateInterpolator());
+            anim.setRepeatMode(ValueAnimator.REVERSE);
+            anim.setRepeatCount(ValueAnimator.INFINITE);
+        }
+        AnimatorSet beat = new AnimatorSet();
+        beat.playTogether(beatX, beatY);
+        beat.start();
+
+        return frame;
+    }
+
+    /** Espaciador elástico: reparte el alto sobrante (y se encoge en pantallas pequeñas). */
+    private View flexSpacer() {
+        View v = new View(this);
+        v.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        return v;
     }
 
     /**
@@ -394,7 +491,7 @@ public class AlarmActivity extends Activity {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.TRANSPARENT);
         bg.setCornerRadius(dpToPx(16));
-        bg.setStroke(dpToPx(2), strokeColor);
+        bg.setStroke(dpToPx(1), strokeColor);
 
         RippleDrawable ripple = new RippleDrawable(
             ColorStateList.valueOf(rippleColor | 0x33000000),

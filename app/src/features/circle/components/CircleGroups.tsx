@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BufferedTextInput } from '../../../shared/ui/BufferedTextInput';
 
@@ -34,6 +34,15 @@ const SUGGESTED_GROUPS: { name: string; icon: IconName }[] = [
 export const groupIcon = (group: Pick<CircleGroup, 'icon'>): IconName =>
   (GROUP_ICONS as string[]).includes(group.icon) ? (group.icon as IconName) : 'account-group';
 
+export type GroupPickerHandle = {
+  /**
+   * Crea el grupo que quedó escrito sin confirmar (si lo hay) y devuelve la
+   * selección final para enviarla. null si no se pudo crear (ya se avisó).
+   * Llamarlo antes de guardar o de salir del paso donde está el selector.
+   */
+  commitDraft: () => Promise<string[] | null>;
+};
+
 /** Selección múltiple de grupos (chips) con creación rápida. */
 export function GroupPicker({
   theme,
@@ -41,6 +50,7 @@ export function GroupPicker({
   value,
   onChange,
   onCreate,
+  ref,
 }: Readonly<{
   theme: AppTheme;
   groups: CircleGroup[];
@@ -51,28 +61,46 @@ export function GroupPicker({
    * selección resultante (que ya lo incluye); onChange no se llama.
    */
   onCreate?: (group: CircleGroup, nextValue: string[]) => void;
+  ref?: Ref<GroupPickerHandle>;
 }>) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Evita crear el mismo grupo dos veces (doble toque, o «Crear» + guardar).
+  const pending = useRef<Promise<string[] | null> | null>(null);
 
   const toggle = (groupId: string) =>
     onChange(value.includes(groupId) ? value.filter((id) => id !== groupId) : [...value, groupId]);
 
-  const create = async () => {
-    if (!name.trim()) return;
-    try {
-      setBusy(true);
-      const group = await circleAPI.createGroup(await withToken(), name.trim());
-      onCreate?.(group, [...value, group.id]);
-      setName('');
-      setCreating(false);
-    } catch (error) {
-      Alert.alert('No se pudo crear el grupo', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
-    } finally {
-      setBusy(false);
-    }
+  const create = (): Promise<string[] | null> => {
+    const trimmed = name.trim();
+    if (!trimmed) return Promise.resolve(value);
+    if (pending.current) return pending.current;
+    pending.current = (async () => {
+      try {
+        setBusy(true);
+        const group = await circleAPI.createGroup(await withToken(), trimmed);
+        const next = [...value, group.id];
+        onCreate?.(group, next);
+        setName('');
+        setCreating(false);
+        return next;
+      } catch (error) {
+        Alert.alert('No se pudo crear el grupo', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+        return null;
+      } finally {
+        setBusy(false);
+        pending.current = null;
+      }
+    })();
+    return pending.current;
   };
+
+  useImperativeHandle(ref, () => ({
+    commitDraft: () => (creating ? create() : Promise.resolve(value)),
+  }));
+
+  const canCreate = Boolean(name.trim()) && !busy;
 
   return (
     <View style={styles.picker}>
@@ -101,14 +129,37 @@ export function GroupPicker({
             style={[styles.createInput, { color: theme.colors.textPrimary }]}
             maxLength={40}
             autoFocus
+            editable={!busy}
             returnKeyType="done"
             onSubmitEditing={() => void create()}
           />
-          <Pressable onPress={() => void create()} disabled={busy || !name.trim()} hitSlop={6} accessibilityRole="button" accessibilityLabel="Crear grupo">
-            <MaterialCommunityIcons name="check-circle" size={26} color={name.trim() ? theme.colors.accentPrimary : theme.colors.textMuted} />
+          <Pressable
+            onPress={() => setCreating(false)}
+            disabled={busy}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Cancelar"
+          >
+            <MaterialCommunityIcons name="close" size={22} color={theme.colors.textMuted} />
           </Pressable>
-          <Pressable onPress={() => setCreating(false)} hitSlop={6} accessibilityRole="button" accessibilityLabel="Cancelar">
-            <MaterialCommunityIcons name="close-circle-outline" size={26} color={theme.colors.textMuted} />
+          <Pressable
+            onPress={() => void create()}
+            disabled={!canCreate}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Crear grupo"
+            accessibilityState={{ disabled: !canCreate, busy }}
+            style={({ pressed }) => [
+              styles.createButton,
+              { backgroundColor: canCreate || busy ? theme.colors.accentPrimary : `${theme.colors.textMuted}33` },
+              pressed && styles.pressed,
+            ]}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={[styles.createButtonText, { color: canCreate ? '#FFFFFF' : theme.colors.textMuted }]}>Crear</Text>
+            )}
           </Pressable>
         </View>
       ) : null}
@@ -315,6 +366,8 @@ const styles = StyleSheet.create({
   addChipText: { fontSize: 14, fontWeight: '700' },
   createRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12, minHeight: 50 },
   createInput: { flex: 1, fontSize: 16, paddingVertical: 10 },
+  createButton: { minWidth: 72, minHeight: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  createButtonText: { fontSize: 14.5, fontWeight: '800' },
   icons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   iconOption: { width: 48, height: 48, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   groupRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 12 },

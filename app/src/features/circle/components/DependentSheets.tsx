@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Alert, Platform, StyleSheet, Text } from 'react-native';
@@ -10,7 +10,7 @@ import { shareInvitation, withToken } from '../hooks/useCircle';
 import * as circleAPI from '../services/circle.service';
 import type { CircleGroup, CircleInvitation, CircleMember, ReminderMode } from '../services/circle.service';
 import { EMPTY_MEDICAL_INFO, MedicalInfoEditor, type MedicalInfo } from '../../auth';
-import { GroupPicker } from './CircleGroups';
+import { GroupPicker, type GroupPickerHandle } from './CircleGroups';
 import { NO_PERMISSIONS, PERMISSION_PRESETS, type PermissionSet } from '../utils/permissions';
 import { firstName, reciprocalSuggestions, type RelationCode } from '../utils/relations';
 import { InfoNote, PermissionEditor, RelationPicker, ReminderModePicker, SectionTitle } from './CircleParts';
@@ -51,6 +51,7 @@ export function DependentSheet({
   const [medical, setMedical] = useState<MedicalInfo>(EMPTY_MEDICAL_INFO);
   const [reminderMode, setReminderMode] = useState<ReminderMode>('ALARM');
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const groupPickerRef = useRef<GroupPickerHandle>(null);
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [iosPicker, setIosPicker] = useState(false);
@@ -126,6 +127,9 @@ export function DependentSheet({
       || (!editing && (!relation || (relation === 'OTHER' && !relationText.trim())))
       || (!editing && (!myRelation || (myRelation === 'OTHER' && !myRelationText.trim())));
     if (invalid) return;
+    // Un grupo escrito pero sin confirmar se crea ahora (antes se perdía).
+    const finalGroupIds = editing || !groupPickerRef.current ? groupIds : await groupPickerRef.current.commitDraft();
+    if (!finalGroupIds) return;
     if (!editing && reminderMode !== 'OFF' && !allowDuplicateName) {
       // Sus alarmas sonarán en este teléfono.
       const { ready } = await ensureAlarmPermissions();
@@ -149,7 +153,7 @@ export function DependentSheet({
           ...medical,
           allergies: medical.allergies || undefined,
           conditions: medical.conditions || undefined,
-          groupIds,
+          groupIds: finalGroupIds,
           reminderMode,
           allowDuplicateName,
         });
@@ -258,6 +262,7 @@ export function DependentSheet({
         <>
           <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
           <GroupPicker
+            ref={groupPickerRef}
             theme={theme}
             groups={groups}
             value={groupIds}

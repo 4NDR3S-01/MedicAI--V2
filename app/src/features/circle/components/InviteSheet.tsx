@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -24,7 +24,7 @@ import {
 } from '../utils/relations';
 import { shareInvitation } from '../hooks/useCircle';
 import { CarePicker, InfoNote, PermissionEditor, RelationPicker, REMINDER_OPTIONS, ReminderModePicker, SectionTitle } from './CircleParts';
-import { GroupPicker } from './CircleGroups';
+import { GroupPicker, type GroupPickerHandle } from './CircleGroups';
 
 type Method = 'email' | 'code';
 type Step = 0 | 1 | 2 | 3;
@@ -76,6 +76,7 @@ export function InviteSheet({
   onGroupCreated,
 }: Readonly<InviteSheetProps>) {
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const groupPickerRef = useRef<GroupPickerHandle>(null);
   const [reminderMode, setReminderMode] = useState<ReminderMode>('OFF');
   const [step, setStep] = useState<Step>(0);
   const [method, setMethod] = useState<Method>('email');
@@ -126,9 +127,12 @@ export function InviteSheet({
   };
   const error = showErrors ? stepError() : null;
 
-  const goNext = () => {
+  const goNext = async () => {
     setShowErrors(true);
     if (stepError()) return;
+    // Al salir del paso del selector, un grupo escrito sin confirmar se crea
+    // (si no, se perdía al desmontarse el campo).
+    if (step === 0 && groupPickerRef.current && !(await groupPickerRef.current.commitDraft())) return;
     setShowErrors(false);
     if (step === 1 && !permissionsTouched) {
       const defaults = defaultsFor(care, relation);
@@ -237,7 +241,7 @@ export function InviteSheet({
             theme={theme}
             label={step === 3 ? 'Enviar invitación' : 'Siguiente'}
             icon={step === 3 ? 'paper-plane-outline' : 'arrow-forward'}
-            onPress={() => (step === 3 ? void submit() : goNext())}
+            onPress={() => void (step === 3 ? submit() : goNext())}
             loading={saving}
             style={styles.flexWide}
           />
@@ -311,6 +315,7 @@ export function InviteSheet({
             <>
               <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
               <GroupPicker
+                ref={groupPickerRef}
                 theme={theme}
                 groups={groups}
                 value={groupIds}

@@ -19,7 +19,7 @@ import {
   type RelationCode,
 } from '../utils/relations';
 import { Avatar, Badge, InfoNote, PermissionEditor, PermissionList, RelationPicker, ReminderModePicker, SectionTitle } from './CircleParts';
-import { GroupPicker } from './CircleGroups';
+import { GroupPicker, type GroupPickerHandle } from './CircleGroups';
 
 const STATE_MESSAGES: Record<Exclude<CircleInvitation['state'], 'PENDING'>, { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }> = {
   ACCEPTED: { icon: 'check-circle-outline', text: 'Ya aceptaste esta invitación. La persona está en tu Círculo.' },
@@ -54,6 +54,7 @@ export function InvitationReviewSheet({
   onGroupCreated,
 }: Readonly<InvitationReviewSheetProps>) {
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const groupPickerRef = useRef<GroupPickerHandle>(null);
   const [reminderMode, setReminderMode] = useState<ReminderMode>('OFF');
   // Mantiene el contenido mientras el panel se cierra.
   const last = useRef(invitation);
@@ -106,6 +107,9 @@ export function InvitationReviewSheet({
   const accept = async () => {
     setShowErrors(true);
     if (!relation || (relation === 'OTHER' && !relationText.trim())) return;
+    // Un grupo escrito pero sin confirmar se crea ahora (antes se perdía).
+    const finalGroupIds = groupPickerRef.current ? await groupPickerRef.current.commitDraft() : groupIds;
+    if (!finalGroupIds) return;
     if (canAskReminders && reminderMode !== 'OFF') await ensureAlarmPermissions();
     try {
       setBusy('accept');
@@ -113,10 +117,10 @@ export function InvitationReviewSheet({
         relation,
         relationLabel: relation === 'OTHER' ? relationText.trim() : undefined,
         granted: forDependent ? normalizePermissions(null) : granted,
-        groupIds,
+        groupIds: finalGroupIds,
         reminderMode: canAskReminders ? reminderMode : 'OFF',
       });
-      onAccepted(member, shown, groupIds);
+      onAccepted(member, shown, finalGroupIds);
     } catch (error) {
       Alert.alert('No se pudo aceptar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {
@@ -229,6 +233,7 @@ export function InvitationReviewSheet({
 
           <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
           <GroupPicker
+            ref={groupPickerRef}
             theme={theme}
             groups={groups}
             value={groupIds}
