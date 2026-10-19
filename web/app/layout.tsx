@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
+import { TEXT_SIZE_KEY } from "./content/site";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -48,15 +50,30 @@ export const metadata: Metadata = {
 
 import SmoothScrollProvider from "./components/SmoothScrollProvider";
 
+// Aplica «texto grande» antes de pintar para que la página no salte al cargar.
+const TEXT_SIZE_SCRIPT = `try{if(localStorage.getItem(${JSON.stringify(TEXT_SIZE_KEY)})==="large")document.documentElement.dataset.text="large"}catch(e){}`;
+
+// Analítica opcional: Umami alojado por nosotros (sin cookies, no identifica a
+// nadie). Solo se carga si están las dos variables; si no, no se mide nada.
+const UMAMI_SCRIPT_URL = process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL;
+const UMAMI_WEBSITE_ID = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+    // suppressHydrationWarning: el script de arriba puede añadir data-text antes de hidratar.
+    <html lang="es" className={`${inter.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_SCRIPT }} />
+      </head>
       <body className="min-h-screen flex flex-col antialiased">
         <SmoothScrollProvider>{children}</SmoothScrollProvider>
+        {UMAMI_SCRIPT_URL && UMAMI_WEBSITE_ID && (
+          <Script src={UMAMI_SCRIPT_URL} data-website-id={UMAMI_WEBSITE_ID} strategy="afterInteractive" />
+        )}
       </body>
     </html>
   );

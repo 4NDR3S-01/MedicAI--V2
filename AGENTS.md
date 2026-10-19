@@ -68,6 +68,6 @@ All commands run from `app/backend/`:
 
 ## Entrypoints
 - **App**: `app/index.ts` → `App.tsx` → `src/app/AppRoot.tsx` (all auth, navigation, notifications orchestrated here)
-- **Web**: `web/app/page.tsx` (landing), `web/app/auth/[action]/page.tsx` (auth bridge)
+- **Web**: `web/app/page.tsx` (landing, server component), `web/app/auth/[action]/page.tsx` (auth bridge). Texts live in `web/app/content/` (landing FAQ/features, `/para/[slug]` audience pages, `/guias/[slug]` guides, `site.ts` with `PLAY_URL`); header/footer in `components/site-chrome.tsx`; animated demos (hero alarm, assistant chat, Circle) in `components/landing/`. Only promise in web copy what the app does today. Optional analytics: `NEXT_PUBLIC_UMAMI_SCRIPT_URL` + `NEXT_PUBLIC_UMAMI_WEBSITE_ID` (self-hosted Umami; disclosed in `/privacidad`).
 - **Backend**: `app/backend/src/main.ts`
 - **Prisma**: `app/backend/prisma/schema.prisma`

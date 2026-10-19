@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { CONTROLLER, LegalFooter, LegalHeader, LegalToc, Mail, Section } from "../components/legal";
 
-const POLICY_VERSION = "2026-10-03";
-const LAST_UPDATED = "3 de octubre de 2026";
+const POLICY_VERSION = "2026-10-18";
+const LAST_UPDATED = "18 de octubre de 2026";
 
 export const metadata: Metadata = {
   title: "Política de privacidad",
@@ -119,6 +119,11 @@ export default function PrivacyPolicyPage() {
             Para seguridad y diagnóstico registramos la dirección IP, la fecha y hora y el resultado de cada
             solicitud, junto con un identificador interno de usuario. En tu dispositivo se guardan la
             sesión, tus preferencias y las alarmas de medicación.
+          </p>
+          <p>
+            En el sitio web podemos contar visitas de forma agregada (páginas vistas, país aproximado, tipo de
+            dispositivo y clics en el botón de descarga) con una herramienta alojada en nuestros propios
+            servidores. No usa cookies, no guarda tu dirección IP y no te identifica.
           </p>
           <p>No usamos herramientas de publicidad ni de seguimiento de terceros.</p>
         </Section>
