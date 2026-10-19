@@ -22,21 +22,26 @@ export const metadata: Metadata = {
     template: "%s | MedicAI",
   },
   description:
-    "MedicAI ayuda a recordar citas médicas, tomar medicamentos a tiempo y coordinar círculos familiares de cuidado.",
+    "MedicAI te recuerda tus medicamentos y citas médicas, coordina el cuidado de tu familia y te ayuda con un asistente de IA por voz. Gratis para Android.",
+  applicationName: "MedicAI",
   keywords: [
-    "recordatorio de citas médicas",
     "recordatorio de medicamentos",
-    "app médica",
+    "alarma de pastillas",
+    "recordatorio de citas médicas",
+    "app para cuidar a mis papás",
     "cuidado familiar",
+    "asistente de salud con IA",
   ],
   openGraph: {
-    title: "MedicAI | Recordatorios médicos",
-    description: "Recordatorios de citas y medicamentos con cuidado familiar.",
+    title: "MedicAI | Tu agenda médica, siempre presente",
+    description:
+      "Medicamentos, citas y el cuidado de tu familia en una sola app, con un asistente al que le puedes hablar.",
     url: "https://medicai.lat",
     siteName: "MedicAI",
-    locale: "es_ES",
+    locale: "es_419",
     type: "website",
   },
+  twitter: { card: "summary_large_image" },
   // Iconos: app/favicon.ico, app/icon.png y app/apple-icon.png (convención de
   // archivos de Next). Antes se servía el logo de 484 KB como favicon.
 };

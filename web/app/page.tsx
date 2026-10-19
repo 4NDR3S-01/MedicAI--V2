@@ -2,8 +2,23 @@
 
 import { useState, useRef, useEffect, useCallback, useId } from "react";
 import Image from "next/image";
-import { Home as HomeIcon, Pill, Users, CalendarCheck, User, Menu, X, ShieldCheck, Lock, ChevronDown, Mail } from "lucide-react";
+import Link from "next/link";
+import {
+  Home as HomeIcon, Pill, Users, CalendarCheck, User, Menu, X, ShieldCheck, Lock, ChevronDown, Mail,
+  Sparkles, Mic, Camera, WifiOff, PackageOpen, Baby, BadgeCheck, CalendarClock, Check,
+} from "lucide-react";
 import { useInView } from "./hooks/useInView";
+
+// Enlace de la prueba interna de Google Play; cámbialo al de la ficha pública
+// cuando la app salga a producción.
+const PLAY_URL = "https://play.google.com/apps/internaltest/4701715038985390223";
+
+const NAV_LINKS = [
+  { href: "#funciones", label: "Funciones" },
+  { href: "#asistente", label: "Asistente" },
+  { href: "#como-funciona", label: "Cómo funciona" },
+  { href: "#faq", label: "Preguntas" },
+];
 
 // ─── Module data ─────────────────────────────────────────────────────────────
 const MODULES = [
@@ -12,6 +27,66 @@ const MODULES = [
   { label: "Círculo",      Icon: Users,         src: "/screenshots/circulo.jpeg",      glow: "rgba(251, 146, 60, 0.35)"  },
   { label: "Citas",        Icon: CalendarCheck, src: "/screenshots/citas.jpeg",        glow: "rgba(96, 165, 250, 0.35)"  },
   { label: "Perfil",       Icon: User,          src: "/screenshots/perfil.jpeg",       glow: "rgba(52, 211, 153, 0.35)"  },
+];
+
+const FEATURES = [
+  {
+    Icon: Pill,
+    title: "Medicamentos a tu medida",
+    description: "Todos los días, ciertos días de la semana, cada N días o solo cuando lo necesites. Incluso dosis que cambian con el tiempo.",
+  },
+  {
+    Icon: CalendarClock,
+    title: "Citas que no se olvidan",
+    description: "Agenda consultas, controles que se repiten cada mes y recibe el recordatorio antes de que llegue el día.",
+  },
+  {
+    Icon: Users,
+    title: "Círculo de cuidado",
+    description: "Comparte con tu familia solo lo que tú elijas y recibe un aviso si alguien que cuidas no marcó su dosis.",
+  },
+  {
+    Icon: Baby,
+    title: "Perfiles para quien no usa la app",
+    description: "Lleva los medicamentos de tu hijo o de un adulto mayor desde tu teléfono, y entrégale la cuenta cuando esté listo.",
+  },
+  {
+    Icon: PackageOpen,
+    title: "Inventario de pastillas",
+    description: "MedicAI descuenta cada toma y te avisa cuando quedan pocas, antes de que se acaben.",
+  },
+  {
+    Icon: WifiOff,
+    title: "Funciona sin conexión",
+    description: "Las alarmas suenan sin internet y las tomas que marques se sincronizan solas cuando vuelvas a tener señal.",
+  },
+];
+
+const FAQS = [
+  {
+    q: "¿Es gratuita la aplicación?",
+    a: "Sí. MedicAI es gratuita, sin anuncios, e incluye todas sus funciones: recordatorios, citas, Círculo de cuidado y asistente.",
+  },
+  {
+    q: "¿Cómo funciona el Círculo de cuidado?",
+    a: "Invitas a un familiar con un enlace y cada uno decide qué comparte con el otro: ver medicamentos, registrar tomas, gestionar citas. Si lo activas, recibes un aviso cuando alguien que cuidas no marca una dosis a tiempo. Puedes cambiar o retirar los permisos cuando quieras.",
+  },
+  {
+    q: "¿Puedo llevar los medicamentos de mi hijo o de mis papás?",
+    a: "Sí. Puedes crear un perfil para alguien que no usa la app (por ejemplo, un niño o un adulto mayor) y gestionarlo desde tu teléfono. Cuando esa persona quiera su propia cuenta, se la entregas con un enlace.",
+  },
+  {
+    q: "¿Las alarmas funcionan sin internet?",
+    a: "Sí. Las alarmas viven en tu teléfono y suenan aunque no tengas conexión. Las tomas que registres sin señal se guardan y se sincronizan solas al reconectar.",
+  },
+  {
+    q: "¿El asistente reemplaza a mi médico?",
+    a: "No. El asistente te ayuda a organizarte y responde dudas generales, pero puede equivocarse y no diagnostica. Antes de cambiar un tratamiento, consulta con tu médico. Ante una emergencia, llama a los servicios de emergencia.",
+  },
+  {
+    q: "¿Están seguros mis datos médicos?",
+    a: "Tu información viaja cifrada (HTTPS), las contraseñas se guardan con hash y solo tú y las personas que autorices pueden ver tus datos. Tus datos de salud son opcionales, nunca se venden y puedes descargarlos o pedir que los eliminemos cuando quieras.",
+  },
 ];
 
 // ─── Section reveal hook ─────────────────────────────────────────────────────
@@ -47,14 +122,11 @@ export default function Home() {
             Medic<span>AI</span>
           </a>
           <nav className="nav-links" aria-label="Navegación principal">
-            <a href="#funciones">Funciones</a>
-            <a href="#como-funciona">Cómo funciona</a>
-            <a href="#app">La app</a>
+            {NAV_LINKS.map((l) => (
+              <a key={l.href} href={l.href}>{l.label}</a>
+            ))}
           </nav>
-          <GooglePlayBadge
-            href="https://play.google.com/apps/internaltest/4701715038985390223"
-            className="header-play-badge"
-          />
+          <GooglePlayBadge href={PLAY_URL} className="header-play-badge" />
           <button
             className="mobile-menu-btn"
             onClick={() => setMenuOpen(!menuOpen)}
@@ -69,10 +141,10 @@ export default function Home() {
             className={`mobile-nav ${menuOpen ? "open" : ""}`}
             aria-label="Menú móvil"
           >
-            <a href="#funciones" onClick={() => setMenuOpen(false)}>Funciones</a>
-            <a href="#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</a>
-            <a href="#app" onClick={() => setMenuOpen(false)}>La app</a>
-            <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
+            {NAV_LINKS.map((l) => (
+              <a key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>{l.label}</a>
+            ))}
+            <GooglePlayBadge href={PLAY_URL} />
           </nav>
         </div>
       </header>
@@ -80,12 +152,6 @@ export default function Home() {
       <main className="flex-1">
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
         <section className="hero" id="inicio">
-          <div className="bubble" style={{ width: 120, height: 120, top: "10%", left: "5%" }} />
-          <div className="bubble" style={{ width: 80, height: 80, top: "40%", right: "8%", animationDelay: "1s" }} />
-          <div className="bubble" style={{ width: 180, height: 180, bottom: "5%", left: "20%", animationDelay: "2s" }} />
-          <div className="bubble" style={{ width: 60, height: 60, top: "20%", right: "25%", animationDelay: "0.5s" }} />
-          <div className="bubble" style={{ width: 140, height: 140, bottom: "15%", right: "35%", animationDelay: "3s" }} />
-
           <div className="container hero-grid">
             <div className="hero-text">
               <div className="eyebrow">App de salud familiar</div>
@@ -93,21 +159,21 @@ export default function Home() {
                 Tu agenda médica, <span className="gradient-text">siempre presente</span>
               </h1>
               <p>
-                MedicAI organiza citas, medicamentos y el cuidado de quienes más
-                quieres. Una sola app para que nada importante se te pase.
+                MedicAI organiza medicamentos, citas y el cuidado de quienes más
+                quieres, con un asistente al que le puedes hablar. Una sola app para
+                que nada importante se te pase.
               </p>
               <div className="hero-actions">
-                <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
+                <GooglePlayBadge href={PLAY_URL} />
                 <a href="#como-funciona" className="btn btn-ghost">
                   Ver cómo funciona
                 </a>
               </div>
-              <div className="hero-meta">
-                <p>
-                  Diseñada para familias y profesionales de la salud que
-                  necesitan una herramienta confiable, segura y siempre a la mano.
-                </p>
-              </div>
+              <ul className="hero-trust" aria-label="Lo esencial">
+                <li><BadgeCheck size={16} aria-hidden /> Gratis y sin anuncios</li>
+                <li><WifiOff size={16} aria-hidden /> Funciona sin conexión</li>
+                <li><ShieldCheck size={16} aria-hidden /> Tus datos cifrados</li>
+              </ul>
             </div>
 
             {/* ── Interactive phone showcase ──────────────────────────────── */}
@@ -124,43 +190,56 @@ export default function Home() {
                 Todo lo que necesitas para cuidar la salud del día a día
               </h2>
               <p>
-                Tres funciones conectadas que reducen la fricción entre el médico,
-                la receta y la familia.
+                Desde la pastilla de las 8:00 hasta el control del próximo mes,
+                para ti y para las personas que cuidas.
               </p>
             </div>
-          <div className="feature-grid">
-              <RevealItem delay={0}>
-                <FeatureCard
-                  icon={<CalendarCheck size={20} />}
-                  title="Citas médicas"
-                  description="Agrega próximas consultas y recibe recordatorios antes de que llegue el día."
-                />
-              </RevealItem>
-              <RevealItem delay={100}>
-                <FeatureCard
-                  icon={<Pill size={20} />}
-                  title="Medicamentos"
-                  description="Horarios, dosis y duración del tratamiento, con alertas en el momento exacto."
-                />
-              </RevealItem>
-              <RevealItem delay={200}>
-                <FeatureCard
-                  icon={<Users size={20} />}
-                  title="Círculo familiar"
-                  description="Coordina el cuidado entre familiares para que nadie esté solo en su tratamiento."
-                />
+            <div className="feature-grid">
+              {FEATURES.map((f, i) => (
+                <RevealItem key={f.title} delay={(i % 3) * 100}>
+                  <FeatureCard icon={<f.Icon size={20} />} title={f.title} description={f.description} />
+                </RevealItem>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── ASSISTANT ────────────────────────────────────────────────────── */}
+        <section id="asistente" className="assistant-section" data-section-reveal>
+          <div className="container split reverse">
+            <div className="split-text">
+              <div className="eyebrow">Asistente con IA</div>
+              <h2 className="font-display">Pregúntale como le preguntarías a alguien de confianza</h2>
+              <p>
+                Escríbele o háblale. El asistente resuelve dudas generales sobre tus
+                medicamentos, prepara recordatorios por ti y registra tus tomas, y
+                siempre te pide confirmar antes de guardar algo.
+              </p>
+              <ul className="check-list">
+                <li><span><strong>Por voz, manos libres:</strong> &ldquo;Ya me tomé la losartán&rdquo; y queda registrado.</span></li>
+                <li><span><strong>Con una foto</strong> de la caja o la receta para cargar el medicamento sin escribir.</span></li>
+                <li><span><strong>Conoce tu contexto</strong> (alergias, tratamientos, próximas citas) solo si lo autorizas.</span></li>
+                <li><span><strong>Detecta urgencias</strong> y te recuerda llamar a emergencias.</span></li>
+              </ul>
+              <p className="split-note">
+                Es una ayuda para organizarte: no diagnostica ni reemplaza a tu médico.
+              </p>
+            </div>
+            <div className="split-visual">
+              <RevealItem>
+                <ChatMock />
               </RevealItem>
             </div>
           </div>
         </section>
 
         {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
-        <section id="como-funciona" style={{ background: "var(--surface)" }} data-section-reveal>
+        <section id="como-funciona" data-section-reveal>
           <div className="container">
             <div className="section-header">
               <div className="eyebrow">Cómo funciona</div>
               <h2 className="font-display">Tres pasos para empezar a cuidar mejor</h2>
-              <p>La app está pensada para que la configuren en minutos y la usen durante meses.</p>
+              <p>Se configura en minutos y te acompaña durante todo el tratamiento.</p>
             </div>
             <div className="steps">
               <RevealItem delay={0}>
@@ -169,25 +248,25 @@ export default function Home() {
                   src="/screenshots/registro.jpeg"
                   alt="Registro en MedicAI"
                   title="Crea tu perfil"
-                  description="Regístrate y añade los datos básicos de salud en menos de dos minutos."
+                  description="Regístrate con tu correo y, si quieres, añade alergias y condiciones de salud."
                 />
               </RevealItem>
               <RevealItem delay={100}>
                 <StepCard
                   number={2}
-                  src="/screenshots/Medicamentos.jpeg"
-                  alt="Recordatorios de medicamentos en MedicAI"
-                  title="Agrega recordatorios"
-                  description="Citas, medicamentos y frecuencias. La app se encarga del calendario."
+                  src="/screenshots/citas.jpeg"
+                  alt="Citas médicas en MedicAI"
+                  title="Agrega medicamentos y citas"
+                  description="Tú, o el asistente por ti. La app arma el calendario de tomas y recordatorios."
                 />
               </RevealItem>
               <RevealItem delay={200}>
                 <StepCard
                   number={3}
                   src="/screenshots/perfil.jpeg"
-                  alt="Perfil y círculo familiar en MedicAI"
-                  title="Recibe alertas"
-                  description="Notificaciones oportunas para ti y avisos automáticos a tu círculo de cuidado."
+                  alt="Perfil y notificaciones en MedicAI"
+                  title="Invita a tu círculo"
+                  description="Recibe tus alarmas y, si lo eliges, que tu familia se entere cuando una dosis se pasa."
                 />
               </RevealItem>
             </div>
@@ -195,7 +274,7 @@ export default function Home() {
         </section>
 
         {/* ── APP SECTION ──────────────────────────────────────────────────── */}
-        <section id="app" data-section-reveal>
+        <section id="app" style={{ background: "var(--surface)" }} data-section-reveal>
           <div className="container split">
             <div className="split-text">
               <div className="eyebrow">Dentro de la app</div>
@@ -205,14 +284,14 @@ export default function Home() {
                 usa jerarquía clara, colores tranquilos y gestos simples.
               </p>
               <ul className="check-list">
-                <li>Dashboard con próximas citas y medicamentos del día</li>
-                <li>Acceso directo a cada miembro del círculo familiar</li>
-                <li>Historial médico ordenado por fecha y tipo</li>
-                <li>Modo oscuro y claro automáticos</li>
+                <li>Inicio con los medicamentos y las citas de hoy</li>
+                <li>&ldquo;Seguimiento de hoy&rdquo; de cada persona que cuidas</li>
+                <li>Alarmas con el nombre y la dosis, aun con el teléfono bloqueado</li>
+                <li>Modo claro, oscuro o el de tu teléfono</li>
               </ul>
             </div>
             <div className="split-visual">
-              <PhoneScreenshot src="/screenshots/Inicio.jpeg" alt="Dashboard de MedicAI" />
+              <PhoneScreenshot src="/screenshots/Inicio.jpeg" alt="Pantalla de inicio de MedicAI" />
             </div>
           </div>
         </section>
@@ -225,7 +304,7 @@ export default function Home() {
                 <ShieldCheck size={32} strokeWidth={1.5} className="security-icon" />
                 <div>
                   <h3>Tu salud, tus datos, tu privacidad</h3>
-                  <p>Tu información viaja cifrada y solo tú puedes verla. Nunca vendemos tus datos ni los usamos para publicidad, y tu perfil de salud solo se comparte con el asistente de IA si lo autorizas. <a href="/privacidad" className="underline underline-offset-4">Lee nuestra política de privacidad</a>.</p>
+                  <p>Tu información viaja cifrada y solo la ven tú y quienes autorices. Nunca vendemos tus datos ni los usamos para publicidad, y tu perfil de salud solo se comparte con el asistente de IA si lo autorizas. <Link href="/privacidad" className="text-link">Lee nuestra política de privacidad</Link>.</p>
                 </div>
                 <Lock size={32} strokeWidth={1.5} className="security-icon security-icon--lock" />
               </div>
@@ -238,21 +317,12 @@ export default function Home() {
           <div className="container faq-container">
             <div className="section-header">
               <div className="eyebrow">Dudas comunes</div>
-              <h2 className="font-display">Preguntas Frecuentes</h2>
+              <h2 className="font-display">Preguntas frecuentes</h2>
             </div>
             <div className="faq-list">
-              <FAQItem 
-                q="¿Es gratuita la aplicación?" 
-                a="Sí, MedicAI ofrece un plan gratuito que incluye recordatorios de medicamentos y citas para un paciente. Contamos con un plan premium para círculos familiares amplios." 
-              />
-              <FAQItem 
-                q="¿Cómo funciona el círculo familiar?" 
-                a="Puedes invitar a familiares a tu círculo. Ellos recibirán una notificación (si la configuras) en caso de que olvides marcar una pastilla como 'tomada', asegurando que alguien siempre esté pendiente." 
-              />
-              <FAQItem 
-                q="¿Están seguros mis datos médicos?" 
-                a="Protegemos tu información con conexiones cifradas (HTTPS), contraseñas guardadas con hash y acceso limitado a tus propios datos. Tus datos de salud son opcionales, nunca se venden y puedes pedir que los eliminemos cuando quieras. Más detalles en nuestra política de privacidad." 
-              />
+              {FAQS.map((f) => (
+                <FAQItem key={f.q} q={f.q} a={f.a} />
+              ))}
             </div>
           </div>
         </section>
@@ -267,7 +337,10 @@ export default function Home() {
                   Descarga MedicAI y deja que la tecnología te ayude a nunca perder de
                   vista la salud de tu familia.
                 </p>
-                <GooglePlayBadge href="https://play.google.com/apps/internaltest/4701715038985390223" />
+                <div className="cta-actions">
+                  <GooglePlayBadge href={PLAY_URL} />
+                </div>
+                <p className="cta-note">Gratis para Android.</p>
               </div>
             </RevealItem>
           </div>
@@ -284,9 +357,9 @@ export default function Home() {
               <p>El organizador médico diseñado para la tranquilidad familiar.</p>
             </div>
             <div className="footer-links">
-              <h4>Compañía</h4>
-              <a href="#">Términos y Condiciones</a>
-              <a href="/privacidad">Política de Privacidad</a>
+              <h4>Legal</h4>
+              <Link href="/terminos">Términos y condiciones</Link>
+              <Link href="/privacidad">Política de privacidad</Link>
             </div>
             <div className="footer-links">
               <h4>Soporte</h4>
@@ -296,11 +369,58 @@ export default function Home() {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>© {new Date().getFullYear()} MedicAI. Todos los derechos reservados.</span>
+            <span>© {new Date().getFullYear()} MedicAI. MedicAI no reemplaza la atención de un profesional de la salud.</span>
           </div>
         </div>
       </footer>
     </>
+  );
+}
+
+// ─── Assistant chat mock ─────────────────────────────────────────────────────
+// Recreación en HTML de una conversación típica (no hay captura del asistente).
+function ChatMock() {
+  return (
+    <div className="chat-mock" role="img" aria-label="Ejemplo de conversación con el asistente de MedicAI">
+      <div className="chat-mock-header">
+        <span className="chat-mock-avatar"><Sparkles size={16} /></span>
+        <div>
+          <strong>Asistente MedicAI</strong>
+          <span>En línea</span>
+        </div>
+      </div>
+      <div className="chat-mock-body">
+        <div className="chat-bubble chat-bubble--user">
+          <Mic size={14} aria-hidden /> Ya me tomé la losartán
+        </div>
+        <div className="chat-bubble chat-bubble--bot">
+          ¡Bien hecho! ¿Registro la toma de las 8:00?
+          <div className="chat-proposal">
+            <div className="chat-proposal-title">
+              <Pill size={16} aria-hidden />
+              <div>
+                <strong>Losartán 50 mg</strong>
+                <span>Hoy · 8:00 · 1 tableta</span>
+              </div>
+            </div>
+            <div className="chat-proposal-actions">
+              <span className="chat-btn chat-btn--primary"><Check size={14} aria-hidden /> Registrar</span>
+              <span className="chat-btn">Ahora no</span>
+            </div>
+          </div>
+        </div>
+        <div className="chat-bubble chat-bubble--user">
+          <Camera size={14} aria-hidden /> ¿Y esta receta nueva?
+        </div>
+        <div className="chat-bubble chat-bubble--bot chat-bubble--typing" aria-hidden>
+          <span /><span /><span />
+        </div>
+      </div>
+      <div className="chat-mock-input">
+        <span>Escribe o habla…</span>
+        <span className="chat-mock-mic"><Mic size={16} /></span>
+      </div>
+    </div>
   );
 }
 
@@ -513,7 +633,7 @@ function InteractivePhoneShowcase() {
       {/* Hint label at bottom — crossfades text depending on interaction */}
       <p className="showcase-hint">
         <span className={`showcase-hint-line ${hovered ? "" : "showcase-hint-line--active"}`}>
-          Pasa el cursor o toca el telefono para explorar
+          Toca o pasa el cursor sobre el teléfono para explorar
         </span>
         <span className={`showcase-hint-line ${hovered ? "showcase-hint-line--active" : ""}`}>
           Navega entre pantallas
@@ -575,7 +695,7 @@ function MiniScreenshot({ src, alt }: { src: string; alt: string }) {
         src={src}
         alt={alt}
         fill
-        className="object-cover"
+        className="object-cover object-top"
         sizes="(max-width: 768px) 90vw, 280px"
       />
     </div>

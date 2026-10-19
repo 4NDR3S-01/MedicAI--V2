@@ -52,7 +52,7 @@ export class MailService {
     });
 
     try {
-      await this.resend.emails.send({
+      await this.send({
         from: this.fromEmail,
         to: params.to,
         subject: 'Verifica tu correo de MedicAI',
@@ -91,7 +91,7 @@ export class MailService {
     });
 
     try {
-      await this.resend.emails.send({
+      await this.send({
         from: this.fromEmail,
         to: params.to,
         subject: 'Recuperación de contraseña de MedicAI',
@@ -140,7 +140,7 @@ export class MailService {
       ignoreText: `Si no conoces a ${sender}, ignora este mensaje: no se compartirá nada.`,
     });
 
-    await this.resend.emails.send({
+    await this.send({
       from: this.fromEmail,
       to: params.to,
       subject: `${title} en MedicAI`,
@@ -171,7 +171,7 @@ export class MailService {
       ignoreText: 'Si no esperabas este correo, puedes ignorarlo: nada cambiará.',
     });
 
-    await this.resend.emails.send({
+    await this.send({
       from: this.fromEmail,
       to: params.to,
       subject: 'Crea tu contraseña de MedicAI',
@@ -199,7 +199,7 @@ export class MailService {
       <p>El archivo es JSON: se puede abrir con cualquier editor de texto.</p>
       <p style="color:#58728B;">Contiene información de salud: guárdalo en un lugar seguro y no lo reenvíes. Si no pediste esta copia, cambia tu contraseña desde la app.</p>
     </body></html>`;
-    await this.resend.emails.send({
+    await this.send({
       from: this.fromEmail,
       to: params.to,
       subject: 'Tu copia de datos de MedicAI',
@@ -208,6 +208,24 @@ export class MailService {
       attachments: [{ filename: params.fileName, content: Buffer.from(params.json, 'utf8') }],
     });
     this.logger.log('Data export email sent', { recipientDomain: this.getEmailDomain(params.to) });
+  }
+
+  /**
+   * El SDK de Resend no lanza en errores de la API: devuelve `{ data, error }`.
+   * Sin esta comprobación un rechazo (dominio sin verificar, API key inválida)
+   * se registraba como "email sent".
+   */
+  private async send(payload: Parameters<Resend['emails']['send']>[0]) {
+    const { data, error } = await this.resend.emails.send(payload);
+    if (error) {
+      const failure = new Error(`Resend: ${error.name} - ${error.message}`);
+      this.logger.error('Resend rejected email', failure, {
+        recipientDomain: this.getEmailDomain(String(payload.to)),
+      });
+      throw failure;
+    }
+    this.logger.log('Resend accepted email', { emailId: data?.id });
+    return data;
   }
 
   private buildActionEmailTemplate(params: ActionEmailTemplateParams) {
