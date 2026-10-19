@@ -91,7 +91,6 @@ const withAlarmModule = config => {
 
     // Permissions required for exact medical alarms
     ensurePermission(manifest, 'android.permission.SCHEDULE_EXACT_ALARM');
-    ensurePermission(manifest, 'android.permission.USE_EXACT_ALARM');
     ensurePermission(manifest, 'android.permission.USE_FULL_SCREEN_INTENT');
     ensurePermission(manifest, 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS');
     ensurePermission(manifest, 'android.permission.RECEIVE_BOOT_COMPLETED');
