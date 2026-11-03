@@ -43,7 +43,7 @@ export function CircleDemo() {
       role="img"
       aria-label="Ejemplo: tu mamá no marca su dosis de las 8:00, a las 9:00 te llega un aviso, ves su seguimiento y te enteras cuando la toma."
     >
-      <div className="circle-demo-phones" aria-hidden>
+      <div className="circle-demo-phones" data-ui aria-hidden>
         {/* Teléfono de mamá */}
         <figure className="mini-device">
           <div className="mini-device-screen">

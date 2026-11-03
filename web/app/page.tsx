@@ -6,36 +6,40 @@ import { InteractivePhoneShowcase } from "./components/landing/hero-showcase";
 import { ChatDemo } from "./components/landing/chat-demo";
 import { CircleDemo } from "./components/landing/circle-demo";
 import { AppTour } from "./components/landing/app-tour";
-import { FAQItem, FeatureCard, StepCard } from "./components/landing/cards";
+import { FAQItem, FeatureItem, StepCard } from "./components/landing/cards";
 import { FAQS, FEATURES } from "./content/landing";
 import { AUDIENCES } from "./content/audiences";
 import { JsonLd } from "./components/json-ld";
-import { PLAY_URL, SITE_URL } from "./content/site";
+import { SnapRow } from "./components/snap-row";
+import { PLAY_URL, SITE_URL, SUPPORT_EMAIL } from "./content/site";
 
-const STRUCTURED_DATA = [
-  {
-    "@context": "https://schema.org",
-    "@type": "MobileApplication",
-    name: "MedicAI",
-    operatingSystem: "Android",
-    applicationCategory: "HealthApplication",
-    inLanguage: "es",
-    url: SITE_URL,
-    downloadUrl: PLAY_URL,
-    description:
-      "Recordatorios de medicamentos y citas médicas, Círculo de cuidado familiar y asistente de IA por voz.",
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: FAQS.map((f) => ({
-      "@type": "Question",
-      name: f.q,
-      acceptedAnswer: { "@type": "Answer", text: f.a },
-    })),
-  },
-];
+// Un objeto con @graph (y no un array suelto): algunos scripts del navegador
+// leen data["@context"] del JSON-LD y fallan si la raíz es un array.
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "MobileApplication",
+      name: "MedicAI",
+      operatingSystem: "Android",
+      applicationCategory: "HealthApplication",
+      inLanguage: "es",
+      url: SITE_URL,
+      downloadUrl: PLAY_URL,
+      description:
+        "Recordatorios de medicamentos y citas médicas, Círculo de cuidado familiar y asistente de IA por voz.",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: FAQS.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    },
+  ],
+};
 
 export default function Home() {
   return (
@@ -78,24 +82,20 @@ export default function Home() {
 
         {/* ── FEATURES ─────────────────────────────────────────────────────── */}
         <section id="funciones" data-section-reveal>
-          <div className="container">
+          <div className="container features-layout">
             <div className="section-header">
               <div className="eyebrow">Funciones</div>
-              <h2 className="font-display">
-                Todo lo que necesitas para cuidar la salud del día a día
-              </h2>
+              <h2 className="font-display">Todo para cuidar la salud del día a día</h2>
               <p>
                 Desde la pastilla de las 8:00 hasta el control del próximo mes,
                 para ti y para las personas que cuidas.
               </p>
             </div>
-            <div className="feature-grid">
-              {FEATURES.map((f, i) => (
-                <RevealItem key={f.title} delay={(i % 3) * 100}>
-                  <FeatureCard icon={<f.Icon size={20} />} title={f.title} description={f.description} />
-                </RevealItem>
+            <ul className="feature-list">
+              {FEATURES.map((f) => (
+                <FeatureItem key={f.title} icon={<f.Icon size={22} aria-hidden />} title={f.title} description={f.description} />
               ))}
-            </div>
+            </ul>
           </div>
         </section>
 
@@ -104,7 +104,7 @@ export default function Home() {
           <div className="container split reverse">
             <div className="split-text">
               <div className="eyebrow">Asistente con IA</div>
-              <h2 className="font-display">Pregúntale como le preguntarías a alguien de confianza</h2>
+              <h2 className="font-display">Pregúntale como a alguien de confianza</h2>
               <p>
                 Escríbele o háblale. El asistente resuelve dudas generales sobre tus
                 medicamentos, prepara recordatorios por ti y registra tus tomas, y
@@ -178,10 +178,10 @@ export default function Home() {
           <div className="container">
             <div className="section-header">
               <div className="eyebrow">Cómo funciona</div>
-              <h2 className="font-display">Tres pasos para empezar a cuidar mejor</h2>
+              <h2 className="font-display">Tres pasos para empezar</h2>
               <p>Se configura en minutos y te acompaña durante todo el tratamiento.</p>
             </div>
-            <div className="steps">
+            <SnapRow className="steps" wrapClassName="steps-wrap" label="Tres pasos para empezar">
               <RevealItem delay={0}>
                 <StepCard
                   number={1}
@@ -209,7 +209,7 @@ export default function Home() {
                   description="Recibe tus alarmas y, si lo eliges, que tu familia se entere cuando una dosis se pasa."
                 />
               </RevealItem>
-            </div>
+            </SnapRow>
           </div>
         </section>
 
@@ -218,7 +218,7 @@ export default function Home() {
           <div className="container">
             <div className="section-header">
               <div className="eyebrow">Dentro de la app</div>
-              <h2 className="font-display">Una interfaz pensada para la calma, no para la urgencia</h2>
+              <h2 className="font-display">Pensada para la calma, no para la urgencia</h2>
               <p>
                 Cuando la salud es el tema, el diseño debe reducir la ansiedad. MedicAI
                 usa jerarquía clara, colores tranquilos y gestos simples.
@@ -233,12 +233,25 @@ export default function Home() {
           <div className="container">
             <RevealItem>
               <div className="security-banner-inner">
-                <ShieldCheck size={32} strokeWidth={1.5} className="security-icon" />
-                <div>
-                  <h3>Tu salud, tus datos, tu privacidad</h3>
-                  <p>Tu información viaja cifrada y solo la ven tú y quienes autorices. Nunca vendemos tus datos ni los usamos para publicidad, y tu perfil de salud solo se comparte con el asistente de IA si lo autorizas. <Link href="/privacidad" className="text-link">Lee nuestra política de privacidad</Link>.</p>
+                <div className="security-head">
+                  <span className="security-tile security-tile--accent">
+                    <ShieldCheck size={28} strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <span className="security-tile security-tile--lock">
+                    <Lock size={26} strokeWidth={1.75} aria-hidden />
+                  </span>
                 </div>
-                <Lock size={32} strokeWidth={1.5} className="security-icon security-icon--lock" />
+                <div className="security-body">
+                  <h2>Tu salud, tus datos, tu privacidad</h2>
+                  <p>
+                    Tu información viaja cifrada y solo la ven tú y quienes autorices. Nunca
+                    vendemos tus datos ni los usamos para publicidad, y tu perfil de salud solo
+                    se comparte con el asistente de IA si lo autorizas.
+                  </p>
+                  <Link href="/privacidad" className="security-link">
+                    Lee nuestra política de privacidad <ArrowRight size={16} aria-hidden />
+                  </Link>
+                </div>
               </div>
             </RevealItem>
           </div>
@@ -246,10 +259,14 @@ export default function Home() {
 
         {/* ── FAQ ───────────────────────────────────────────────────────────── */}
         <section id="faq" className="section-alt" data-section-reveal>
-          <div className="container faq-container">
+          <div className="container faq-layout">
             <div className="section-header">
               <div className="eyebrow">Dudas comunes</div>
               <h2 className="font-display">Preguntas frecuentes</h2>
+              <p>
+                ¿Te queda otra duda? Escríbenos a{" "}
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="text-link">{SUPPORT_EMAIL}</a>.
+              </p>
             </div>
             <div className="faq-list">
               {FAQS.map((f) => (

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Mail, Menu, X } from "lucide-react";
+import { Download, Mail, Menu, X } from "lucide-react";
 import { AUDIENCES } from "../content/audiences";
 import { PLAY_URL, SUPPORT_EMAIL, TEXT_SIZE_KEY } from "../content/site";
 
@@ -27,7 +27,7 @@ export function GooglePlayBadge({ className = "" }: { className?: string }) {
       // Lo cuenta la analítica (Umami) si está configurada; si no, no hace nada.
       data-umami-event="descargar-google-play"
     >
-      <Image src="/images/google-play-badge.png" alt="Disponible en Google Play" width={161} height={62} className="play-badge-img" />
+      <Image src="/images/google-play-badge.png" alt="Disponible en Google Play" width={161} height={48} className="play-badge-img" />
     </a>
   );
 }
@@ -75,13 +75,48 @@ function TextSizeToggle() {
   );
 }
 
+/**
+ * La barra se esconde al bajar y reaparece al subir (patrón habitual en
+ * móvil): no tapa lo que estás leyendo y vuelve con un gesto. Nunca se esconde
+ * cerca de arriba, con el menú abierto ni con el foco del teclado dentro.
+ */
+function useHideOnScroll(locked: boolean, headerRef: React.RefObject<HTMLElement | null>) {
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const y = window.scrollY;
+      const delta = y - lastY;
+      if (Math.abs(delta) < 8) return;
+      const focusInside = headerRef.current?.contains(document.activeElement) ?? false;
+      setHidden(delta > 0 && y > 160 && !focusInside);
+      lastY = y;
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, [headerRef]);
+
+  return hidden && !locked;
+}
+
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const hidden = useHideOnScroll(menuOpen, headerRef);
   // En la landing los enlaces son anclas locales; en el resto de páginas llevan a la landing.
   const base = usePathname() === "/" ? "" : "/";
 
   return (
-    <header>
+    <header ref={headerRef} className={hidden ? "header--hidden" : undefined}>
       <div className="container header-inner">
         <Link href="/" className="logo" aria-label="MedicAI inicio">
           Medic<span>AI</span>
@@ -94,7 +129,18 @@ export function SiteHeader() {
         </nav>
         <div className="header-actions">
           <TextSizeToggle />
-          <GooglePlayBadge className="header-play-badge" />
+          {/* En la barra redondeada, un botón con su misma forma: el badge
+              rectangular de Google Play se salía por los extremos curvos. */}
+          <a
+            href={PLAY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary header-cta"
+            data-umami-event="descargar-google-play-header"
+          >
+            <Download size={16} aria-hidden />
+            Descargar
+          </a>
           <button
             className="mobile-menu-btn"
             onClick={() => setMenuOpen(!menuOpen)}
@@ -154,6 +200,9 @@ export function SiteFooter() {
         <div className="footer-bottom">
           <span>© {new Date().getFullYear()} MedicAI. MedicAI no reemplaza la atención de un profesional de la salud.</span>
         </div>
+      </div>
+      <div className="footer-wordmark" aria-hidden>
+        Medic<span>AI</span>
       </div>
     </footer>
   );

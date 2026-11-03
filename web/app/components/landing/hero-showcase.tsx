@@ -140,6 +140,12 @@ function AlarmOverlay({
   );
 }
 
+// El paralaje 3D solo con ratón en pantallas grandes. En táctil, tocar el
+// teléfono sigue mostrando las pestañas (hovered), pero sin dejarlo inclinado
+// y agrandado.
+const canTilt = () =>
+  window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 1024px)").matches;
+
 // ─── Interactive Phone Showcase (Hero) ───────────────────────────────────────
 export function InteractivePhoneShowcase() {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -224,7 +230,7 @@ export function InteractivePhoneShowcase() {
 
   // Mouse parallax (optimized by directly updating transform)
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!frameRef.current || !wrapperRef.current) return;
+    if (!frameRef.current || !wrapperRef.current || !canTilt()) return;
 
     const rect = wrapperRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width  / 2;
@@ -241,7 +247,7 @@ export function InteractivePhoneShowcase() {
 
   const onMouseEnter = () => {
     setHovered(true);
-    if (frameRef.current) {
+    if (frameRef.current && canTilt()) {
       // Smoothly face front (and settle the scale) before the mouse-parallax
       // takes over on the next mousemove.
       frameRef.current.style.transform =
@@ -274,7 +280,7 @@ export function InteractivePhoneShowcase() {
 
   return (
     <div
-      className="hero-visual showcase-wrapper"
+      className={`hero-visual showcase-wrapper ${hovered ? "showcase-wrapper--active" : ""}`}
       ref={wrapperRef}
       onMouseEnter={onMouseEnter}
       onMouseMove={onMouseMove}
@@ -290,11 +296,9 @@ export function InteractivePhoneShowcase() {
       {/* Phone frame */}
       <div
         ref={frameRef}
+        data-ui
         className={`showcase-phone ${hovered ? "showcase-phone--hovered" : ""} ${ringing ? "showcase-phone--ringing" : ""}`}
       >
-        {/* Glass reflection layer */}
-        <div className="showcase-glass-reflect" />
-
         {/* Notch */}
         <div className="phone-notch" />
 
@@ -337,6 +341,20 @@ export function InteractivePhoneShowcase() {
         </div>
       </div>
 
+      {/* Texto guía justo debajo del teléfono (antes iba bajo las pestañas y
+          quedaba fuera de la pantalla): cambia según la alarma y el cursor. */}
+      <p className="showcase-hint">
+        <span className={`showcase-hint-line ${ringing ? "showcase-hint-line--active" : ""}`}>
+          Así suena una alarma de MedicAI. Prueba a tocar «Tomar»
+        </span>
+        <span className={`showcase-hint-line ${!ringing && !hovered ? "showcase-hint-line--active" : ""}`}>
+          Toca o pasa el cursor sobre el teléfono para explorar
+        </span>
+        <span className={`showcase-hint-line ${!ringing && hovered ? "showcase-hint-line--active" : ""}`}>
+          Navega entre pantallas
+        </span>
+      </p>
+
       {/* Module selector pills */}
       <div className={`module-selector ${hovered ? "module-selector--visible" : ""}`} aria-label="Módulos de la app">
         {MODULES.map((m, i) => (
@@ -354,18 +372,6 @@ export function InteractivePhoneShowcase() {
         ))}
       </div>
 
-      {/* Hint label at bottom — crossfades text depending on interaction */}
-      <p className="showcase-hint">
-        <span className={`showcase-hint-line ${ringing ? "showcase-hint-line--active" : ""}`}>
-          Así suena una alarma de MedicAI. Prueba a tocar «Tomar»
-        </span>
-        <span className={`showcase-hint-line ${!ringing && !hovered ? "showcase-hint-line--active" : ""}`}>
-          Toca o pasa el cursor sobre el teléfono para explorar
-        </span>
-        <span className={`showcase-hint-line ${!ringing && hovered ? "showcase-hint-line--active" : ""}`}>
-          Navega entre pantallas
-        </span>
-      </p>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { SnapRow } from "../snap-row";
 
 // Recorrido «Dentro de la app»: en escritorio el teléfono queda fijo (sticky)
 // y su pantalla cambia según el capítulo que estás leyendo; en móvil cada
@@ -65,7 +66,7 @@ export function AppTour() {
 
   return (
     <div className="tour">
-      <div className="tour-chapters">
+      <SnapRow className="tour-chapters" label="Pantallas de la app">
         {CHAPTERS.map((c, i) => (
           <article
             key={c.src}
@@ -73,7 +74,6 @@ export function AppTour() {
             data-index={i}
             className={`tour-chapter ${i === active ? "tour-chapter--active" : ""}`}
           >
-            <span className="tour-chapter-num">{String(i + 1).padStart(2, "0")}</span>
             <div className="eyebrow">{c.eyebrow}</div>
             <h3 className="font-display">{c.title}</h3>
             <p>{c.text}</p>
@@ -87,7 +87,7 @@ export function AppTour() {
             </div>
           </article>
         ))}
-      </div>
+      </SnapRow>
 
       <div className="tour-sticky" aria-hidden>
         <div className="tour-sticky-inner">

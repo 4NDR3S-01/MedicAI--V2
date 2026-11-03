@@ -24,7 +24,9 @@ const FINAL_STATIC_STEP = 8;
 export function ChatDemo() {
   const [ref, visible] = useIsVisible<HTMLDivElement>(0.35);
   const reducedMotion = usePrefersReducedMotion();
-  const [step, setStep] = useState(0);
+  // Empieza con la conversación completa (nunca se ve una tarjeta vacía); al
+  // entrar en pantalla se desvanece y la demo se reproduce desde el principio.
+  const [step, setStep] = useState(FINAL_STATIC_STEP);
 
   useEffect(() => {
     if (!visible || reducedMotion) return;
@@ -40,6 +42,7 @@ export function ChatDemo() {
     <div
       ref={ref}
       className="chat-mock"
+      data-ui
       role="img"
       aria-label="Ejemplo de conversación con el asistente de MedicAI: registra una toma dictada por voz y lee una receta desde una foto."
     >

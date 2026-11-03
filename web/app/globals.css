@@ -38,6 +38,13 @@
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.25);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.15);
+
+  /* Movimiento: curvas propias (las de CSS por defecto son débiles). */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 140ms;
+  --dur-ui: 220ms;
+  --dur-enter: 760ms;
 }
 
 @media (prefers-color-scheme: light) {
@@ -93,6 +100,29 @@ body {
   color: var(--text);
   font-family: var(--font-sans);
   line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Controles: respuesta inmediata al toque y sin seleccionar su texto al
+   mantener pulsado. El contenido sigue siendo seleccionable. */
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+button,
+.btn,
+.module-pill,
+.alarm-btn,
+.faq-question,
+.snap-dot {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 img {
@@ -148,13 +178,33 @@ a {
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.9375rem;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition:
+    transform var(--dur-press) var(--ease-out),
+    box-shadow 0.2s ease,
+    background 0.2s ease;
   cursor: pointer;
   border: none;
 }
 
-.btn:hover {
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #042f2e;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover {
+    background: #5eead4;
+  }
 }
 
 .btn-ghost {
@@ -169,20 +219,34 @@ a {
 
 .play-badge {
   display: inline-block;
-  transition: transform 0.2s ease;
+  position: relative;
+  transition: transform var(--dur-press) var(--ease-out);
   line-height: 0;
-  border-radius: 0.75rem;
+  /* Igual al redondeo de la insignia (≈22 px de 192 en el PNG), para que el
+     brillo de ::after quede recortado justo al borde de la imagen. */
+  border-radius: 0.3rem;
   overflow: hidden;
   border: 0;
+  /* Dentro de un flex (p. ej. .hero-actions, junto a un botón más alto) no
+     debe estirarse: si no, el brillo de ::after sobresale por debajo. */
+  align-self: center;
 }
 
-.play-badge:hover {
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .play-badge:hover {
+    transform: translateY(-2px);
+  }
 }
 
+.play-badge:active {
+  transform: scale(0.97);
+}
+
+/* El PNG ya no trae margen transparente: el alto de la imagen es el de la
+   insignia visible, así la animación de brillo cubre exactamente el botón. */
 .play-badge-img {
   width: auto;
-  height: 3.25rem;
+  height: 2.5rem;
   max-width: 100%;
   border-radius: inherit;
   display: block;
@@ -190,24 +254,84 @@ a {
 
 @media (min-width: 768px) {
   .play-badge-img {
-    height: 3.75rem;
+    height: 2.875rem;
   }
 }
 
+/* Cabecera flotante: una barra redondeada separada del borde superior, con
+   los mismos márgenes que el contenido. El <header> es transparente y solo la
+   barra recibe clics. Se esconde al bajar y vuelve al subir (site-chrome). */
 header {
   position: sticky;
-  top: 0;
+  top: calc(0.75rem + env(safe-area-inset-top, 0px));
   z-index: 50;
-  backdrop-filter: blur(12px);
-  background: var(--surface-glass);
-  border-bottom: 1px solid var(--border);
+  margin-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  pointer-events: none;
 }
 
 .header-inner {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 4rem;
+  gap: 1rem;
+  height: 3.75rem;
+  /* Derecha: (alto 60 − botón 44) / 2 = 8 px: el botón queda concéntrico con
+     el extremo redondo de la barra. */
+  padding-inline: 1.25rem 0.5rem;
+  border-radius: 999px;
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  transition: transform 380ms var(--ease-out), opacity 240ms ease;
+}
+
+.header--hidden .header-inner {
+  transform: translateY(calc(-100% - 1.5rem - env(safe-area-inset-top, 0px)));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Acción principal de la barra: píldora del mismo radio, centrada en altura. */
+.header-cta {
+  min-height: 2.75rem;
+  padding: 0.5rem 1.125rem 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+@media (max-width: 479px) {
+  .header-inner {
+    gap: 0.5rem;
+    padding-left: 1rem;
+  }
+
+  .header-inner .header-actions {
+    gap: 0.375rem;
+  }
+
+  .header-cta {
+    padding-inline: 0.875rem;
+  }
+
+  .header-cta svg {
+    display: none;
+  }
+}
+
+@media (max-width: 359px) {
+  .logo {
+    font-size: 1.125rem;
+  }
+
+  .text-size-btn,
+  .mobile-menu-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
 }
 
 .logo {
@@ -234,17 +358,9 @@ header {
   color: var(--text);
 }
 
-.header-play-badge {
-  display: none;
-}
-
-@media (min-width: 768px) {
+@media (min-width: 900px) {
   .nav-links {
     display: flex;
-  }
-
-  .header-play-badge {
-    display: inline-flex;
   }
 }
 
@@ -254,19 +370,25 @@ header {
   justify-content: center;
   width: 2.5rem;
   height: 2.5rem;
-  border-radius: 0.5rem;
+  flex-shrink: 0;
+  /* Circular: en la barra redondeada un cuadrado se sale por el extremo curvo. */
+  border-radius: 999px;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, transform var(--dur-press) var(--ease-out);
+}
+
+.mobile-menu-btn:active {
+  transform: scale(0.94);
 }
 
 .mobile-menu-btn:hover {
   background: var(--surface-2);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 900px) {
   .mobile-menu-btn {
     display: none;
   }
@@ -275,22 +397,30 @@ header {
 .mobile-nav {
   display: none;
   position: absolute;
-  top: 4rem;
+  top: calc(100% + 0.5rem);
   left: 0;
   right: 0;
   flex-direction: column;
   gap: 0.5rem;
   padding: 1rem;
+  border-radius: 1.5rem;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  transform-origin: top right;
   z-index: 50;
 }
 
 .mobile-nav.open {
   display: flex;
+  animation: menu-in 260ms var(--ease-out);
 }
 
-.mobile-nav a {
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-0.375rem) scale(0.97); }
+}
+
+.mobile-nav a:not(.play-badge) {
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
   font-size: 0.9375rem;
@@ -299,7 +429,7 @@ header {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.mobile-nav a:hover {
+.mobile-nav a:not(.play-badge):hover {
   background: var(--surface-2);
   color: var(--text);
 }
@@ -331,7 +461,8 @@ header {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, …): la fila de pestañas deslizable no debe ensanchar la columna. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 3rem;
   align-items: center;
 }
@@ -345,6 +476,7 @@ header {
 
 .hero-visual {
   position: relative;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -454,7 +586,8 @@ header {
 
 .showcase-phone {
   position: relative;
-  width: min(100%, 300px);
+  /* En móvil ~52 % del ancho; en escritorio, ver el bloque de abajo. */
+  width: min(52vw, 250px);
   aspect-ratio: 9 / 19;
   border-radius: 2.75rem;
   padding: 0.625rem;
@@ -487,22 +620,128 @@ header {
   50%       { translate: 0 -10px; }
 }
 
-/* Glass reflection highlight */
-.showcase-glass-reflect {
-  position: absolute;
-  top: 0.5rem;
-  left: 0.75rem;
-  right: 3rem;
-  height: 40%;
-  border-radius: 2.25rem 2.25rem 1rem 1rem;
-  background: linear-gradient(
-    160deg,
-    rgba(255,255,255,0.18) 0%,
-    rgba(255,255,255,0.04) 50%,
-    transparent 100%
-  );
-  pointer-events: none;
-  z-index: 30;
+/* Escritorio/laptop: el teléfono y sus pestañas caben también a lo alto
+   (1366×768, 1280×720…): el ancho sale del alto visible menos cabecera,
+   márgenes y pestañas (~17rem), por la proporción 9/19. */
+@media (min-width: 1024px) {
+  .showcase-wrapper {
+    /* Alto: visible − cabecera, márgenes, texto guía y el 6 % que crece al
+       pasar el cursor (~14.25rem). Ancho: la columna menos las pestañas. */
+    --phone-w: clamp(
+      160px,
+      min(calc((100svh - 14.25rem) * 9 / 19), calc(45vw - 14rem)),
+      300px
+    );
+  }
+
+  .showcase-phone {
+    width: var(--phone-w);
+  }
+
+  .hero {
+    padding-block: 2.5rem 5rem;
+  }
+}
+
+/* Táctil / pantallas medianas: de frente, sin inclinación ni flotación. */
+@media (max-width: 1023px), (hover: none) {
+  .showcase-phone {
+    transform: none;
+    animation: none;
+    border-radius: 2.25rem;
+    padding: 0.5rem;
+  }
+
+  .showcase-phone--ringing {
+    animation: alarm-shake 1.6s ease-in-out infinite;
+  }
+}
+
+/* La alarma escala con el ancho real de la pantalla del teléfono (cqi = 1 %
+   de ese ancho): cabe igual en un iPhone SE, una tablet o un laptop. */
+.showcase-phone .showcase-screen {
+  container-type: inline-size;
+}
+
+.showcase-phone .alarm-ringing {
+  padding: 15cqi 6cqi 6cqi;
+}
+
+.showcase-phone .alarm-clock {
+  font-size: 19cqi;
+}
+
+.showcase-phone .alarm-caption,
+.showcase-phone .alarm-dose {
+  font-size: 4.6cqi;
+}
+
+.showcase-phone .alarm-pill {
+  width: 26cqi;
+  height: 26cqi;
+  margin: 9cqi 0 6cqi;
+}
+
+.showcase-phone .alarm-pill svg {
+  width: 11cqi;
+  height: 11cqi;
+}
+
+.showcase-phone .alarm-med {
+  font-size: 7.6cqi;
+}
+
+.showcase-phone .alarm-actions,
+.showcase-phone .alarm-actions-row {
+  gap: 3cqi;
+}
+
+.showcase-phone .alarm-btn {
+  padding: 3.6cqi 1cqi;
+  font-size: 4.6cqi;
+  white-space: nowrap;
+}
+
+.showcase-phone .alarm-btn--take {
+  padding-block: 4.8cqi;
+  font-size: 5.8cqi;
+}
+
+/* Móvil: pestañas en una sola fila deslizable y de 44 px para el dedo. */
+@media (pointer: coarse) {
+  .showcase-wrapper .module-pill {
+    min-height: 2.75rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .showcase-wrapper .module-selector {
+    /* Aire arriba y abajo: el borde y el brillo de la pestaña activa no se cortan. */
+    padding-block: 0.5rem;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    width: calc(100% + 2rem);
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 1rem;
+    scrollbar-width: none;
+  }
+
+  .showcase-wrapper .module-selector::-webkit-scrollbar {
+    display: none;
+  }
+
+  .showcase-wrapper .module-pill {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
+
+  .hero {
+    padding-block: 2.5rem 4rem;
+  }
 }
 
 .showcase-screen {
@@ -600,10 +839,16 @@ header {
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.3s ease;
 }
 
-.module-pill:hover {
-  background: var(--surface-2);
-  color: var(--text);
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .module-pill:hover {
+    background: var(--surface-2);
+    color: var(--text);
+    transform: translateY(-2px);
+  }
+}
+
+.module-pill:active {
+  transform: scale(0.96);
 }
 
 .module-pill--active {
@@ -691,24 +936,93 @@ header {
 }
 
 section {
-  padding-block: 5rem;
+  padding-block: 5.5rem;
+}
+
+@media (min-width: 1024px) {
+  section {
+    padding-block: 7.5rem;
+  }
 }
 
 section[id] {
-  scroll-margin-top: 5rem;
+  scroll-margin-top: 6rem;
 }
 
 .section-header {
-  max-width: 40rem;
-  margin-bottom: 3rem;
+  max-width: 44rem;
+  margin-bottom: 3.5rem;
 }
 
 .section-header h2 {
-  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-size: clamp(2rem, 2.6vw + 0.9rem, 3.25rem);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
   text-wrap: balance;
+}
+
+/* ── Funciones: lista editorial (título fijo a la izquierda, lista a la derecha) */
+.features-layout {
+  display: grid;
+  gap: 3rem;
+}
+
+.features-layout .section-header {
+  margin-bottom: 0;
+}
+
+.feature-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2.5rem 3rem;
+}
+
+@media (min-width: 640px) {
+  .feature-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .features-layout {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 5rem;
+    align-items: start;
+  }
+
+  .features-layout .section-header {
+    position: sticky;
+    top: 7rem;
+  }
+}
+
+.feature-item h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.feature-item h3 svg {
+  flex-shrink: 0;
+  box-sizing: content-box;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+.feature-item p {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
 }
 
 .section-header p {
@@ -730,13 +1044,15 @@ section[id] {
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
   padding: 1.75rem;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform 260ms var(--ease-out), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-soft);
-  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-soft);
+    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  }
 }
 
 .feature-card .icon {
@@ -781,21 +1097,31 @@ section[id] {
   box-shadow: var(--shadow-card);
 }
 
+.step {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Jerarquía: número grande → título → texto → captura. */
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+
 .step-number {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
+  flex-shrink: 0;
   font-family: var(--font-display);
-  font-size: 0.75rem;
+  font-size: 1.125rem;
   font-weight: 700;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 2.5rem;
+  height: 2.5rem;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: var(--accent);
-  color: white;
-  z-index: 5;
+  color: #042f2e;
 }
 
 .step-mini-phone {
@@ -809,18 +1135,52 @@ section[id] {
 }
 
 .step-content {
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 0;
 }
 
 .step-content h3 {
-  font-size: 1.0625rem;
-  font-weight: 600;
-  margin-bottom: 0.375rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 .step-content p {
-  font-size: 0.875rem;
+  margin-top: 0.75rem;
+  font-size: 0.9375rem;
   color: var(--text-muted);
+}
+
+/* El texto ocupa el espacio libre: las capturas quedan alineadas abajo
+   aunque los textos tengan distinto largo. */
+.step .step-content {
+  flex: 1;
+}
+
+/* La captura como un teléfono: pantalla completa (9:16) a un tamaño que se
+   lee bien sin dominar la tarjeta (en laptop ocupaba 325×577 px; en móvil
+   quedaba recortada en un recuadro). */
+.step .step-mini-phone {
+  /* Nunca se encoge: si no, en la tarjeta con más texto la captura quedaba
+     más chica y a otra altura que en las demás. */
+  flex-shrink: 0;
+  width: min(calc(100% - 3rem), 220px);
+  aspect-ratio: 9 / 16;
+  margin: 1.5rem auto 1.75rem;
+  border-radius: 1.5rem;
+  border: 4px solid var(--surface);
+  outline: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+/* En el carrusel, ancho según la pantalla (no un % de la tarjeta): así el
+   navegador calcula bien el alto de las tarjetas y las capturas quedan
+   alineadas también con «texto grande». */
+@media (max-width: 767px) {
+  .step .step-mini-phone {
+    width: min(62vw, 250px);
+  }
 }
 
 .split {
@@ -860,10 +1220,10 @@ section[id] {
 }
 
 .split-text h2 {
-  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-size: clamp(2rem, 2.6vw + 0.9rem, 3.25rem);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
   text-wrap: balance;
 }
 
@@ -958,6 +1318,7 @@ section[id] {
 }
 
 footer {
+  overflow: hidden;
   border-top: 1px solid var(--border);
   color: var(--text-subtle);
   font-size: 0.875rem;
@@ -1011,24 +1372,29 @@ footer {
 
 
 
-.play-badge {
-  position: relative;
-  overflow: hidden;
+/* Brillo de la insignia de Google Play: una pasada y una pausa larga. */
+@media (prefers-reduced-motion: no-preference) {
+  .play-badge::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.28) 50%,
+      transparent 70%
+    );
+    transform: translateX(-100%);
+    animation: badge-sheen 5s var(--ease-in-out) infinite;
+    animation-delay: 1.5s;
+    pointer-events: none;
+  }
 }
 
-.play-badge::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.25) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 3s ease-in-out infinite;
-  pointer-events: none;
+@keyframes badge-sheen {
+  0%   { transform: translateX(-100%); }
+  28%  { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
 }
 
 .feature-card {
@@ -1068,38 +1434,49 @@ footer {
   pointer-events: none;
 }
 
+/* Movimiento reducido: menos y más suave, no cero. Se quitan los bucles y los
+   desplazamientos; quedan los cambios de color y opacidad que explican estado. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 
   .hero-visual .phone-frame,
   .split-visual .phone-frame,
-  .showcase-phone {
-    animation: none;
+  .showcase-phone,
+  .showcase-phone--ringing,
+  .showcase-glow,
+  .hero-visual::before,
+  .cta-card::after,
+  .alarm-pill-ring,
+  .chat-wave span,
+  .chat-bubble--typing span {
+    animation: none !important;
   }
 }
 
-/* Scroll reveal */
-[data-section-reveal],
-.reveal-item {
-  opacity: 0;
-  transform: translateY(2rem);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
+/* Entrada de secciones por partes (ver components/reveal.tsx): título, texto,
+   visual y elementos de lista escalonados. El estado oculto solo existe con
+   movimiento permitido y después de que el script marcó las partes. */
+@media (prefers-reduced-motion: no-preference) {
+  /* :root sube la especificidad por encima de las transiciones propias de
+     cada parte (p. ej. .faq-item) mientras dura la entrada. */
+  :root [data-reveal] {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition:
+      opacity 700ms var(--ease-out),
+      transform var(--dur-enter) var(--ease-out);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
 
-[data-section-reveal].section-reveal--visible,
-.reveal-item.reveal-item--visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.reveal-item {
-  transition-delay: 0ms;
+  :root [data-reveal].is-revealed {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* --- Mobile Performance Optimizations --- */
@@ -1118,58 +1495,146 @@ footer {
 
 /* ── SECURITY BANNER ──────────────────────────────────────────────────────── */
 .security-banner {
-  padding-block: 4rem;
+  padding-block: 4.5rem;
 }
 
+/* Escudo | contenido | candado. En móvil los dos iconos van en una fila
+   arriba (escudo a la izquierda, candado a la derecha) y el texto debajo. */
 .security-banner-inner {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 2rem;
+  gap: 2.5rem;
+  padding: 2.75rem 3rem;
+  border-radius: var(--radius);
   background: var(--surface-2);
-  padding: 2rem 3rem;
-  border-radius: 1.5rem;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
 }
 
-.security-icon {
+.security-head {
+  display: contents;
+}
+
+.security-tile {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1.25rem;
+}
+
+.security-tile--accent {
+  grid-column: 1;
+  grid-row: 1;
   color: var(--accent);
-  flex-shrink: 0;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-.security-icon--lock {
+.security-tile--lock {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
   color: var(--text-muted);
-  opacity: 0.5;
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
-.security-banner-inner h3 {
-  font-size: 1.25rem;
+.security-body {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.security-body h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 1vw + 1.1rem, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.security-body p {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  max-width: 60ch;
+  text-wrap: pretty;
+}
+
+.security-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 1.25rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  color: var(--accent);
 }
 
-.security-banner-inner p {
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1.5;
+.security-link svg {
+  transition: transform 260ms var(--ease-out);
 }
 
-@media (max-width: 768px) {
-  .security-banner-inner {
-    flex-direction: column;
-    text-align: center;
-    padding: 1.5rem;
-    gap: 1rem;
+@media (hover: hover) and (pointer: fine) {
+  .security-link:hover svg {
+    transform: translateX(4px);
   }
-  .security-icon--lock {
-    display: none;
+}
+
+@media (max-width: 767px) {
+  .security-banner-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    padding: 1.75rem 1.5rem;
+  }
+
+  .security-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .security-body {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .security-tile {
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 1rem;
   }
 }
 
 /* ── FAQ ──────────────────────────────────────────────────────────────────── */
-.faq-container {
-  max-width: 700px;
-  margin: 0 auto;
+/* Título a la izquierda y preguntas a la derecha (una columna estrecha
+   centrada dejaba media pantalla vacía en escritorio). */
+.faq-layout {
+  display: grid;
+  gap: 2.5rem;
+}
+
+.faq-layout .section-header {
+  margin-bottom: 0;
+}
+
+.faq-layout .section-header p {
+  margin-top: 1rem;
+  font-size: 1.125rem;
+  color: var(--text-muted);
+}
+
+@media (min-width: 1024px) {
+  .faq-layout {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 5rem;
+    align-items: start;
+  }
+
+  .faq-layout .section-header {
+    position: sticky;
+    top: 7rem;
+  }
 }
 
 .faq-list {
@@ -1207,23 +1672,39 @@ footer {
 }
 
 .faq-icon {
+  flex-shrink: 0;
   color: var(--accent);
-  transition: transform 0.3s ease;
+  transition: transform 320ms var(--ease-out);
 }
 
 .faq-icon--open {
   transform: rotate(180deg);
 }
 
+/* Altura con grid 0fr → 1fr: anima sin medir con JS y sin tocar max-height. */
 .faq-answer-wrapper {
-  overflow: hidden;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 360ms var(--ease-out),
+    opacity 240ms ease;
+}
+
+.faq-item--open .faq-answer-wrapper {
+  grid-template-rows: 1fr;
+  opacity: 1;
 }
 
 .faq-answer {
-  padding: 0 1.5rem 1.5rem 1.5rem;
+  min-height: 0;
+  overflow: hidden;
   color: var(--text-muted);
   line-height: 1.6;
+}
+
+.faq-answer p {
+  padding: 0 1.5rem 1.5rem 1.5rem;
 }
 
 /* ── FOOTER EXPANDED ──────────────────────────────────────────────────────── */
@@ -1272,6 +1753,25 @@ footer {
   font-size: 0.875rem;
   padding-top: 2rem;
   border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+/* El nombre vuelve al final, a todo el ancho: un cierre, no un mapa del sitio. */
+.footer-wordmark {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(4.5rem, 19vw, 17rem);
+  line-height: 0.8;
+  letter-spacing: -0.06em;
+  text-align: center;
+  color: color-mix(in srgb, var(--text) 11%, var(--bg));
+  user-select: none;
+  margin-top: 1rem;
+  padding-bottom: 0.08em;
+}
+
+.footer-wordmark span {
+  color: color-mix(in srgb, var(--accent) 38%, var(--bg));
 }
 
 @media (max-width: 768px) {
@@ -1501,8 +2001,9 @@ html[data-text="large"] {
   gap: 1px;
   width: 2.5rem;
   height: 2.5rem;
+  flex-shrink: 0;
   padding-top: 0.55rem;
-  border-radius: 0.5rem;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
@@ -1556,10 +2057,6 @@ html[data-text="large"] {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.4s ease;
-}
-
-.showcase-phone--ringing .showcase-glass-reflect {
-  opacity: 0.3;
 }
 
 .alarm-overlay--on {
@@ -2168,11 +2665,18 @@ html[data-text="large"] {
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.audience-card:hover,
-.guide-teaser:hover {
-  transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  box-shadow: var(--shadow-soft);
+@media (hover: hover) and (pointer: fine) {
+  .audience-card:hover,
+  .guide-teaser:hover {
+    transform: translateY(-4px);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    box-shadow: var(--shadow-soft);
+  }
+}
+
+.audience-card:active,
+.guide-teaser:active {
+  transform: scale(0.985);
 }
 
 .audience-card strong,
@@ -2253,24 +2757,26 @@ html[data-text="large"] {
 /* ── APP TOUR (sticky) ────────────────────────────────────────────────────── */
 .tour {
   display: grid;
+  /* minmax(0, …): sin esto la columna crece al ancho del carrusel móvil. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 3rem;
 }
 
 .tour-chapter {
   position: relative;
+  display: flex;
+  flex-direction: column;
   padding: 1.75rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg);
 }
 
-.tour-chapter-num {
-  display: block;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.875rem;
-  color: var(--text-subtle);
-  margin-bottom: 0.5rem;
+/* El texto ocupa lo que necesite y el teléfono baja al fondo de la tarjeta:
+   en el carrusel todas las capturas quedan a la misma altura. */
+.tour-chapter .tour-inline-phone {
+  margin-top: auto;
+  padding-top: 1.5rem;
 }
 
 .tour-chapter .eyebrow {
@@ -2278,10 +2784,10 @@ html[data-text="large"] {
 }
 
 .tour-chapter h3 {
-  font-size: 1.5rem;
+  font-size: clamp(1.5rem, 1.2vw + 1rem, 2rem);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
 }
 
 .tour-chapter p {
@@ -2295,7 +2801,7 @@ html[data-text="large"] {
 
 .tour-inline-phone .phone-frame {
   transform: none;
-  width: min(100%, 240px);
+  width: min(100%, 200px);
 }
 
 .tour-chapters {
@@ -2309,7 +2815,7 @@ html[data-text="large"] {
 
 @media (min-width: 1024px) {
   .tour {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 5rem;
   }
 
@@ -2322,18 +2828,20 @@ html[data-text="large"] {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 0 0 0 2rem;
+    padding: 0;
     border: none;
-    border-left: 2px solid var(--border);
     border-radius: 0;
     background: none;
-    opacity: 0.35;
-    transition: opacity 0.4s ease, border-color 0.4s ease;
+    opacity: 0.3;
+    transform: translateX(-0.5rem);
+    transition:
+      opacity 500ms var(--ease-out),
+      transform 700ms var(--ease-out);
   }
 
   .tour-chapter--active {
     opacity: 1;
-    border-left-color: var(--accent);
+    transform: none;
   }
 
   .tour-chapter p {
@@ -2374,12 +2882,17 @@ html[data-text="large"] {
   inset: 0;
   opacity: 0;
   transform: scale(1.04);
-  transition: opacity 0.5s ease, transform 0.6s ease;
+  filter: blur(6px);
+  transition:
+    opacity 420ms ease,
+    transform 700ms var(--ease-out),
+    filter 420ms ease;
 }
 
 .tour-slide--active {
   opacity: 1;
   transform: none;
+  filter: none;
 }
 
 .tour-dots {
@@ -2550,5 +3063,263 @@ html[data-text="large"] {
 
   .care-person {
     flex-wrap: wrap;
+  }
+}
+
+/* ── Carruseles en móvil («Tres pasos» y «Dentro de la app») ────────────────
+   Scroll horizontal nativo con ajuste por tarjeta: la siguiente asoma por el
+   borde y avisa que hay más. En pantallas grandes vuelven a su cuadrícula. */
+.snap-row {
+  display: flex;
+  gap: 0.875rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 1rem;
+  margin-inline: -1rem;
+  padding: 0.25rem 1rem 1rem;
+  scrollbar-width: none;
+}
+
+.snap-row::-webkit-scrollbar {
+  display: none;
+}
+
+.snap-row > * {
+  flex: 0 0 min(80%, 22rem);
+  scroll-snap-align: start;
+}
+
+.snap-row:focus-visible {
+  outline-offset: -2px;
+}
+
+@media (max-width: 767px) {
+  .steps.snap-row {
+    display: flex;
+  }
+}
+
+@media (min-width: 768px) {
+  .steps.snap-row {
+    display: grid;
+    overflow: visible;
+    margin-inline: 0;
+    padding: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .tour-chapters.snap-row {
+    display: grid;
+    overflow: visible;
+    margin-inline: 0;
+    padding: 0;
+  }
+
+  .tour-chapters.snap-row > * {
+    flex: none;
+  }
+}
+
+/* Controles del carrusel: ‹ puntos › */
+.snap-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.snap-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.375rem;
+}
+
+.snap-arrow {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    background 0.2s ease,
+    transform var(--dur-press) var(--ease-out);
+}
+
+.snap-arrow:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.snap-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .snap-arrow:not(:disabled):hover {
+    background: var(--surface);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+}
+
+.snap-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--border);
+  transition: width 360ms var(--ease-out), background-color 0.2s ease;
+}
+
+.snap-dot--active {
+  width: 1.5rem;
+  background: var(--accent);
+}
+
+@media (min-width: 768px) {
+  .steps-wrap .snap-controls {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .tour .snap-controls {
+    display: none;
+  }
+}
+
+/* Tarjetas de dosis de las demos: el nombre del medicamento nunca se corta;
+   la etiqueta (Ahora, Atrasada, Tomada) pasa debajo, alineada con el texto. */
+.dose-card {
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+}
+
+.dose-card div {
+  flex: 1 1 calc(100% - 2.25rem);
+}
+
+.dose-card strong {
+  white-space: normal;
+}
+
+.dose-badge {
+  margin-left: 2.25rem;
+}
+
+/* ── Hero en escritorio: el teléfono empieza centrado ──────────────────────────
+   Al pasar el cursor se desliza a la izquierda y las pestañas aparecen a su
+   derecha, una tras otra; al salir vuelve al centro (un poco más rápido).
+   Las pestañas son absolutas: ocultas no ocupan espacio ni descentran nada.
+   Solo se animan translate/opacity (fluido, sin recalcular el diseño). */
+@media (min-width: 1024px) {
+  .showcase-wrapper {
+    /* Cuánto se corre el teléfono: la mitad de pestañas + separación, para
+       que el conjunto teléfono + pestañas quede centrado. */
+    --pills-w: 9.5rem;
+    --pills-gap: 1.5rem;
+    --shift: calc((var(--pills-w) + var(--pills-gap)) / 2);
+  }
+
+  .showcase-wrapper .showcase-phone {
+    translate: 0 0;
+    transition:
+      transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+      translate 520ms var(--ease-out),
+      box-shadow 0.4s ease;
+  }
+
+  .showcase-wrapper .showcase-hint {
+    translate: 0 0;
+    transition: translate 520ms var(--ease-out);
+  }
+
+  .showcase-wrapper--active .showcase-phone,
+  .showcase-wrapper--active .showcase-hint {
+    translate: calc(var(--shift) * -1) 0;
+    transition-duration: 0.35s, 680ms, 0.4s;
+  }
+
+  /* La flotación también anima `translate`: en estado activo se detiene (si
+     no, taparía el desplazamiento). La vibración de la alarma usa `rotate` y
+     se mantiene. */
+  .showcase-wrapper--active .showcase-phone {
+    animation: none;
+  }
+
+  .showcase-wrapper--active .showcase-phone--ringing {
+    animation: alarm-shake 1.6s ease-in-out infinite;
+  }
+
+  .showcase-wrapper--active .showcase-hint {
+    transition-duration: 680ms;
+  }
+
+  .showcase-wrapper .module-selector {
+    position: absolute;
+    top: calc(var(--phone-w) * 19 / 9 / 2);
+    left: calc(50% + var(--phone-w) / 2 - var(--shift) + var(--pills-gap));
+    width: var(--pills-w);
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    transform: translate(-0.75rem, -50%);
+    transition:
+      opacity 220ms ease,
+      transform 300ms var(--ease-out);
+  }
+
+  .showcase-wrapper .module-selector--visible {
+    transform: translate(0, -50%);
+    transition:
+      opacity 420ms ease 140ms,
+      transform 620ms var(--ease-out) 120ms;
+  }
+
+  /* Cada pestaña entra un poco después de la anterior. */
+  .showcase-wrapper .module-pill {
+    opacity: 0;
+    translate: -0.5rem 0;
+    transition:
+      opacity 180ms ease,
+      translate 240ms var(--ease-out),
+      background 0.2s ease,
+      color 0.2s ease,
+      transform 0.2s ease,
+      box-shadow 0.3s ease;
+  }
+
+  .showcase-wrapper .module-selector--visible .module-pill {
+    opacity: 1;
+    translate: 0 0;
+    transition-duration: 380ms, 520ms, 0.2s, 0.2s, 0.2s, 0.3s;
+  }
+
+  .showcase-wrapper .module-selector--visible .module-pill:nth-child(1) { transition-delay: 160ms, 160ms, 0s, 0s, 0s, 0s; }
+  .showcase-wrapper .module-selector--visible .module-pill:nth-child(2) { transition-delay: 200ms, 200ms, 0s, 0s, 0s, 0s; }
+  .showcase-wrapper .module-selector--visible .module-pill:nth-child(3) { transition-delay: 240ms, 240ms, 0s, 0s, 0s, 0s; }
+  .showcase-wrapper .module-selector--visible .module-pill:nth-child(4) { transition-delay: 280ms, 280ms, 0s, 0s, 0s, 0s; }
+  .showcase-wrapper .module-selector--visible .module-pill:nth-child(5) { transition-delay: 320ms, 320ms, 0s, 0s, 0s, 0s; }
+  .showcase-wrapper .module-selector--visible .module-pill:nth-child(6) { transition-delay: 360ms, 360ms, 0s, 0s, 0s, 0s; }
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .showcase-wrapper .showcase-phone,
+  .showcase-wrapper .showcase-hint,
+  .showcase-wrapper .module-selector,
+  .showcase-wrapper .module-pill {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }

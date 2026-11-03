@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -16,6 +16,20 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
   weight: ["500", "600", "700"],
 });
+
+// Móvil: la página llega hasta el notch (la cabecera se aparta con
+// env(safe-area-inset-top)) y la barra de estado toma el color del fondo de
+// cada tema. Nunca se bloquea el zoom.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "dark light",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#030712" },
+  ],
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://medicai.lat"),
