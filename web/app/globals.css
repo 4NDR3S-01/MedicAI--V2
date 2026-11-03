@@ -325,15 +325,43 @@ header {
   }
 }
 
+/* Texto grande en móvil: todo crece (rem) pero el ancho no, y la hamburguesa
+   se salía de la barra. «Descargar» pasa a ser un botón redondo con icono,
+   del tamaño de los otros dos (la descarga sigue también en el menú). */
+@media (max-width: 479px) {
+  html[data-text="large"] .header-cta {
+    width: 2.5rem;
+    min-height: 2.5rem;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  html[data-text="large"] .header-cta svg {
+    display: block;
+  }
+
+  html[data-text="large"] .header-cta-label {
+    display: none;
+  }
+
+  html[data-text="large"] .header-inner {
+    padding-left: 0.875rem;
+  }
+}
+
 @media (max-width: 359px) {
   .logo {
     font-size: 1.125rem;
   }
 
-  .text-size-btn,
-  .mobile-menu-btn {
+  /* Con .header-actions delante: las reglas base de estos botones van más
+     abajo en el archivo y, a igual especificidad, ganarían. */
+  .header-actions .text-size-btn,
+  .header-actions .mobile-menu-btn,
+  html[data-text="large"] .header-cta {
     width: 2.25rem;
     height: 2.25rem;
+    min-height: 2.25rem;
   }
 }
 

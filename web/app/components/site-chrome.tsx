@@ -137,9 +137,10 @@ export function SiteHeader() {
             rel="noopener noreferrer"
             className="btn btn-primary header-cta"
             data-umami-event="descargar-google-play-header"
+            aria-label="Descargar en Google Play"
           >
             <Download size={16} aria-hidden />
-            Descargar
+            <span className="header-cta-label">Descargar</span>
           </a>
           <button
             className="mobile-menu-btn"
