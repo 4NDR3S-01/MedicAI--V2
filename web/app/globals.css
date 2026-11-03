@@ -23,7 +23,6 @@
   --surface: #0f172a;
   --surface-2: #111827;
   --surface-glass: rgba(15, 23, 42, 0.6);
-  --surface-header: rgba(15, 23, 42, 0.78);
   --text: #f8fafc;
   --text-muted: #94a3b8;
   --text-subtle: #7c8aa0;
@@ -54,7 +53,6 @@
     --surface: #ffffff;
     --surface-2: #f1f5f9;
     --surface-glass: rgba(255, 255, 255, 0.72);
-  --surface-header: rgba(255, 255, 255, 0.8);
     --text: #0f172a;
     --text-muted: #475569;
     --text-subtle: #5b6b80;
@@ -76,7 +74,6 @@
   --surface: #ffffff;
   --surface-2: #f1f5f9;
   --surface-glass: rgba(255, 255, 255, 0.72);
-  --surface-header: rgba(255, 255, 255, 0.8);
   --text: #0f172a;
   --text-muted: #475569;
   --text-subtle: #5b6b80;
@@ -289,7 +286,7 @@ header {
      compilador añade el prefijo -webkit-, y si se escriben ambas descarta la
      estándar y Chrome/Firefox se quedan sin desenfoque. */
   backdrop-filter: blur(40px) saturate(180%);
-  background: var(--surface-header);
+  background: var(--surface-glass);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-soft);
   transition: transform 380ms var(--ease-out), opacity 240ms ease;
