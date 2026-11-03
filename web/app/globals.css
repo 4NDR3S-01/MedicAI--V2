@@ -23,6 +23,7 @@
   --surface: #0f172a;
   --surface-2: #111827;
   --surface-glass: rgba(15, 23, 42, 0.6);
+  --surface-header: rgba(15, 23, 42, 0.78);
   --text: #f8fafc;
   --text-muted: #94a3b8;
   --text-subtle: #7c8aa0;
@@ -53,6 +54,7 @@
     --surface: #ffffff;
     --surface-2: #f1f5f9;
     --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-header: rgba(255, 255, 255, 0.8);
     --text: #0f172a;
     --text-muted: #475569;
     --text-subtle: #5b6b80;
@@ -74,6 +76,7 @@
   --surface: #ffffff;
   --surface-2: #f1f5f9;
   --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-header: rgba(255, 255, 255, 0.8);
   --text: #0f172a;
   --text-muted: #475569;
   --text-subtle: #5b6b80;
@@ -281,9 +284,12 @@ header {
   padding-inline: 1.25rem 0.5rem;
   border-radius: 999px;
   pointer-events: auto;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: var(--surface-glass);
+  /* Vidrio esmerilado: el desenfoque fuerte convierte lo que pasa por detrás
+     en manchas de color, sin texto legible. Solo la propiedad estándar: el
+     compilador añade el prefijo -webkit-, y si se escriben ambas descarta la
+     estándar y Chrome/Firefox se quedan sin desenfoque. */
+  backdrop-filter: blur(40px) saturate(180%);
+  background: var(--surface-header);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-soft);
   transition: transform 380ms var(--ease-out), opacity 240ms ease;
@@ -442,17 +448,22 @@ header {
 .hero {
   position: relative;
   padding-block: 5rem 6rem;
-  overflow: hidden;
+  /* Solo se recorta en horizontal: el brillo puede subir detrás de la
+     cabecera y bajar hacia la siguiente sección sin dejar un corte recto. */
+  overflow-x: clip;
 }
 
+/* Brillo de fondo: empieza en el borde superior de la página (detrás de la
+   cabecera) y se desvanece con una máscara antes de entrar en "Funciones". */
 .hero::before {
   content: "";
   position: absolute;
-  top: -20%;
-  right: -10%;
-  width: 60vw;
-  height: 60vw;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 60%);
+  inset: calc(-4.5rem - env(safe-area-inset-top, 0px)) 0 -10rem;
+  background:
+    radial-gradient(60vw 50vw at 88% 18%, var(--accent-glow), transparent 70%),
+    radial-gradient(45vw 35vw at 8% 70%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 70%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
   pointer-events: none;
   z-index: 0;
 }
