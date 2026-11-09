@@ -181,6 +181,19 @@ export function ProfileScreen({
             />
           }
         >
+          <View style={styles.titleRow}>
+            <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]} accessibilityRole="header">Perfil</Text>
+            <PressableScale
+              onPress={() => setSheet('edit')}
+              accessibilityRole="button"
+              accessibilityLabel="Editar datos personales"
+              style={[styles.editButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+            >
+              <MaterialCommunityIcons name="pencil-outline" size={18} color={theme.colors.textPrimary} />
+              <Text style={[styles.editText, { color: theme.colors.textPrimary }]}>Editar</Text>
+            </PressableScale>
+          </View>
+
           {/* Identidad */}
           <View style={[styles.heroCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
             <View style={styles.heroTopRow}>
@@ -208,6 +221,11 @@ export function ProfileScreen({
                 </Text>
                 {email ? <Text style={[styles.email, { color: theme.colors.textMuted }]} numberOfLines={1}>{email}</Text> : null}
                 <View style={styles.heroPills}>
+                  {age !== null ? (
+                    <View style={[styles.statusPill, { backgroundColor: `${theme.colors.textMuted}14` }]}>
+                      <Text style={[styles.statusPillText, { color: theme.colors.textSecondary }]}>{age} años</Text>
+                    </View>
+                  ) : null}
                   {phone ? (
                     <View style={[styles.statusPill, { backgroundColor: `${theme.colors.accentPrimary}14` }]} accessibilityLabel={`Teléfono ${phone}`}>
                       <Text style={[styles.statusPillText, { color: theme.colors.accentPrimaryText }]}>{phone}</Text>
@@ -225,20 +243,7 @@ export function ProfileScreen({
                 </View>
               </View>
             </View>
-
-            <View style={styles.metricsRow}>
-              <ProfileMetric theme={theme} icon="calendar-account-outline" label="Edad" value={age !== null ? `${age} años` : 'Sin dato'} />
-              <ProfileMetric theme={theme} icon="alert-decagram-outline" label="Alertas" value={special.length ? String(special.length) : 'Ninguna'} />
-              <ProfileMetric
-                theme={theme}
-                icon="bell-ring-outline"
-                label="Aviso meds"
-                value={lead ? formatLead(lead.medication).replace(' antes', '') : '—'}
-              />
-            </View>
           </View>
-
-          <AppButton theme={theme} label="Editar datos personales" variant="secondary" icon="create-outline" iconPosition="left" onPress={() => setSheet('edit')} />
 
           {/* Salud */}
           <PressableScale
@@ -436,20 +441,6 @@ export function ProfileScreen({
   );
 }
 
-function ProfileMetric({
-  theme,
-  icon,
-  label,
-  value,
-}: Readonly<{ theme: AppTheme; icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }>) {
-  return (
-    <View style={[styles.metricCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]} accessible accessibilityLabel={`${label}: ${value}`}>
-      <MaterialCommunityIcons name={icon} size={18} color={theme.colors.accentPrimary} />
-      <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]} numberOfLines={1}>{value}</Text>
-      <Text style={[styles.metricLabel, { color: theme.colors.textMuted }]}>{label}</Text>
-    </View>
-  );
-}
 
 /** Fila de la tarjeta de salud: chips con lo registrado, o "Ninguna". */
 function HealthRow({
@@ -484,7 +475,11 @@ function HealthRow({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: 18, paddingTop: 24, gap: 16 },
-  heroCard: { borderRadius: 32, borderWidth: 1, padding: 18, gap: 18 },
+  screenTitle: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6 },
+  heroCard: { borderRadius: 24, borderWidth: 1, padding: 18 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 },
+  editText: { fontSize: 14, fontWeight: '700' },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatar: { width: 86, height: 86, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: 84, height: 84, borderRadius: 27 },
@@ -498,10 +493,6 @@ const styles = StyleSheet.create({
   heroPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   statusPillText: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  metricsRow: { flexDirection: 'row', gap: 10 },
-  metricCard: { flex: 1, borderRadius: 20, borderWidth: 1, padding: 12, gap: 5 },
-  metricValue: { fontSize: 14, fontWeight: '700' },
-  metricLabel: { fontSize: 11, fontWeight: '600' },
   health: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 12 },
   healthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   healthTitle: { flex: 1, fontSize: 16, fontWeight: '700' },
