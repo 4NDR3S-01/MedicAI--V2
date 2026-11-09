@@ -39,13 +39,15 @@ export type MemberCareSheetProps = {
   member: CircleMember | null;
   initialTab: CareTab;
   onClose: () => void;
+  /** Abre la relación y los permisos de esta persona. */
+  onOpenDetail?: (member: CircleMember) => void;
 };
 
 /**
  * Lo que una persona del Círculo comparte contigo. Cada acción aparece solo
  * si tienes ese permiso, y el servidor lo vuelve a comprobar.
  */
-export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly<MemberCareSheetProps>) {
+export function MemberCareSheet({ theme, member, initialTab, onClose, onOpenDetail }: Readonly<MemberCareSheetProps>) {
   const last = useRef(member);
   if (member) last.current = member;
   const shown = member ?? last.current;
@@ -409,7 +411,24 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
         subtitle={`${relationToMe(shown.relation)} · Lo que comparte contigo`}
         scrollToTopKey={tab}
         onClose={onClose}
-        footer={<AppButton theme={theme} label="Cerrar" variant="secondary" onPress={onClose} style={styles.flex} />}
+        footer={
+          <>
+            {onOpenDetail ? (
+              <AppButton
+                theme={theme}
+                label="Relación y permisos"
+                variant="secondary"
+                onPress={() => {
+                  const target = shown;
+                  onClose();
+                  setTimeout(() => onOpenDetail(target), 220);
+                }}
+                style={styles.flexWide}
+              />
+            ) : null}
+            <AppButton theme={theme} label="Cerrar" variant="secondary" onPress={onClose} style={styles.flex} />
+          </>
+        }
       >
         {allowedTabs.length > 1 ? (
           <View style={[styles.tabs, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder }]}>
@@ -541,6 +560,7 @@ function HealthRow({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  flexWide: { flex: 1.6 },
   tabs: { flexDirection: 'row', borderWidth: 1.5, borderRadius: 16, padding: 4, gap: 4 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 54, borderRadius: 12, paddingHorizontal: 4, paddingVertical: 6 },
   tabText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },

@@ -6,7 +6,7 @@ import type { AppTheme } from '../../../shared/theme';
 import { BottomSheet, FloatingActionButton, SelectField, useEnterAnimation } from '../../../shared/ui';
 import { syncOwnReminders } from '../../tabs/services/reminders-sync';
 import { EmptyState, SkeletonList } from '../../tabs/components/ScreenStates';
-import { CareTodayPanel, useCareData } from '../components/CareTodayPanel';
+import { buildRows, useCareData, type CareRowData } from '../components/CareTodayPanel';
 import { GroupsSheet } from '../components/CircleGroups';
 import { PermissionHistorySheet } from '../components/PermissionHistorySheet';
 import { CircleSections } from '../components/CircleSections';
@@ -168,6 +168,24 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
     const grouped = filterByGroup(overview, groupFilter);
     return showSearch ? filterOverview(grouped, query) : grouped;
   }, [overview, query, showSearch, groupFilter]);
+  // Con pocas personas los grupos no ayudan a encontrar a nadie: el selector se oculta.
+  const showGroups = groups.length > 0 && (overview?.members.length ?? 0) >= SEARCH_THRESHOLD;
+  useEffect(() => {
+    if (!showGroups && groupFilter !== 'all') setGroupFilter('all');
+  }, [showGroups, groupFilter]);
+
+  // El día de cada persona se muestra en su propia tarjeta (y se reordena por urgencia).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const careRows = useMemo(() => {
+    if (!caresForSomeone || !careData.data || !overview) return [] as CareRowData[];
+    return buildRows(overview.members, careData.data, now);
+  }, [caresForSomeone, careData.data, overview, now]);
+  const careByPerson = useMemo(() => new Map(careRows.map((row) => [row.member.person.id, row])), [careRows]);
+
   const groupOptions = useMemo(
     () => [
       { value: 'all', label: `Todos (${overview?.members.length ?? 0})` },
@@ -243,6 +261,9 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
         busyInvitationIds={circle.busyInvitationIds}
         onOpenMember={setSelected}
         onOpenCare={(member) => openCare(member)}
+        careRows={careByPerson}
+        careLoading={caresForSomeone && !careData.data && !careData.error}
+        now={now}
         onShareInvitation={shareInvitation}
         onResendInvitation={(invitation) => void circle.resend(invitation)}
         onCancelInvitation={circle.cancel}
@@ -310,11 +331,9 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
             </View>
           ) : null}
 
-          {caresForSomeone && careData.data && visibleOverview ? (
-            <CareTodayPanel theme={theme} members={visibleOverview.members} data={careData.data} onOpen={(member) => openCare(member)} />
-          ) : null}
+          {careRows.length ? <CircleTodaySummary theme={theme} rows={careRows} /> : null}
 
-          {overview?.members.length && groups.length ? (
+          {showGroups ? (
             <SelectField
               theme={theme}
               value={groupFilter}
@@ -451,6 +470,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
         theme={theme}
         member={care?.member ?? null}
         initialTab={care?.tab ?? 'medications'}
+        onOpenDetail={setSelected}
         onClose={() => {
           setCare(null);
           // Pudo registrar tomas o cambiar citas: el seguimiento se actualiza.
@@ -510,6 +530,40 @@ function AddChoiceSheet({
         ))}
       </View>
     </BottomSheet>
+  );
+}
+
+/**
+ * Resumen del día de quienes comparten su día contigo: si alguien necesita atención y
+ * cuántas de sus tomas de hoy están registradas. El detalle está en cada tarjeta.
+ */
+function CircleTodaySummary({ theme, rows }: Readonly<{ theme: AppTheme; rows: CareRowData[] }>) {
+  const attention = rows.filter((row) => row.missed || row.due || row.awaiting).length;
+  const taken = rows.reduce((sum, row) => sum + row.taken, 0);
+  const total = rows.reduce((sum, row) => sum + row.total, 0);
+  const tone = attention ? theme.colors.accentTertiary : theme.colors.success;
+  const toneText = attention ? theme.colors.warningText : theme.colors.successText;
+  const title = attention
+    ? attention === 1 ? '1 persona necesita atención' : `${attention} personas necesitan atención`
+    : 'Todo al día';
+  // Cuenta a todos los que comparten su día contigo (no solo a quienes cuidas).
+  const people = rows.length === 1 ? '1\u00A0persona' : `${rows.length}\u00A0personas`; // sin cortar "4 / personas"
+  const detail = total ? `${taken} de ${total} tomas registradas hoy · ${people}` : `Sin tomas programadas hoy · ${people}`;
+
+  return (
+    <View
+      style={[styles.today, { backgroundColor: `${tone}14`, borderColor: `${tone}40` }]}
+      accessible
+      accessibilityLabel={`Hoy en tu Círculo: ${title}. ${detail}.`}
+    >
+      <View style={[styles.todayIcon, { backgroundColor: `${tone}24` }]}>
+        <MaterialCommunityIcons name={attention ? 'alert-circle-outline' : 'check-circle-outline'} size={24} color={toneText} />
+      </View>
+      <View style={styles.todayText}>
+        <Text style={[styles.todayTitle, { color: toneText }]}>{title}</Text>
+        <Text style={[styles.todayDetail, { color: theme.colors.textSecondary }]}>{detail}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -582,6 +636,11 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6 },
   menuButton: { width: 44, height: 44, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  today: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, borderWidth: 1, padding: 14 },
+  todayIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  todayText: { flex: 1, gap: 2 },
+  todayTitle: { fontSize: 16, fontWeight: '700' },
+  todayDetail: { fontSize: 14, lineHeight: 19, fontWeight: '500' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingVertical: 6 },
   empty: { gap: 14 },
   groupSelect: { minHeight: 46 },

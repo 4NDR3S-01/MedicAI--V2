@@ -16,7 +16,7 @@ import { Avatar, SectionTitle } from './CircleParts';
 const VISIBLE_ROWS = 5;
 const TICK_MS = 60_000;
 
-type Row = {
+export type CareRowData = {
   member: CircleMember;
   missed: number;
   due: number;
@@ -54,7 +54,7 @@ export function useCareData(enabled: boolean) {
   return { data, error, load };
 }
 
-function buildRows(members: CircleMember[], data: CareData[], now: Date): Row[] {
+export function buildRows(members: CircleMember[], data: CareData[], now: Date): CareRowData[] {
   const byOwner = new Map(data.map((entry) => [entry.ownerId, entry]));
   return members.flatMap((member) => {
     const entry = byOwner.get(member.person.id);
@@ -154,13 +154,15 @@ export function CareTodayPanel({
   );
 }
 
-function CareRow({ theme, row, now, divider, onPress }: Readonly<{ theme: AppTheme; row: Row; now: Date; divider: boolean; onPress: () => void }>) {
-  const name = displayName(row.member.person);
-  const parts: { text: string; tone: 'alert' | 'ok' | 'muted' }[] = [];
+export type CarePart = { text: string; tone: 'alert' | 'ok' | 'muted' };
+
+/** Frases del día de una persona (tomas, próxima toma, citas), las urgentes primero. */
+export function careParts(row: CareRowData, now: Date, options: { omitProgress?: boolean } = {}): CarePart[] {
+  const parts: CarePart[] = [];
   if (row.missed) parts.push({ text: row.missed === 1 ? '1 toma sin registrar' : `${row.missed} tomas sin registrar`, tone: 'alert' });
   if (row.due) parts.push({ text: row.due === 1 ? 'Toma ahora' : `${row.due} tomas ahora`, tone: 'alert' });
   if (row.awaiting) parts.push({ text: row.awaiting === 1 ? '1 cita por confirmar' : `${row.awaiting} citas por confirmar`, tone: 'alert' });
-  if (!row.missed && !row.due && row.total) {
+  if (!options.omitProgress && !row.missed && !row.due && row.total) {
     parts.push({ text: row.taken === row.total ? 'Tomas del día completas' : `${row.taken}/${row.total} tomas`, tone: row.taken === row.total ? 'ok' : 'muted' });
   }
   const timeZone = row.member.person.timezone;
@@ -173,7 +175,15 @@ function CareRow({ theme, row, now, divider, onPress }: Readonly<{ theme: AppThe
     });
   }
   if (row.nextAppointment) parts.push({ text: `Cita ${relativeDayLabel(row.nextAppointment, now).toLowerCase()} ${formatClock(row.nextAppointment)}`, tone: 'muted' });
-  if (!parts.length) parts.push({ text: 'Sin tomas ni citas próximas', tone: 'muted' });
+  // Con la barra a la vista, un día completo sin nada más no necesita texto.
+  if (!parts.length && !(options.omitProgress && row.total)) parts.push({ text: 'Sin tomas ni citas próximas', tone: 'muted' });
+
+  return parts;
+}
+
+function CareRow({ theme, row, now, divider, onPress }: Readonly<{ theme: AppTheme; row: CareRowData; now: Date; divider: boolean; onPress: () => void }>) {
+  const name = displayName(row.member.person);
+  const parts = careParts(row, now);
 
   const needsAttention = parts.some((part) => part.tone === 'alert');
   const toneColor = { alert: theme.colors.accentTertiary, ok: theme.colors.success, muted: theme.colors.textMuted };

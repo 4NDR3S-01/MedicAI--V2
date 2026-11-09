@@ -4,8 +4,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { readableText, type AppTheme } from '../../../shared/theme';
 import type { CircleInvitation, CircleMember } from '../services/circle.service';
-import { accessHeadline, hasAnyPermission } from '../utils/permissions';
-import { careSummary, displayName, firstName, relationLabel, relationToMe } from '../utils/relations';
+import { accessHeadline } from '../utils/permissions';
+import { careParts, type CareRowData } from './CareTodayPanel';
+import { displayName, relationLabel, relationToMe } from '../utils/relations';
 import { Avatar, Badge } from './CircleParts';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -18,6 +19,9 @@ function MemberCardBase({
   theme,
   member,
   managing,
+  care,
+  careLoading,
+  now,
   onPress,
   onOpenCare,
 }: Readonly<{
@@ -25,73 +29,96 @@ function MemberCardBase({
   member: CircleMember;
   /** Viendo el Círculo de otra persona: los textos no hablan de "tú". */
   managing?: boolean;
+  /** Su día (tomas y citas), si comparte contigo. */
+  care?: CareRowData;
+  /** Su día aún se está cargando. */
+  careLoading?: boolean;
+  now?: Date;
   onPress: (member: CircleMember) => void;
   onOpenCare: (member: CircleMember) => void;
 }>) {
   const name = displayName(member.person);
-  const first = firstName(member.person);
-  const careLine = managing ? null : careSummary(member.care, first);
+  const relation = managing ? relationLabel(member.relation) : relationToMe(member.relation);
   const canSeeSomething = !managing && (member.iCan.viewMedications || member.iCan.viewAppointments || member.iCan.viewHealth);
+  // Con tomas hoy, el progreso va en la barra; el texto queda para lo que hay que hacer.
+  const showBar = Boolean(care?.total);
+  const parts = care ? careParts(care, now ?? new Date(), { omitProgress: showBar }) : null;
+  const needsAttention = Boolean(parts?.some((part) => part.tone === 'alert'));
+  // Sin datos del día: una sola línea con lo que se comparte (lo relevante según quién cuida a quién).
+  const accessText = member.care === 'I_CARE' && !managing
+    ? accessHeadline(member.iCan, 'iCan')
+    : accessHeadline(member.theyCan, managing ? 'thirdParty' : 'theyCan');
+  const toneColor = { alert: theme.colors.warningText, ok: theme.colors.successText, muted: theme.colors.textSecondary };
+
+  // Lo más usado es ver su día; la relación y los permisos quedan a un toque largo (o desde su ficha).
+  const open = canSeeSomething ? () => onOpenCare(member) : () => onPress(member);
 
   return (
     <Pressable
-      onPress={() => onPress(member)}
+      onPress={open}
+      onLongPress={canSeeSomething ? () => onPress(member) : undefined}
+      delayLongPress={300}
       accessibilityRole="button"
-      accessibilityLabel={`${name}, ${managing ? relationLabel(member.relation) : relationToMe(member.relation)}${careLine ? `, ${careLine}` : ''}`}
-      accessibilityHint="Abre la relación y los permisos"
+      accessibilityLabel={`${name}, ${relation}${member.person.isManaged ? ', a tu cargo' : ''}. ${parts ? parts.map((part) => part.text).join(', ') : accessText}`}
+      accessibilityHint={canSeeSomething ? 'Abre lo que comparte. Mantén presionado para relación y permisos' : 'Abre la relación y los permisos'}
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
-        pressed && { transform: [{ scale: 0.99 }] },
+        { backgroundColor: theme.colors.surface, borderColor: needsAttention ? `${theme.colors.accentTertiary}66` : theme.colors.surfaceBorder },
+        pressed && styles.cardPressed,
       ]}
     >
       <View style={styles.row}>
-        <Avatar name={name} seed={member.person.id} />
+        <View>
+          <Avatar name={name} seed={member.person.id} />
+          {needsAttention ? <View style={[styles.attentionDot, { backgroundColor: theme.colors.accentTertiary, borderColor: theme.colors.surface }]} /> : null}
+        </View>
         <View style={styles.flex}>
           <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>{name}</Text>
-          <Text style={[styles.relation, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-            {managing ? relationLabel(member.relation) : relationToMe(member.relation)}
+          <Text style={[styles.relation, { color: theme.colors.textMuted }]} numberOfLines={1}>
+            {relation}
+            {member.person.isManaged ? <Text style={{ color: theme.colors.warningText }}> · A tu cargo</Text> : null}
           </Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textMuted} />
       </View>
 
-      {member.person.isManaged ? (
-        <Badge label="A tu cargo · sin cuenta propia" color={theme.colors.warningText} icon="human-child" />
-      ) : null}
-      {careLine && !member.person.isManaged ? (
-        <Badge label={careLine} color={member.care === 'CARES_FOR_ME' ? theme.colors.accentSecondaryText : theme.colors.accentPrimaryText} icon="hand-heart-outline" />
-      ) : null}
-
-      <View style={[styles.access, { borderTopColor: theme.colors.surfaceBorder }]}>
-        <AccessLine theme={theme} icon="account-arrow-right-outline" text={accessHeadline(member.theyCan, managing ? 'thirdParty' : 'theyCan')} active={hasAnyPermission(member.theyCan)} />
-        {!managing ? (
-          <AccessLine theme={theme} icon="account-arrow-left-outline" text={accessHeadline(member.iCan, 'iCan')} active={hasAnyPermission(member.iCan)} />
-        ) : null}
+      <View style={[styles.status, { borderTopColor: theme.colors.surfaceBorder }]}>
+        {care && showBar ? <DayBar theme={theme} care={care} /> : null}
+        {parts?.length ? (
+          <Text style={styles.statusText} numberOfLines={2}>
+            {parts.map((part, index) => (
+              <Text key={part.text} style={{ color: toneColor[part.tone], fontWeight: part.tone === 'muted' ? '500' : '700' }}>
+                {index > 0 ? ' · ' : ''}
+                {part.text}
+              </Text>
+            ))}
+          </Text>
+        ) : care ? null : careLoading && canSeeSomething ? (
+          <Text style={[styles.statusText, { color: theme.colors.textMuted }]}>Cargando su día…</Text>
+        ) : (
+          <Text style={[styles.statusText, { color: theme.colors.textSecondary }]} numberOfLines={2}>{accessText}</Text>
+        )}
       </View>
-
-      {canSeeSomething ? (
-        <Pressable
-          onPress={() => onOpenCare(member)}
-          accessibilityRole="button"
-          accessibilityLabel={`Ver lo que comparte ${first}`}
-          style={({ pressed }) => [styles.careButton, { backgroundColor: `${theme.colors.accentSecondary}12` }, pressed && styles.pressed]}
-        >
-          <MaterialCommunityIcons name="eye-outline" size={18} color={theme.colors.accentSecondary} />
-          <Text style={[styles.careButtonText, { color: theme.colors.accentSecondaryText }]}>Ver lo que comparte {first}</Text>
-        </Pressable>
-      ) : null}
     </Pressable>
   );
 }
 
 export const MemberCard = memo(MemberCardBase);
 
-function AccessLine({ theme, icon, text, active }: Readonly<{ theme: AppTheme; icon: IconName; text: string; active: boolean }>) {
+/** Tomas del día de una persona: barra fina + "2/4". */
+function DayBar({ theme, care }: Readonly<{ theme: AppTheme; care: CareRowData }>) {
+  const complete = care.taken === care.total;
+  const pending = care.missed > 0 || care.due > 0;
+  const tone = pending ? theme.colors.accentTertiary : complete ? theme.colors.success : theme.colors.accentPrimary;
+  const toneText = pending ? theme.colors.warningText : complete ? theme.colors.successText : theme.colors.accentPrimaryText;
   return (
-    <View style={styles.accessLine}>
-      <MaterialCommunityIcons name={icon} size={16} color={active ? theme.colors.accentPrimary : theme.colors.textMuted} />
-      <Text style={[styles.accessText, { color: active ? theme.colors.textSecondary : theme.colors.textMuted }]} numberOfLines={2}>{text}</Text>
+    <View style={styles.dayBar}>
+      <View style={[styles.dayTrack, { backgroundColor: `${tone}22` }]}>
+        <View style={[styles.dayFill, { backgroundColor: tone, width: `${Math.round((care.taken / care.total) * 100)}%` }]} />
+      </View>
+      <Text style={[styles.dayCount, { color: toneText }]}>
+        {care.taken}/{care.total}
+      </Text>
     </View>
   );
 }
@@ -236,11 +263,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2 },
   relation: { fontSize: 13, fontWeight: '600', marginTop: 1 },
-  access: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 6 },
-  accessLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  accessText: { flex: 1, fontSize: 13, fontWeight: '600' },
-  careButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 42, borderRadius: 12 },
-  careButtonText: { fontSize: 14, fontWeight: '700' },
+  cardPressed: { transform: [{ scale: 0.99 }], opacity: 0.9 },
+  attentionDot: { position: 'absolute', right: -2, top: -2, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
+  status: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 8 },
+  dayBar: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dayTrack: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
+  dayFill: { height: '100%', borderRadius: 3 },
+  dayCount: { fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'], minWidth: 28, textAlign: 'right' },
+  statusText: { fontSize: 14, lineHeight: 19 },
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   meta: { fontSize: 13, lineHeight: 17 },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },

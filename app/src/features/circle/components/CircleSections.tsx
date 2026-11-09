@@ -8,8 +8,9 @@ import type { CircleInvitation, CircleMember, CircleOverview, PreviousLink } fro
 import { displayName, relationLabel } from '../utils/relations';
 import { MemberCard, SentInvitationCard } from './CircleCards';
 import { Avatar, SectionTitle } from './CircleParts';
+import type { CareRowData } from './CareTodayPanel';
 
-type Group = { id: string; title: string; hint: string; members: CircleMember[] };
+type Group = { id: string; title: string; members: CircleMember[] };
 
 /** Con muchas personas (p. ej. un médico) se dibujan por tandas. */
 const PAGE_SIZE = 20;
@@ -19,28 +20,31 @@ const PAGE_SIZE = 20;
  * entrar: a quién cuido yo, quién me cuida a mí y el resto.
  */
 function groupMembers(members: CircleMember[], managing: boolean, ownerName: string): Group[] {
-  const who = managing ? ownerName : 'Tú';
   const groups: Group[] = [
     {
       id: 'cares',
       title: managing ? `Personas que ${ownerName} cuida` : 'Personas que cuidas',
-      hint: `${who} ${managing ? 'está' : 'estás'} a cargo o ${managing ? 'ayuda' : 'ayudas'} con su tratamiento.`,
       members: members.filter((member) => member.care === 'I_CARE' || member.care === 'MUTUAL'),
     },
     {
       id: 'caredBy',
       title: managing ? `Cuidan a ${ownerName}` : 'Te cuidan',
-      hint: managing ? 'Le ayudan con sus medicamentos o citas.' : 'Te ayudan con tus medicamentos o citas.',
       members: members.filter((member) => member.care === 'CARES_FOR_ME'),
     },
     {
       id: 'others',
       title: 'Otros miembros',
-      hint: 'Conectados, sin nadie a cargo.',
       members: members.filter((member) => member.care === 'NONE'),
     },
   ];
   return groups.filter((group) => group.members.length);
+}
+
+/** Quien necesita atención (tomas atrasadas, de ahora, citas por confirmar) va primero. */
+function sortByAttention(members: CircleMember[], careRows?: Map<string, CareRowData>): CircleMember[] {
+  if (!careRows?.size) return members;
+  const score = (member: CircleMember) => careRows.get(member.person.id)?.score ?? 0;
+  return [...members].sort((a, b) => score(b) - score(a));
 }
 
 export function CircleSections({
@@ -54,6 +58,9 @@ export function CircleSections({
   onResendInvitation,
   onCancelInvitation,
   onReinvite,
+  careRows,
+  careLoading,
+  now,
 }: Readonly<{
   theme: AppTheme;
   overview: CircleOverview;
@@ -65,6 +72,10 @@ export function CircleSections({
   onResendInvitation: (invitation: CircleInvitation) => void;
   onCancelInvitation: (invitation: CircleInvitation) => void;
   onReinvite?: (previous: PreviousLink) => void;
+  /** Día de cada persona que comparte contigo, por id de persona. */
+  careRows?: Map<string, CareRowData>;
+  careLoading?: boolean;
+  now?: Date;
 }>) {
   const reducedMotion = useReducedMotion();
   const [showPrevious, setShowPrevious] = useState(false);
@@ -80,9 +91,19 @@ export function CircleSections({
         const hidden = group.members.length - limit;
         return (
           <View key={group.id} style={styles.section}>
-            <SectionTitle theme={theme} title={`${group.title} · ${group.members.length}`} hint={group.hint} />
-            {group.members.slice(0, limit).map((member) => (
-              <MemberCard key={member.linkId} theme={theme} member={member} managing={managing} onPress={onOpenMember} onOpenCare={onOpenCare} />
+            <SectionTitle theme={theme} title={`${group.title} · ${group.members.length}`} />
+            {sortByAttention(group.members, careRows).slice(0, limit).map((member) => (
+              <MemberCard
+                key={member.linkId}
+                theme={theme}
+                member={member}
+                managing={managing}
+                care={careRows?.get(member.person.id)}
+                careLoading={careLoading}
+                now={now}
+                onPress={onOpenMember}
+                onOpenCare={onOpenCare}
+              />
             ))}
             {hidden > 0 ? (
               <Pressable
