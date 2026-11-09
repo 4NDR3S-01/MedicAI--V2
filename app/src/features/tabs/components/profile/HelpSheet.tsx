@@ -37,7 +37,7 @@ const FAQ: { question: string; answer: string }[] = [
   {
     question: '¿MedicAI reemplaza a mi médico?',
     answer:
-      'No. MedicAI te ayuda a recordar y organizar tu tratamiento, pero no da diagnósticos. Ante cualquier duda sobre tu salud o tus medicamentos, consulta a un profesional. En una emergencia, llama al 123.',
+      'No. MedicAI te ayuda a recordar y organizar tu tratamiento, pero no da diagnósticos. Ante cualquier duda sobre tu salud o tus medicamentos, consulta a un profesional. En una emergencia, llama al 911.',
   },
 ];
 

@@ -20,5 +20,5 @@ export function looksLikeEmergency(text: string): boolean {
   return PATTERNS.some((pattern) => pattern.test(value) || pattern.test(text.toLowerCase()));
 }
 
-/** Línea de emergencias de Colombia. */
-export const EMERGENCY_NUMBER = '123';
+/** Línea única de emergencias (Ecuador y la mayoría de países de la región). */
+export const EMERGENCY_NUMBER = '911';
