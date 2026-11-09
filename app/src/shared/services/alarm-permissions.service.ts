@@ -60,6 +60,11 @@ export type AlarmPermissionsStatus = {
   fullScreenIntent: PermissionLevel;
   /** True on Android 14+ when the user should grant full-screen intent permission. */
   shouldPromptFullScreenIntent: boolean;
+  /**
+   * Android only — the user silenced MedicAI's alarm channel in system settings
+   * (notifications stay on, but alarms would not sound).
+   */
+  alarmChannelBlocked: boolean;
 };
 
 const toPermissionLevel = (status: string): PermissionLevel => {
@@ -109,6 +114,22 @@ const getFullScreenIntentStatus = async (): Promise<PermissionLevel> => {
   return 'undetermined';
 };
 
+/**
+ * Canales que hacen sonar las tomas: el del servicio nativo de alarmas y el de
+ * expo-notifications (respaldo). Un canal que aún no existe no cuenta como bloqueado.
+ */
+const ALARM_CHANNEL_IDS = ['medicai_alarm_channel', 'medicai_medication_alarms'];
+
+const isAlarmChannelBlocked = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') return false;
+  try {
+    const channels = await Promise.all(ALARM_CHANNEL_IDS.map((id) => Notifications.getNotificationChannelAsync(id)));
+    return channels.some((channel) => channel?.importance === Notifications.AndroidImportance.NONE);
+  } catch {
+    return false;
+  }
+};
+
 const shouldPromptFullScreenIntent = (fullScreenIntent: PermissionLevel): boolean =>
   Platform.OS === 'android' && fullScreenIntent === 'denied';
 
@@ -117,8 +138,10 @@ const isAlarmReady = (
   exactAlarms: PermissionLevel,
   batteryOptimizationExempted: boolean | null,
   fullScreenIntentLevel: PermissionLevel,
+  alarmChannelBlocked: boolean,
 ): boolean =>
   notifications === 'granted' &&
+  !alarmChannelBlocked &&
   (Platform.OS !== 'android' || exactAlarms !== 'denied') &&
   (Platform.OS !== 'android' || fullScreenIntentLevel !== 'denied') &&
   !shouldPromptBatteryOptimization(batteryOptimizationExempted);
@@ -142,6 +165,7 @@ export async function getAlarmPermissionsStatus(): Promise<AlarmPermissionsStatu
       shouldPromptExactAlarmPermission: false,
       fullScreenIntent: 'unavailable',
       shouldPromptFullScreenIntent: false,
+      alarmChannelBlocked: false,
     };
   }
 
@@ -151,11 +175,12 @@ export async function getAlarmPermissionsStatus(): Promise<AlarmPermissionsStatu
   const exactAlarms = await getExactAlarmsStatus();
   const batteryOptimizationExempted = await getBatteryOptimizationStatus();
   const fullScreenIntent = await getFullScreenIntentStatus();
+  const alarmChannelBlocked = await isAlarmChannelBlocked();
 
   const shouldPromptBatteryOptimizationFlag = shouldPromptBatteryOptimization(batteryOptimizationExempted);
   const shouldPromptExactAlarmPermissionFlag = shouldPromptExactAlarmPermission(exactAlarms);
   const shouldPromptFullScreenIntentFlag = shouldPromptFullScreenIntent(fullScreenIntent);
-  const isAlarmReadyFlag = isAlarmReady(notifications, exactAlarms, batteryOptimizationExempted, fullScreenIntent);
+  const isAlarmReadyFlag = isAlarmReady(notifications, exactAlarms, batteryOptimizationExempted, fullScreenIntent, alarmChannelBlocked);
 
   return {
     notifications,
@@ -167,6 +192,7 @@ export async function getAlarmPermissionsStatus(): Promise<AlarmPermissionsStatu
     shouldPromptExactAlarmPermission: shouldPromptExactAlarmPermissionFlag,
     fullScreenIntent,
     shouldPromptFullScreenIntent: shouldPromptFullScreenIntentFlag,
+    alarmChannelBlocked,
   };
 }
 
@@ -332,7 +358,15 @@ const waitForReturnFromSettings = (): Promise<void> =>
  *
  * Returns `ready: true` only when ALL applicable permissions are satisfied.
  */
-export async function ensureAlarmPermissions(): Promise<EnsurePermissionsResult> {
+export async function ensureAlarmPermissions(
+  options: {
+    /**
+     * El usuario pidió resolverlo (botón "Resolver"): se vuelve a preguntar por
+     * batería e inicio automático aunque ya se hubiera preguntado antes.
+     */
+    force?: boolean;
+  } = {},
+): Promise<EnsurePermissionsResult> {
   // ── 1. Notifications (programmatic) ────────────────────────────────────────
   let notifLevel = await requestNotificationPermission();
   if (notifLevel !== 'granted') {
@@ -351,8 +385,26 @@ export async function ensureAlarmPermissions(): Promise<EnsurePermissionsResult>
     }
   }
 
-  // ── 2. Exact alarms (Android 12+) ─────────────────────────────────────────
+  // ── 1b. Canal de alarmas silenciado en los ajustes (Android) ─────────────
   let status = await getAlarmPermissionsStatus();
+  if (status.alarmChannelBlocked) {
+    const btn = await showAlertAsync(
+      'Alarmas silenciadas',
+      'Las alarmas de MedicAI están desactivadas en los ajustes del teléfono. Actívalas en Notificaciones → Alarmas para que suenen tus tomas.',
+      [{ text: 'Cancelar', style: 'cancel' }, { text: 'Abrir Configuración' }],
+    );
+    if (btn === 1) {
+      await openNotificationSettings();
+      await waitForReturnFromSettings();
+      status = await getAlarmPermissionsStatus();
+    }
+    if (status.alarmChannelBlocked) {
+      return { ready: false, status };
+    }
+  }
+
+  // ── 2. Exact alarms (Android 12+) ─────────────────────────────────────────
+  status = await getAlarmPermissionsStatus();
   if (status.shouldPromptExactAlarmPermission) {
     const btn = await showAlertAsync(
       'Alarmas exactas',
@@ -391,7 +443,7 @@ export async function ensureAlarmPermissions(): Promise<EnsurePermissionsResult>
   status = await getAlarmPermissionsStatus();
   if (status.shouldPromptBatteryOptimization) {
     const alreadyPrompted = await _appStorage.getItem(BATTERY_PROMPTED_KEY);
-    if (!alreadyPrompted) {
+    if (!alreadyPrompted || options.force) {
       const btn = await showAlertAsync(
         'Optimización de batería',
         'Para que las alarmas suenen en segundo plano, MedicAI necesita estar excluida de la optimización de batería.',
@@ -410,7 +462,7 @@ export async function ensureAlarmPermissions(): Promise<EnsurePermissionsResult>
   const needsAutostart = await isOemAutostartRequired();
   if (needsAutostart) {
     const alreadyPrompted = await _appStorage.getItem(AUTOSTART_PROMPTED_KEY);
-    if (!alreadyPrompted) {
+    if (!alreadyPrompted || options.force) {
       const btn = await showAlertAsync(
         'Inicio automático',
         'Tu dispositivo necesita que MedicAI tenga permiso de inicio automático para que las alarmas funcionen con la app cerrada.',

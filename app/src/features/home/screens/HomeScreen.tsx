@@ -151,7 +151,7 @@ export function HomeScreen({
         title: 'Tus alarmas podrían no sonar',
         body: 'Falta un permiso del teléfono para avisarte a tiempo.',
         action: 'Resolver',
-        onPress: () => void ensureAlarmPermissions().finally(() => void checkAlarms()),
+        onPress: () => void ensureAlarmPermissions({ force: true }).finally(() => void checkAlarms()),
       });
     }
     for (const appointment of summary.awaiting.slice(0, 2)) {

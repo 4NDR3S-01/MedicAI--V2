@@ -376,7 +376,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   };
 
   const fixAlarms = async () => {
-    const { ready } = await ensureAlarmPermissions();
+    const { ready } = await ensureAlarmPermissions({ force: true });
     if (ready) void syncAlarms(medicationsRef.current, logsRef.current, true);
   };
 

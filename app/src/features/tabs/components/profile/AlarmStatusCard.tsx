@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { AppState, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../../shared/theme';
 import { AppButton } from '../../../../shared/ui';
@@ -16,6 +16,7 @@ import {
 function missingItems(status: AlarmPermissionsStatus): string[] {
   const items: string[] = [];
   if (status.notifications !== 'granted') items.push('Las notificaciones están desactivadas.');
+  else if (status.alarmChannelBlocked) items.push('Las alarmas de MedicAI están silenciadas en los ajustes del teléfono.');
   if (status.shouldPromptExactAlarmPermission) items.push('Falta el permiso de alarmas exactas: podrían sonar con minutos de retraso.');
   if (status.shouldPromptFullScreenIntent) items.push('La alarma no podrá mostrarse con la pantalla bloqueada.');
   if (status.shouldPromptBatteryOptimization) items.push('El ahorro de batería puede retrasar o silenciar las alarmas.');
@@ -62,14 +63,38 @@ export function AlarmStatusCard({ theme, onIssueChange }: Readonly<{ theme: AppT
   const fix = async () => {
     setFixing(true);
     try {
-      await ensureAlarmPermissions();
+      await ensureAlarmPermissions({ force: true });
     } finally {
       setFixing(false);
       void refresh();
     }
   };
 
-  const color = ready ? theme.colors.success : theme.colors.accentTertiary;
+  // Todo en orden: una línea discreta. La tarjeta grande solo cuando hay que actuar.
+  if (ready) {
+    return (
+      <View style={styles.okRow} accessibilityRole="summary">
+        <MaterialCommunityIcons name="alarm-check" size={18} color={theme.colors.successText} />
+        <Text style={[styles.okText, { color: theme.colors.textSecondary }]}>
+          <Text style={{ color: theme.colors.successText, fontWeight: '700' }}>Alarmas listas</Text>
+          {autostart ? '' : ' en este teléfono'}
+        </Text>
+        {autostart ? (
+          <Pressable
+            onPress={() => void openAutostartSettings()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Permitir inicio automático"
+            accessibilityHint="Algunos teléfonos (Xiaomi, Huawei, Oppo…) lo necesitan para que las alarmas suenen tras reiniciar"
+          >
+            <Text style={[styles.okLink, { color: theme.colors.accentSecondaryText }]}>Inicio automático</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+
+  const color = theme.colors.accentTertiary;
   return (
     <View
       style={[styles.card, { backgroundColor: `${color}10`, borderColor: `${color}35` }]}
@@ -113,4 +138,7 @@ const styles = StyleSheet.create({
   text: { flex: 1, gap: 3 },
   title: { fontSize: 16, fontWeight: '700' },
   body: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  okRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
+  okText: { flex: 1, fontSize: 14, fontWeight: '500' },
+  okLink: { fontSize: 14, fontWeight: '700' },
 });
