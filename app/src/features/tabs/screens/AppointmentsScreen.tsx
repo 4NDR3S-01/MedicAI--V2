@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 
-import { readableText, type AppTheme } from '../../../shared/theme';
+import type { AppTheme } from '../../../shared/theme';
 import { FloatingActionButton, SelectField, useEnterAnimation, useReducedMotion, useSwapAnimation } from '../../../shared/ui';
 import { appStorage } from '../../../shared/storage';
 import {
@@ -35,11 +35,9 @@ import {
   appointmentDate,
   bucketAppointments,
   countdownLabel,
-  dateParts,
   formatClock,
   getAppointmentState,
   isInProgress,
-  relativeDayLabel,
   type AppointmentState,
 } from '../utils/appointment-status';
 
@@ -279,11 +277,19 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
   // ── Render ────────────────────────────────────────────────────────────────
   const hasAppointments = appointments.length > 0;
+  const todayLabel = now.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
 
   const header = (
     <View>
-      <View style={styles.titleBlock}>
+      <View style={styles.titleRow}>
         <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]} accessibilityRole="header">Citas</Text>
+        <View
+          style={[styles.dateChip, { backgroundColor: `${theme.colors.accentSecondary}1A`, borderColor: `${theme.colors.accentSecondary}40` }]}
+          accessibilityLabel={`Hoy es ${todayLabel}`}
+        >
+          <MaterialCommunityIcons name="calendar-today" size={16} color={theme.colors.accentSecondaryText} />
+          <Text style={[styles.dateChipText, { color: theme.colors.accentSecondaryText }]}>{todayLabel}</Text>
+        </View>
       </View>
 
       {buckets.awaitingCount > 0 && !(segment === 'history' && historyFilter === 'awaiting') ? (
@@ -307,8 +313,8 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
       {hasAppointments ? (
         <>
-          {segment === 'upcoming' && nextAppointment && buckets.upcoming.length > 1 ? (
-            <NextAppointmentCard theme={theme} appointment={nextAppointment} now={now} onDirections={handleDirections} />
+          {segment === 'upcoming' && nextAppointment ? (
+            <AgendaSummary theme={theme} next={nextAppointment} upcoming={buckets.upcoming} awaitingCount={buckets.awaitingCount} now={now} />
           ) : null}
 
           <View style={[styles.segmentBar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
@@ -507,76 +513,142 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
 const Separator = () => <View style={styles.separator} />;
 
-// ─── Próxima cita ───────────────────────────────────────────────────────────
+// ─── Resumen de la agenda ───────────────────────────────────────────────────
 
-function NextAppointmentCard({
+const DAY_MS = 86_400_000;
+const startOfDayMs = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+/**
+ * Panorama de las próximas semanas sin repetir ninguna cita de la lista:
+ * cuánto falta para la próxima, cómo se reparten los próximos 30 días y
+ * cuántas pasadas quedan por confirmar.
+ */
+function AgendaSummary({
   theme,
-  appointment,
+  next,
+  upcoming,
+  awaitingCount,
   now,
-  onDirections,
-}: Readonly<{
-  theme: AppTheme;
-  appointment: AppointmentData;
-  now: Date;
-  onDirections: (appointment: AppointmentData) => void;
-}>) {
-  const date = appointmentDate(appointment);
+}: Readonly<{ theme: AppTheme; next: AppointmentData; upcoming: AppointmentData[]; awaitingCount: number; now: Date }>) {
+  const date = appointmentDate(next);
   if (!date) return null;
-  const parts = dateParts(date);
-  const inProgress = isInProgress(appointment, now);
-  const accent = inProgress ? theme.colors.accentPrimary : theme.colors.accentSecondary;
+
+  const inProgress = isInProgress(next, now);
+  const days = Math.round((startOfDayMs(date) - startOfDayMs(now)) / DAY_MS);
+  let big: string;
+  let caption: string;
+  if (inProgress) {
+    big = 'Ahora';
+    caption = 'tienes una cita en curso';
+  } else if (days <= 0) {
+    big = countdownLabel(date, now).replace(/^en /, '');
+    caption = `para tu próxima cita · hoy a las ${formatClock(date)}`;
+  } else if (days === 1) {
+    big = 'Mañana';
+    caption = `tu próxima cita · a las ${formatClock(date)}`;
+  } else {
+    big = `${days} días`;
+    caption = 'para tu próxima cita';
+  }
+
+  // Mini calendario: las dos semanas (lunes a domingo) que empiezan esta semana.
+  const todayMs = startOfDayMs(now);
+  const mondayOffset = (now.getDay() + 6) % 7;
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
+  const days14 = Array.from({ length: 14 }, (_, i) => new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + i));
+  const countByDay = new Map<number, number>();
+  for (const item of upcoming) {
+    const d = appointmentDate(item);
+    if (d) countByDay.set(startOfDayMs(d), (countByDay.get(startOfDayMs(d)) ?? 0) + 1);
+  }
+  const lastShown = startOfDayMs(days14[13]);
+  const later = upcoming.filter((item) => {
+    const d = appointmentDate(item);
+    return d ? startOfDayMs(d) > lastShown : false;
+  }).length;
+  const accent = theme.colors.accentSecondary;
 
   return (
     <View
-      style={[styles.nextCard, { backgroundColor: theme.colors.surface, borderColor: `${accent}40` }]}
+      style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
       accessible
-      accessibilityLabel={`Próxima cita: ${appointment.title} con ${appointment.doctorName}, ${relativeDayLabel(date, now)} a las ${formatClock(date)}`}
+      accessibilityLabel={`${big} ${caption}. ${upcoming.length} citas próximas.${awaitingCount ? ` ${awaitingCount} por confirmar.` : ''}`}
     >
-      <View style={styles.nextTop}>
-        <Text style={[styles.nextKicker, { color: readableText(theme, accent) }]}>{inProgress ? 'Cita en curso' : 'Próxima cita'}</Text>
-        <View style={[styles.countdownChip, { backgroundColor: `${accent}14` }]}>
-          <MaterialCommunityIcons name="timer-sand" size={14} color={accent} />
-          <Text style={[styles.countdownText, { color: readableText(theme, accent) }]}>
-            {inProgress ? 'Ahora' : countdownLabel(date, now).replace(/^./, (char) => char.toUpperCase())}
-          </Text>
+      <View style={styles.summaryTop}>
+        <View style={styles.flex}>
+          <Text style={[styles.summaryBig, { color: inProgress ? theme.colors.accentPrimaryText : theme.colors.textPrimary }]}>{big}</Text>
+          <Text style={[styles.summaryCaption, { color: theme.colors.textSecondary }]}>{caption}</Text>
+        </View>
+        <View style={styles.summaryStat}>
+          <Text style={[styles.summaryStatValue, { color: theme.colors.accentSecondaryText }]}>{upcoming.length}</Text>
+          <Text style={[styles.summaryStatLabel, { color: theme.colors.textMuted }]}>{upcoming.length === 1 ? 'próxima' : 'próximas'}</Text>
         </View>
       </View>
 
-      <View style={styles.nextBody}>
-        <View style={[styles.nextDate, { backgroundColor: `${accent}14` }]}>
-          <Text style={[styles.nextWeekday, { color: readableText(theme, accent) }]}>{parts.weekday}</Text>
-          <Text style={[styles.nextDay, { color: theme.colors.textPrimary }]}>{parts.day}</Text>
-          <Text style={[styles.nextMonth, { color: readableText(theme, accent) }]}>{parts.month}</Text>
+      <View style={styles.calendar} importantForAccessibility="no-hide-descendants">
+        <View style={styles.calendarRow}>
+          {WEEKDAYS.map((label) => (
+            <Text key={label} style={[styles.weekday, { color: theme.colors.textMuted }]}>{label}</Text>
+          ))}
         </View>
-        <View style={styles.nextInfo}>
-          <Text style={[styles.nextTitle, { color: theme.colors.textPrimary }]} numberOfLines={2}>
-            {appointment.title}
-          </Text>
-          <Text style={[styles.nextMeta, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-            {formatClock(date)} · {appointment.doctorName}
-          </Text>
-          {appointment.location ? (
-            <Text style={[styles.nextLocation, { color: theme.colors.textMuted }]} numberOfLines={1}>
-              {appointment.location}
+        {[0, 7].map((offset) => (
+          <View key={offset} style={styles.calendarRow}>
+            {days14.slice(offset, offset + 7).map((day) => {
+              const ms = startOfDayMs(day);
+              const count = countByDay.get(ms) ?? 0;
+              const isToday = ms === todayMs;
+              const isPast = ms < todayMs;
+              return (
+                <View key={ms} style={styles.dayCell}>
+                  <View
+                    style={[
+                      styles.dayCircle,
+                      count ? { backgroundColor: accent } : null,
+                      isToday && !count ? { borderWidth: 2, borderColor: accent } : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.dayNumber,
+                        {
+                          color: count ? theme.colors.background : isPast ? `${theme.colors.textMuted}80` : theme.colors.textPrimary,
+                          fontWeight: count || isToday ? '700' : '500',
+                        },
+                      ]}
+                    >
+                      {day.getDate()}
+                    </Text>
+                  </View>
+                  {count > 1 ? <Text style={[styles.dayCount, { color: theme.colors.accentSecondaryText }]}>×{count}</Text> : null}
+                </View>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+
+      {later || awaitingCount ? (
+        <View style={styles.legend}>
+          {later ? (
+            <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>
+              <Text style={styles.legendCount}>+{later}</Text> más adelante
             </Text>
           ) : null}
+          {awaitingCount ? (
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: theme.colors.accentTertiary }]} />
+              <Text style={[styles.legendText, { color: theme.colors.warningText }]}>
+                <Text style={styles.legendCount}>{awaitingCount}</Text> por confirmar
+              </Text>
+            </View>
+          ) : null}
         </View>
-      </View>
-
-      {appointment.location ? (
-        <Pressable
-          onPress={() => onDirections(appointment)}
-          accessibilityRole="button"
-          accessibilityLabel={`Cómo llegar a ${appointment.location}`}
-          style={({ pressed }) => [styles.directions, { backgroundColor: `${accent}14` }, pressed && styles.pressed]}
-        >
-          <MaterialCommunityIcons name="directions" size={18} color={accent} />
-          <Text style={[styles.directionsText, { color: readableText(theme, accent) }]}>Cómo llegar</Text>
-        </Pressable>
       ) : null}
     </View>
   );
 }
+
+const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 function SegmentButton({
   theme,
@@ -611,22 +683,26 @@ const styles = StyleSheet.create({
   bannerText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '500' },
   bannerAction: { fontSize: 13, fontWeight: '600' },
 
-  nextCard: { borderRadius: 24, borderWidth: 1, padding: 16, marginBottom: 16, gap: 14 },
-  nextTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  nextKicker: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
-  countdownChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  countdownText: { fontSize: 13, fontWeight: '600' },
-  nextBody: { flexDirection: 'row', gap: 14, alignItems: 'center' },
-  nextDate: { width: 64, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
-  nextWeekday: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
-  nextDay: { fontSize: 28, fontWeight: '800', letterSpacing: -1, lineHeight: 32 },
-  nextMonth: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6 },
-  nextInfo: { flex: 1, gap: 3 },
-  nextTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
-  nextMeta: { fontSize: 14, fontWeight: '700' },
-  nextLocation: { fontSize: 13, fontWeight: '600' },
-  directions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, borderRadius: 12 },
-  directionsText: { fontSize: 14, fontWeight: '700' },
+  summaryCard: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 14, marginBottom: 16 },
+  summaryBig: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  summaryCaption: { fontSize: 14, fontWeight: '500' },
+  summaryTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  flex: { flex: 1 },
+  summaryStat: { alignItems: 'center', minWidth: 56 },
+  summaryStatValue: { fontSize: 24, lineHeight: 28, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  summaryStatLabel: { fontSize: 12, fontWeight: '600' },
+  calendar: { gap: 4 },
+  calendarRow: { flexDirection: 'row' },
+  weekday: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  dayCell: { flex: 1, alignItems: 'center', minHeight: 40 },
+  dayCircle: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  dayNumber: { fontSize: 14, fontVariant: ['tabular-nums'] },
+  dayCount: { fontSize: 10, fontWeight: '700', marginTop: -2 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 13, fontWeight: '500' },
+  legendCount: { fontWeight: '700' },
 
   segmentBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 16, padding: 4, marginBottom: 12, gap: 4 },
   segmentBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
@@ -637,8 +713,10 @@ const styles = StyleSheet.create({
   filterLabel: { fontSize: 13, fontWeight: '600' },
   filterSelect: { minWidth: 190, minHeight: 44 },
 
-  titleBlock: { marginBottom: 16 },
-  screenTitle: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 },
+  dateChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1 },
+  dateChipText: { fontSize: 14, fontWeight: '700' },
+  screenTitle: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6, flexShrink: 1 },
 
   listFooterText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 12, paddingHorizontal: 12 },
 });
