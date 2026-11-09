@@ -11,150 +11,75 @@ type AppBottomBarProps = {
   onSelect: (tab: MainTabId) => void;
 };
 
-const SIDE_TABS: {
-  tab: MainTabId;
-  label: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  activeIcon: keyof typeof MaterialCommunityIcons.glyphMap;
-}[] = [
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+
+/**
+ * Cinco pestañas iguales en orden de uso: lo diario primero (tomas, citas),
+ * luego el Círculo y el perfil. Ninguna se destaca sobre las demás: la acción
+ * principal de cada pantalla vive en la propia pantalla.
+ */
+const TABS: { tab: MainTabId; label: string; icon: IconName; activeIcon: IconName }[] = [
   { tab: 'home', label: 'Inicio', icon: 'home-outline', activeIcon: 'home' },
   { tab: 'medications', label: 'Medicinas', icon: 'pill', activeIcon: 'pill' },
   { tab: 'appointments', label: 'Citas', icon: 'calendar-clock-outline', activeIcon: 'calendar-clock' },
+  { tab: 'family', label: 'Círculo', icon: 'account-group-outline', activeIcon: 'account-group' },
   { tab: 'profile', label: 'Perfil', icon: 'account-outline', activeIcon: 'account' },
 ];
 
-const BAR_BODY_MIN_HEIGHT = 56;
-const FAB_SIZE = 58;
-/** Espacio reservado encima de la barra para el botón central. */
-export const MAIN_TAB_FAB_OVERFLOW = 24;
+const BAR_HEIGHT = 64;
+const BAR_BOTTOM_GAP = 8;
+
+/** Se mantiene por compatibilidad: ya no hay botón central que sobresalga. */
+export const MAIN_TAB_FAB_OVERFLOW = 0;
 
 /**
- * Distancia desde el borde inferior de la pantalla para los FABs flotantes
- * secundarios (agregar medicamento, agregar cita, chat IA).
- * Debe dejar el botón justo encima de la barra de navegación.
+ * Distancia desde el borde inferior para los botones flotantes de cada
+ * pantalla (agregar medicamento, cita…): justo encima de la barra.
  */
-export const FLOATING_ACTION_BUTTON_BOTTOM = 76;
+export const FLOATING_ACTION_BUTTON_BOTTOM = BAR_HEIGHT + BAR_BOTTOM_GAP + 12;
 
-/**
- * Padding inferior recomendado para listas / scroll del área principal,
- * para que no queden bajo la barra ni bajo el FAB central.
- */
+/** Padding inferior para que el contenido no quede bajo la barra. */
 export function useMainTabContentInset(): number {
-  return MAIN_TAB_FAB_OVERFLOW + BAR_BODY_MIN_HEIGHT + 16;
+  return BAR_HEIGHT + BAR_BOTTOM_GAP + 16;
 }
 
 export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomBarProps>) {
-  const isFamily = activeTab === 'family';
-  const bottomPad = 0;
   const barBackground = theme.mode === 'light' ? '#FFFFFF' : '#0A1C2D';
 
   return (
-    <View style={[styles.outer, { paddingBottom: bottomPad }]} pointerEvents="box-none">
-      <View style={styles.inner} pointerEvents="box-none">
-        <View style={styles.fabStack} pointerEvents="box-none">
-          <Pressable
-            onPress={() => onSelect('family')}
-            style={({ pressed }) => {
-              let scale = 1;
-              if (pressed) scale = 0.94;
-              else if (isFamily) scale = 1.06;
-
-              return [
-                styles.fab,
-                {
-                  backgroundColor: theme.colors.accentPrimary,
-                  borderColor: isFamily ? theme.colors.accentSecondary : theme.colors.surface,
-                  transform: [{ scale }],
-                },
-              ];
-            }}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isFamily }}
-            accessibilityLabel="Círculo"
-            accessibilityHint="Perfiles y cuidado familiar"
-          >
-            <MaterialCommunityIcons name="account-group" size={28} color={theme.colors.buttonText} />
-          </Pressable>
-          <Text
-            style={[
-              styles.fabLabel,
-              {
-                color: isFamily ? theme.colors.accentPrimaryText : theme.colors.textMuted,
-                fontWeight: isFamily ? '800' : '600',
-              },
-            ]}
-            numberOfLines={1}
-          >
-            Círculo
-          </Text>
-        </View>
-
-        <View
-          style={[
-            styles.bar,
-            {
-              backgroundColor: barBackground,
-              borderColor: theme.colors.surfaceBorder,
-              opacity: 1,
-            },
-          ]}
-          accessibilityRole="tablist"
-        >
-          <View style={styles.barRow}>
-            <View style={styles.sideCluster}>
-              {SIDE_TABS.slice(0, 2).map((item) => (
-                <SideTab
-                  key={item.tab}
-                  theme={theme}
-                  item={item}
-                  active={activeTab === item.tab}
-                  onPress={() => onSelect(item.tab)}
-                />
-              ))}
-            </View>
-            <View style={styles.fabGap} />
-            <View style={styles.sideCluster}>
-              {SIDE_TABS.slice(2, 4).map((item) => (
-                <SideTab
-                  key={item.tab}
-                  theme={theme}
-                  item={item}
-                  active={activeTab === item.tab}
-                  onPress={() => onSelect(item.tab)}
-                />
-              ))}
-            </View>
-          </View>
-        </View>
+    <View style={styles.outer} pointerEvents="box-none">
+      <View
+        style={[styles.bar, { backgroundColor: barBackground, borderColor: theme.colors.surfaceBorder }]}
+        accessibilityRole="tablist"
+      >
+        {TABS.map((item) => (
+          <Tab key={item.tab} theme={theme} item={item} active={activeTab === item.tab} onPress={() => onSelect(item.tab)} />
+        ))}
       </View>
     </View>
   );
 }
 
-function SideTab({
+function Tab({
   theme,
   item,
   active,
   onPress,
-}: Readonly<{
-  theme: AppTheme;
-  item: (typeof SIDE_TABS)[number];
-  active: boolean;
-  onPress: () => void;
-}>) {
+}: Readonly<{ theme: AppTheme; item: (typeof TABS)[number]; active: boolean; onPress: () => void }>) {
   const color = active ? theme.colors.accentPrimaryText : theme.colors.textMuted;
-  const iconName = active ? item.activeIcon : item.icon;
 
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.sideTab, pressed && styles.sideTabPressed]}
+      style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={item.label}
     >
-      <MaterialCommunityIcons name={iconName} size={24} color={color} />
-      <Text style={[styles.sideLabel, { color }]} numberOfLines={1}>
+      <View style={[styles.indicator, active && { backgroundColor: `${theme.colors.accentPrimary}24` }]}>
+        <MaterialCommunityIcons name={active ? item.activeIcon : item.icon} size={22} color={color} />
+      </View>
+      <Text style={[styles.label, { color, fontWeight: active ? '700' : '500' }]} numberOfLines={1}>
         {item.label}
       </Text>
     </Pressable>
@@ -166,73 +91,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    bottom: 0,
+    bottom: BAR_BOTTOM_GAP,
     alignItems: 'center',
-  },
-  inner: {
-    width: '100%',
-    maxWidth: 520,
-    marginHorizontal: 0,
-    marginTop: MAIN_TAB_FAB_OVERFLOW,
-    alignSelf: 'center',
-  },
-  fabStack: {
-    position: 'absolute',
-    top: -MAIN_TAB_FAB_OVERFLOW,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 2,
-    gap: 2,
   },
   bar: {
-    borderRadius: 20,
+    width: '100%',
+    maxWidth: 520,
+    height: BAR_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 24,
     borderWidth: 1,
-    minHeight: BAR_BODY_MIN_HEIGHT,
+    paddingHorizontal: 4,
   },
-  barRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 2,
-    paddingTop: 10,
-    paddingBottom: 10,
-    minHeight: BAR_BODY_MIN_HEIGHT,
-  },
-  sideCluster: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-  },
-  fabGap: {
-    width: FAB_SIZE + 4,
-  },
-  sideTab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    minWidth: 0,
-  },
-  sideTabPressed: {
-    opacity: 0.75,
-  },
-  sideLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
-  fab: {
-    width: FAB_SIZE,
-    height: FAB_SIZE,
-    borderRadius: FAB_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-  },
-  fabLabel: {
-    fontSize: 11,
-    letterSpacing: 0.15,
-  },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, height: '100%' },
+  pressed: { opacity: 0.7 },
+  indicator: { width: 56, height: 30, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 11, letterSpacing: 0.1 },
 });

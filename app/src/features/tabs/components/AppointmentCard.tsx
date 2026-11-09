@@ -1,8 +1,9 @@
-import { memo } from 'react';
+import { memo, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { readableText, type AppTheme } from '../../../shared/theme';
+import { BottomSheet, SheetInfo, SheetInfoLine, SheetOptionRow } from '../../../shared/ui';
 import type { AppointmentAttendanceStatus, AppointmentData } from '../services/appointments.service';
 import {
   appointmentDate,
@@ -70,6 +71,7 @@ function AppointmentCardBase({
   canManage = true,
   ownerTimeZone,
 }: Readonly<AppointmentCardProps>) {
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const date = appointmentDate(appointment);
   const state = getAppointmentState(appointment, now);
   const inProgress = isInProgress(appointment, now);
@@ -85,17 +87,25 @@ function AppointmentCardBase({
       : `${relativeDayLabel(date, now)} · ${formatClock(date)}`
     : 'Sin fecha';
 
+  // "Programada" es lo normal: el estado solo se muestra cuando aporta algo.
+  const showStatus = inProgress || isPast;
+  const hasDetails = Boolean(appointment.notes || repeatLabel(appointment.repeatRule) || changedByNote(appointment, { masculine: false }));
+  const hasOptions = canManage || hasDetails;
+
   return (
+    <>
     <Pressable
+      onPress={hasOptions ? () => setOptionsOpen(true) : undefined}
       onLongPress={canManage ? () => onEdit(appointment) : undefined}
-      delayLongPress={250}
+      delayLongPress={300}
+      accessibilityRole={hasOptions ? 'button' : undefined}
       accessibilityLabel={`${appointment.title} con ${appointment.doctorName}, ${whenLabel}, ${meta.label.toLowerCase()}`}
-      accessibilityHint={canManage ? 'Mantén presionado para editar' : undefined}
+      accessibilityHint={hasOptions ? 'Abre los detalles y las opciones' : undefined}
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder, borderLeftColor: color },
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
         state === 'missed' && styles.cardDimmed,
-        pressed && { transform: [{ scale: 0.99 }] },
+        pressed && hasOptions && styles.cardPressed,
       ]}
     >
       <View style={styles.header}>
@@ -112,6 +122,7 @@ function AppointmentCardBase({
             <Text style={[styles.whenText, { color: readableText(theme, color) }]}>{whenLabel}</Text>
           </View>
         </View>
+        {hasOptions ? <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} /> : null}
       </View>
 
       <View style={styles.details}>
@@ -121,14 +132,6 @@ function AppointmentCardBase({
             {appointment.doctorName}
           </Text>
         </View>
-        {appointment.repeatRule ? (
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="repeat" size={16} color={theme.colors.textMuted} />
-            <Text style={[styles.detailText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-              {repeatLabel(appointment.repeatRule)}
-            </Text>
-          </View>
-        ) : null}
         {appointment.location ? (
           <Pressable
             onPress={() => onDirections(appointment)}
@@ -144,22 +147,7 @@ function AppointmentCardBase({
             {!isPast ? <MaterialCommunityIcons name="directions" size={16} color={theme.colors.accentSecondary} /> : null}
           </Pressable>
         ) : null}
-        {appointment.notes ? (
-          <View style={[styles.notes, { backgroundColor: `${theme.colors.textMuted}10` }]}>
-            <MaterialCommunityIcons name="note-text-outline" size={13} color={theme.colors.textMuted} />
-            <Text style={[styles.notesText, { color: theme.colors.textMuted }]} numberOfLines={2}>
-              {appointment.notes}
-            </Text>
-          </View>
-        ) : null}
       </View>
-
-      {changedByNote(appointment, { masculine: false }) ? (
-        <View style={styles.detailRow}>
-          <MaterialCommunityIcons name="account-edit-outline" size={14} color={theme.colors.textMuted} />
-          <Text style={[styles.auditText, { color: theme.colors.textMuted }]}>{changedByNote(appointment, { masculine: false })}</Text>
-        </View>
-      ) : null}
 
       {askAttendance ? (
         <View style={[styles.ask, { backgroundColor: `${theme.colors.accentTertiary}12`, borderColor: `${theme.colors.accentTertiary}35` }]}>
@@ -187,38 +175,95 @@ function AppointmentCardBase({
         </View>
       ) : null}
 
-      <View style={styles.footer}>
-        <Pressable
-          onPress={canChangeAttendance ? () => onChangeAttendance(appointment) : undefined}
-          disabled={busy || !canChangeAttendance}
-          accessibilityRole={canChangeAttendance ? 'button' : undefined}
-          accessibilityLabel={`${meta.label}${canChangeAttendance ? '. Toca para cambiar' : ''}`}
-          style={[styles.statusPill, { backgroundColor: `${color}14` }]}
-        >
-          <MaterialCommunityIcons name={meta.icon} size={14} color={color} />
-          <Text style={[styles.statusText, { color: readableText(theme, color) }]}>{meta.label}</Text>
-          {canChangeAttendance ? <MaterialCommunityIcons name="chevron-down" size={14} color={color} /> : null}
-        </Pressable>
+      {showStatus && !askAttendance ? (
+        <View style={styles.footer}>
+          <Pressable
+            onPress={canChangeAttendance ? () => onChangeAttendance(appointment) : undefined}
+            disabled={busy || !canChangeAttendance}
+            accessibilityRole={canChangeAttendance ? 'button' : undefined}
+            accessibilityLabel={`${meta.label}${canChangeAttendance ? '. Toca para cambiar' : ''}`}
+            style={[styles.statusPill, { backgroundColor: `${color}14` }]}
+          >
+            <MaterialCommunityIcons name={meta.icon} size={14} color={color} />
+            <Text style={[styles.statusText, { color: readableText(theme, color) }]}>{meta.label}</Text>
+            {canChangeAttendance ? <MaterialCommunityIcons name="chevron-down" size={14} color={color} /> : null}
+          </Pressable>
+        </View>
+      ) : null}
+    </Pressable>
+
+    {hasOptions ? (
+      <AppointmentOptionsSheet
+        theme={theme}
+        appointment={optionsOpen ? appointment : null}
+        canManage={canManage}
+        onClose={() => setOptionsOpen(false)}
+        onEdit={onEdit}
+        onDelete={onDelete}
+      />
+    ) : null}
+    </>
+  );
+}
+
+/** Detalle (notas, repetición, quién la cambió) y acciones de una cita. */
+function AppointmentOptionsSheet({
+  theme,
+  appointment,
+  canManage,
+  onClose,
+  onEdit,
+  onDelete,
+}: Readonly<{
+  theme: AppTheme;
+  appointment: AppointmentData | null;
+  canManage: boolean;
+  onClose: () => void;
+  onEdit: (appointment: AppointmentData) => void;
+  onDelete: (appointment: AppointmentData) => void;
+}>) {
+  const last = useRef(appointment);
+  if (appointment) last.current = appointment;
+  const item = appointment ?? last.current;
+  if (!item) return null;
+
+  const date = appointmentDate(item);
+  const audit = changedByNote(item, { masculine: false });
+  const thenClose = (action: (a: AppointmentData) => void) => () => {
+    onClose();
+    setTimeout(() => action(item), 220);
+  };
+
+  return (
+    <BottomSheet
+      theme={theme}
+      visible={Boolean(appointment)}
+      onClose={onClose}
+      title={item.title}
+      subtitle={
+        <Text style={[styles.sheetSubtitle, { color: theme.colors.textMuted }]}>
+          {date ? `${date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })} · ${formatClock(date)}` : 'Sin fecha'}
+          {' · '}
+          {item.doctorName}
+        </Text>
+      }
+    >
+      <View>
+        {repeatLabel(item.repeatRule) || item.notes || audit ? (
+          <SheetInfo theme={theme}>
+            {repeatLabel(item.repeatRule) ? <SheetInfoLine theme={theme} icon="repeat" text={repeatLabel(item.repeatRule) ?? ''} /> : null}
+            {item.notes ? <SheetInfoLine theme={theme} icon="note-text-outline" text={item.notes} /> : null}
+            {audit ? <SheetInfoLine theme={theme} icon="account-edit-outline" text={audit} /> : null}
+          </SheetInfo>
+        ) : null}
         {canManage ? (
-          <View style={styles.actions}>
-            <IconAction
-              icon="pencil-outline"
-              color={theme.colors.textSecondary}
-              background={`${theme.colors.textSecondary}0D`}
-              label={`Editar ${appointment.title}`}
-              onPress={() => onEdit(appointment)}
-            />
-            <IconAction
-              icon="trash-can-outline"
-              color={theme.colors.accentTertiary}
-              background={`${theme.colors.accentTertiary}12`}
-              label={`Eliminar ${appointment.title}`}
-              onPress={() => onDelete(appointment)}
-            />
-          </View>
+          <>
+            <SheetOptionRow theme={theme} icon="pencil-outline" label="Editar cita" hint="Fecha, lugar, médico y recordatorio" onPress={thenClose(onEdit)} />
+            <SheetOptionRow theme={theme} icon="trash-can-outline" label="Eliminar cita" destructive onPress={thenClose(onDelete)} />
+          </>
         ) : null}
       </View>
-    </Pressable>
+    </BottomSheet>
   );
 }
 
@@ -250,28 +295,10 @@ function AskButton({
   );
 }
 
-function IconAction({
-  icon,
-  color,
-  background,
-  label,
-  onPress,
-}: Readonly<{ icon: IconName; color: string; background: string; label: string; onPress: () => void }>) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={4}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.iconAction, { backgroundColor: background }, pressed && styles.pressed]}
-    >
-      <MaterialCommunityIcons name={icon} size={16} color={color} />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  card: { borderRadius: 20, borderWidth: 1, borderLeftWidth: 4, padding: 16, gap: 12 },
+  card: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 12 },
+  cardPressed: { transform: [{ scale: 0.99 }], opacity: 0.9 },
+  sheetSubtitle: { fontSize: 14, marginTop: 4 },
   cardDimmed: { opacity: 0.75 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dateBox: { width: 52, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
@@ -285,8 +312,6 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   detailText: { flexShrink: 1, fontSize: 14, fontWeight: '600' },
   linkText: { textDecorationLine: 'underline' },
-  notes: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12 },
-  notesText: { flex: 1, fontSize: 12, fontWeight: '500', lineHeight: 16 },
   ask: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 10 },
   askText: { fontSize: 14, fontWeight: '700' },
   askActions: { flexDirection: 'row', gap: 8 },
@@ -301,11 +326,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   askButtonText: { fontSize: 14, fontWeight: '700' },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  footer: { flexDirection: 'row' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
   statusText: { fontSize: 12, fontWeight: '600' },
-  actions: { flexDirection: 'row', gap: 6 },
-  iconAction: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.6 },
-  auditText: { fontSize: 12, fontWeight: '600' },
 });

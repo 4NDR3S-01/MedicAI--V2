@@ -307,7 +307,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
       {hasAppointments ? (
         <>
-          {segment === 'upcoming' && nextAppointment ? (
+          {segment === 'upcoming' && nextAppointment && buckets.upcoming.length > 1 ? (
             <NextAppointmentCard theme={theme} appointment={nextAppointment} now={now} onDirections={handleDirections} />
           ) : null}
 
@@ -449,7 +449,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
           ListFooterComponent={
             visibleAppointments.length > 0 ? (
               <Text style={[styles.listFooterText, { color: theme.colors.textMuted }]}>
-                Mantén presionada una cita para editarla
+                Toca una cita para ver detalles y opciones
               </Text>
             ) : null
           }

@@ -92,6 +92,7 @@ function MedicationCardBase({
 
   let accentColor = theme.colors.accentPrimary;
   if (!isActive || finished) accentColor = theme.colors.textMuted;
+  else if (!asNeeded && !slots.length) accentColor = theme.colors.textMuted;
   else if (allTaken) accentColor = theme.colors.success;
   else if (allHandled) accentColor = theme.colors.textMuted;
   const accentBg = `${accentColor}14`;

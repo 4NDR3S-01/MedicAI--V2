@@ -15,3 +15,4 @@ export { ERROR_COLOR, FieldShell, TextField, useFieldColors } from "./FormField"
 export { SelectableChip } from "./SelectableChip";
 export { SelectField, type SelectOption } from './SelectField';
 export { Reveal } from './Reveal';
+export { SheetInfo, SheetInfoLine, SheetOptionRow } from './SheetRows';
