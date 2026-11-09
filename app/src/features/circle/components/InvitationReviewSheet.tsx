@@ -186,7 +186,7 @@ export function InvitationReviewSheet({
               color={theme.colors.accentSecondary}
               icon="account-heart-outline"
             />
-            {careLine ? <Badge label={careLine} color={theme.colors.accentPrimary} icon="hand-heart-outline" /> : null}
+            {careLine ? <Badge label={careLine} color={theme.colors.accentPrimaryText} icon="hand-heart-outline" /> : null}
           </View>
         </View>
       </View>
@@ -257,8 +257,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   inviter: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderRadius: 20, padding: 14 },
-  inviterName: { fontSize: 18, fontWeight: '900' },
+  inviterName: { fontSize: 18, fontWeight: '700' },
   inviterEmail: { fontSize: 13, marginTop: 1 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  lead: { fontSize: 14.5, lineHeight: 21 },
+  lead: { fontSize: 15, lineHeight: 21 },
 });

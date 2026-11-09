@@ -112,7 +112,7 @@ export function SessionsSheet({ theme, visible, onClose }: Readonly<{ theme: App
       }
     >
       {error ? (
-        <Text style={[styles.error, { color: theme.colors.accentTertiary }]}>{error}</Text>
+        <Text style={[styles.error, { color: theme.colors.warningText }]}>{error}</Text>
       ) : !sessions ? (
         <ActivityIndicator color={theme.colors.accentPrimary} />
       ) : (
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   flexWide: { flex: 1.4 },
   error: { fontSize: 14, textAlign: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 12 },
-  icon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  name: { fontSize: 15, fontWeight: '800' },
-  meta: { fontSize: 12.5, marginTop: 2, fontWeight: '600' },
+  icon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  name: { fontSize: 15, fontWeight: '700' },
+  meta: { fontSize: 13, marginTop: 2, fontWeight: '600' },
 });

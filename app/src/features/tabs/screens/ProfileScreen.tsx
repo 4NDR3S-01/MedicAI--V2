@@ -193,7 +193,7 @@ export function ProfileScreen({
                 {avatar ? (
                   <Image source={{ uri: avatar.url }} style={styles.avatarImage} accessibilityIgnoresInvertColors />
                 ) : (
-                  <Text style={[styles.avatarLetter, { color: theme.colors.accentPrimary }]}>{initialsOf(name)}</Text>
+                  <Text style={[styles.avatarLetter, { color: theme.colors.accentPrimaryText }]}>{initialsOf(name)}</Text>
                 )}
                 <View style={[styles.editBadge, { backgroundColor: theme.colors.accentPrimary, borderColor: theme.colors.surface }]}>
                   <MaterialCommunityIcons name="camera-outline" size={14} color="#fff" />
@@ -210,7 +210,7 @@ export function ProfileScreen({
                 <View style={styles.heroPills}>
                   {phone ? (
                     <View style={[styles.statusPill, { backgroundColor: `${theme.colors.accentPrimary}14` }]} accessibilityLabel={`Teléfono ${phone}`}>
-                      <Text style={[styles.statusPillText, { color: theme.colors.accentPrimary }]}>{phone}</Text>
+                      <Text style={[styles.statusPillText, { color: theme.colors.accentPrimaryText }]}>{phone}</Text>
                     </View>
                   ) : (
                     <PressableScale
@@ -357,7 +357,7 @@ export function ProfileScreen({
           />
 
           <PressableScale onPress={() => setSheet('delete')} accessibilityRole="button" style={styles.deleteLink}>
-            <Text style={[styles.deleteText, { color: theme.colors.accentTertiary }]}>Eliminar mi cuenta</Text>
+            <Text style={[styles.deleteText, { color: theme.colors.warningText }]}>Eliminar mi cuenta</Text>
           </PressableScale>
 
           <View style={styles.footer}>
@@ -486,41 +486,41 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 18, paddingTop: 24, gap: 16 },
   heroCard: { borderRadius: 32, borderWidth: 1, padding: 18, gap: 18 },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  avatar: { width: 86, height: 86, borderRadius: 28, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 86, height: 86, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: 84, height: 84, borderRadius: 27 },
-  avatarLetter: { fontSize: 32, fontWeight: '900' },
+  avatarLetter: { fontSize: 32, fontWeight: '800' },
   editBadge: { position: 'absolute', bottom: -3, right: -3, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
   heroIdentity: { flex: 1, gap: 6 },
-  name: { fontSize: 24, lineHeight: 28, fontWeight: '900', letterSpacing: -0.6 },
+  name: { fontSize: 24, lineHeight: 28, fontWeight: '800', letterSpacing: -0.6 },
   // Nombres largos ("William Andrés Pérez Gómez"): un poco más pequeños, en dos líneas.
   nameLong: { fontSize: 20, lineHeight: 24 },
-  email: { fontSize: 13, fontWeight: '700' },
+  email: { fontSize: 13, fontWeight: '600' },
   heroPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  statusPillText: { fontSize: 12.5, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  statusPillText: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   metricsRow: { flexDirection: 'row', gap: 10 },
   metricCard: { flex: 1, borderRadius: 20, borderWidth: 1, padding: 12, gap: 5 },
-  metricValue: { fontSize: 14, fontWeight: '900' },
-  metricLabel: { fontSize: 11, fontWeight: '700' },
-  health: { borderRadius: 22, borderWidth: 1, padding: 14, gap: 12 },
+  metricValue: { fontSize: 14, fontWeight: '700' },
+  metricLabel: { fontSize: 11, fontWeight: '600' },
+  health: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 12 },
   healthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  healthTitle: { flex: 1, fontSize: 15.5, fontWeight: '900' },
-  healthEmpty: { fontSize: 13.5, lineHeight: 19, fontWeight: '600' },
+  healthTitle: { flex: 1, fontSize: 16, fontWeight: '700' },
+  healthEmpty: { fontSize: 14, lineHeight: 19, fontWeight: '500' },
   healthRow: { gap: 6 },
-  healthLabel: { fontSize: 11.5, fontWeight: '900', letterSpacing: 0.6, textTransform: 'uppercase' },
-  healthValue: { fontSize: 13.5, fontWeight: '700' },
+  healthLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
+  healthValue: { fontSize: 14, fontWeight: '700' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, maxWidth: '100%' },
-  chipText: { fontSize: 12.5, fontWeight: '700' },
+  chipText: { fontSize: 13, fontWeight: '600' },
   appearance: { paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
   appearanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  appearanceIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  appearanceTitle: { fontSize: 15.5, fontWeight: '800' },
-  segment: { flexDirection: 'row', borderRadius: 14, borderWidth: 1, padding: 3, gap: 3 },
+  appearanceIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  appearanceTitle: { fontSize: 16, fontWeight: '700' },
+  segment: { flexDirection: 'row', borderRadius: 12, borderWidth: 1, padding: 3, gap: 3 },
   segmentItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: 'transparent' },
-  segmentText: { fontSize: 13, fontWeight: '800' },
+  segmentText: { fontSize: 13, fontWeight: '600' },
   deleteLink: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
-  deleteText: { fontSize: 14, fontWeight: '800' },
+  deleteText: { fontSize: 14, fontWeight: '700' },
   footer: { alignItems: 'center', gap: 6, paddingHorizontal: 12 },
-  footerText: { fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
+  footerText: { fontSize: 12, lineHeight: 17, fontWeight: '500', textAlign: 'center' },
 });

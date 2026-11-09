@@ -1428,7 +1428,7 @@ const styles = StyleSheet.create({
   alarmKicker: {
     color: '#7dd3fc',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
@@ -1436,7 +1436,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 24,
     lineHeight: 28,
-    fontWeight: '900',
+    fontWeight: '800',
   },
   alarmBody: {
     color: '#cbd5e1',
@@ -1460,7 +1460,7 @@ const styles = StyleSheet.create({
   },
   alarmMetaText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   alarmActions: {
     gap: 10,
@@ -1487,6 +1487,6 @@ const styles = StyleSheet.create({
   alarmButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '700',
   },
 });

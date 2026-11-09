@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     right: 22,
     top: '22%',
     bottom: '22%',
-    borderRadius: 28,
+    borderRadius: 24,
   },
   badge: {
     position: 'absolute',

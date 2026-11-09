@@ -32,7 +32,7 @@ export function MessageText({ text, color, mutedColor }: Readonly<{ text: string
   );
 }
 
-const bold: TextStyle = { fontWeight: '900' };
+const bold: TextStyle = { fontWeight: '700' };
 
 function renderInline(line: string) {
   return line.split(/(\*\*[^*]+\*\*|__[^_]+__)/g).map((part, index) =>

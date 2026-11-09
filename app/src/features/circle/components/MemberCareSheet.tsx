@@ -421,11 +421,11 @@ export function MemberCareSheet({ theme, member, initialTab, onClose }: Readonly
                   onPress={() => setTab(item.id)}
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
-                  style={[styles.tab, selected && { backgroundColor: theme.colors.accentSecondary }]}
+                  style={[styles.tab, selected && { backgroundColor: theme.colors.accentSecondaryText }]}
                 >
-                  <MaterialCommunityIcons name={item.icon} size={20} color={selected ? '#fff' : theme.colors.textSecondary} />
+                  <MaterialCommunityIcons name={item.icon} size={20} color={selected ? theme.colors.background : theme.colors.textSecondary} />
                   <Text
-                    style={[styles.tabText, { color: selected ? '#fff' : theme.colors.textSecondary }]}
+                    style={[styles.tabText, { color: selected ? theme.colors.background : theme.colors.textSecondary }]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.8}
@@ -543,14 +543,14 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   tabs: { flexDirection: 'row', borderWidth: 1.5, borderRadius: 16, padding: 4, gap: 4 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 54, borderRadius: 12, paddingHorizontal: 4, paddingVertical: 6 },
-  tabText: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  tabText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   center: { alignItems: 'stretch', gap: 12, paddingVertical: 24 },
   list: { gap: 10 },
-  groupTitle: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 6 },
+  groupTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 6 },
   empty: { alignItems: 'center', gap: 8, paddingVertical: 28 },
   emptyText: { fontSize: 14, textAlign: 'center' },
   healthRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderRadius: 16, padding: 14 },
   healthIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  healthLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-  healthValue: { fontSize: 15, fontWeight: '600', marginTop: 2, lineHeight: 21 },
+  healthLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  healthValue: { fontSize: 15, fontWeight: '500', marginTop: 2, lineHeight: 21 },
 });

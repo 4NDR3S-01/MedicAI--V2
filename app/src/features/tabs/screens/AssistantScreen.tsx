@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   topTitle: {
     flex: 1,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
     textAlign: 'center',
   },
   topBarSpacer: {
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 22,
     gap: 12,
     alignItems: 'flex-start',
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   },
   placeholderCard: {
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 20,
     gap: 8,
     alignItems: 'flex-start',

@@ -73,13 +73,13 @@ export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomB
             accessibilityLabel="Círculo"
             accessibilityHint="Perfiles y cuidado familiar"
           >
-            <MaterialCommunityIcons name="account-group" size={28} color="#fff" />
+            <MaterialCommunityIcons name="account-group" size={28} color={theme.colors.buttonText} />
           </Pressable>
           <Text
             style={[
               styles.fabLabel,
               {
-                color: isFamily ? theme.colors.accentPrimary : theme.colors.textMuted,
+                color: isFamily ? theme.colors.accentPrimaryText : theme.colors.textMuted,
                 fontWeight: isFamily ? '800' : '600',
               },
             ]}
@@ -142,7 +142,7 @@ function SideTab({
   active: boolean;
   onPress: () => void;
 }>) {
-  const color = active ? theme.colors.accentPrimary : theme.colors.textMuted;
+  const color = active ? theme.colors.accentPrimaryText : theme.colors.textMuted;
   const iconName = active ? item.activeIcon : item.icon;
 
   return (
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   bar: {
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
     minHeight: BAR_BODY_MIN_HEIGHT,
   },
@@ -219,8 +219,8 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   sideLabel: {
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     letterSpacing: 0.1,
   },
   fab: {

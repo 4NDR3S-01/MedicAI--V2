@@ -91,5 +91,5 @@ const styles = StyleSheet.create({
   },
   iconOnly: { width: 52, paddingHorizontal: 0, alignItems: 'center' },
   content: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  label: { fontSize: 16, fontWeight: '800', flexShrink: 1 },
+  label: { fontSize: 16, fontWeight: '700', flexShrink: 1 },
 });

@@ -123,15 +123,15 @@ export function ProfileNote({
 
 const styles = StyleSheet.create({
   group: { gap: 8 },
-  groupTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 0.9, textTransform: 'uppercase', paddingLeft: 6 },
-  groupCard: { borderRadius: 22, borderWidth: 1, overflow: 'hidden' },
+  groupTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', paddingLeft: 6 },
+  groupCard: { borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 66 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 60 },
-  iconTile: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  iconTile: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
   itemText: { flex: 1, gap: 2 },
-  itemTitle: { fontSize: 15.5, fontWeight: '800' },
-  itemSubtitle: { fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
-  note: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 14 },
-  noteText: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  itemTitle: { fontSize: 16, fontWeight: '700' },
+  itemSubtitle: { fontSize: 13, lineHeight: 17, fontWeight: '500' },
+  note: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 12 },
+  noteText: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '500' },
 });

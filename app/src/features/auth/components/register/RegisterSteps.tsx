@@ -226,7 +226,7 @@ export function PersonalStep({
             style={[
               styles.passwordRule,
               passwordLongEnough
-                ? { color: theme.colors.success, fontWeight: "700" }
+                ? { color: theme.colors.successText, fontWeight: "700" }
                 : { color: theme.colors.textMuted },
             ]}
             accessibilityLiveRegion="polite"
@@ -525,7 +525,7 @@ export function SummaryStep({ theme, form, onEditStep, onToggleAiConsent }: Read
         <Text
           onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
           accessibilityRole="link"
-          style={[styles.link, { color: theme.colors.accentSecondary }]}
+          style={[styles.link, { color: theme.colors.accentSecondaryText }]}
         >
           Leer la política de privacidad
         </Text>
@@ -611,7 +611,7 @@ function SummaryCard({
           style={styles.editButton}
         >
           <Ionicons name="create-outline" size={16} color={theme.colors.accentSecondary} />
-          <Text style={[styles.editText, { color: theme.colors.accentSecondary }]}>Editar</Text>
+          <Text style={[styles.editText, { color: theme.colors.accentSecondaryText }]}>Editar</Text>
         </PressableScale>
       </View>
       <View style={styles.summaryRows}>{children}</View>
@@ -645,14 +645,14 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   stack: { gap: 16 },
   trailingIcon: { marginRight: 14 },
-  passwordRule: { fontSize: 12.5, lineHeight: 17 },
+  passwordRule: { fontSize: 13, lineHeight: 17 },
   selector: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     minHeight: 52,
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
   },
   selectorText: { flex: 1, fontSize: 16 },
@@ -663,37 +663,37 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 52,
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 12,
   },
   flag: { fontSize: 20 },
   countryCode: { fontSize: 16, fontWeight: "700" },
-  note: { flexDirection: "row", gap: 10, padding: 12, borderRadius: 14, alignItems: "flex-start" },
+  note: { flexDirection: "row", gap: 10, padding: 12, borderRadius: 12, alignItems: "flex-start" },
   noteText: { flex: 1, fontSize: 13, lineHeight: 19 },
   toggleCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     borderWidth: 1.5,
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 14,
   },
   toggleIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  toggleTitle: { fontSize: 15.5, fontWeight: "800" },
+  toggleTitle: { fontSize: 16, fontWeight: "800" },
   toggleDescription: { fontSize: 13, lineHeight: 18, marginTop: 2 },
-  summaryCard: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 },
+  summaryCard: { borderWidth: 1, borderRadius: 16, padding: 14, gap: 10 },
   summaryHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   summaryTitle: { flex: 1, fontSize: 15, fontWeight: "800" },
   editButton: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 4 },
   editText: { fontSize: 14, fontWeight: "700" },
   summaryRows: { gap: 8 },
   summaryRow: { flexDirection: "row", gap: 12 },
-  summaryLabel: { width: 96, fontSize: 13.5 },
+  summaryLabel: { width: 96, fontSize: 14 },
   summaryValue: { flex: 1, fontSize: 14, fontWeight: "600", lineHeight: 20 },
   summaryValueMuted: { fontStyle: "italic", fontWeight: "500" },
-  consentCard: { borderWidth: 1.5, borderRadius: 18, padding: 14, gap: 10 },
+  consentCard: { borderWidth: 1.5, borderRadius: 16, padding: 14, gap: 10 },
   consentHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   consentTitle: { flex: 1, fontSize: 15, fontWeight: "800" },
   consentText: { fontSize: 13, lineHeight: 19 },
-  link: { fontSize: 13.5, fontWeight: "700", textDecorationLine: "underline" },
+  link: { fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
 });

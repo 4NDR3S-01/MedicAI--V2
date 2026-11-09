@@ -396,7 +396,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         >
           <MaterialCommunityIcons name="bell-off-outline" size={20} color={theme.colors.accentTertiary} />
           <Text style={[styles.issueText, { color: theme.colors.textPrimary }]}>{alarmIssue}</Text>
-          <Text style={[styles.issueAction, { color: theme.colors.accentTertiary }]}>Revisar</Text>
+          <Text style={[styles.issueAction, { color: theme.colors.warningText }]}>Revisar</Text>
         </Pressable>
       ) : null}
 
@@ -411,7 +411,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
             {summary.next ? (
               <View style={[styles.countdownChip, { backgroundColor: `${theme.colors.accentPrimary}12`, borderColor: `${theme.colors.accentPrimary}30` }]}>
                 <MaterialCommunityIcons name="timer-sand" size={18} color={theme.colors.accentPrimary} />
-                <Text style={[styles.countdownText, { color: theme.colors.accentPrimary }]}>
+                <Text style={[styles.countdownText, { color: theme.colors.accentPrimaryText }]}>
                   Próxima: {countdownLabel(summary.next.slot.at, now)}
                 </Text>
               </View>
@@ -436,7 +436,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
               accessibilityRole="tab"
               accessibilityState={{ selected: segment === 'active' }}
             >
-              <Text style={[styles.segmentBtnText, { color: segment === 'active' ? '#fff' : theme.colors.textSecondary }]}>
+              <Text style={[styles.segmentBtnText, { color: segment === 'active' ? theme.colors.buttonText : theme.colors.textSecondary }]}>
                 Activos ({activeMeds.length})
               </Text>
             </Pressable>
@@ -446,7 +446,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
               accessibilityRole="tab"
               accessibilityState={{ selected: segment === 'paused' }}
             >
-              <Text style={[styles.segmentBtnText, { color: segment === 'paused' ? '#fff' : theme.colors.textSecondary }]}>
+              <Text style={[styles.segmentBtnText, { color: segment === 'paused' ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
                 Inactivos ({pausedMeds.length})
               </Text>
             </Pressable>
@@ -670,7 +670,7 @@ function ProgressCard({
         </View>
         <View style={styles.progressRightStat}>
           <View style={styles.progressStatItem}>
-            <Text style={[styles.progressStatValue, { color: theme.colors.accentPrimary }]}>{activeCount}</Text>
+            <Text style={[styles.progressStatValue, { color: theme.colors.accentPrimaryText }]}>{activeCount}</Text>
             <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>activos</Text>
           </View>
           <View style={[styles.progressStatDivider, { backgroundColor: theme.colors.surfaceBorder }]} />
@@ -696,13 +696,13 @@ function ProgressCard({
 
       <View style={[styles.motivationRow, { backgroundColor: `${theme.colors.accentPrimary}08` }]}>
         <MaterialCommunityIcons name={motivationIcon} size={16} color={complete ? theme.colors.success : theme.colors.accentPrimary} />
-        <Text style={[styles.motivationText, { color: theme.colors.accentPrimary }]}>{getMotivationalPhrase(progress)}</Text>
+        <Text style={[styles.motivationText, { color: theme.colors.accentPrimaryText }]}>{getMotivationalPhrase(progress)}</Text>
       </View>
 
       {missed > 0 ? (
         <View style={[styles.motivationRow, { backgroundColor: `${theme.colors.accentTertiary}10` }]}>
           <MaterialCommunityIcons name="alert-circle-outline" size={16} color={theme.colors.accentTertiary} />
-          <Text style={[styles.motivationText, { color: theme.colors.accentTertiary }]}>
+          <Text style={[styles.motivationText, { color: theme.colors.warningText }]}>
             {missed === 1 ? '1 toma sin registrar: tócala para registrarla' : `${missed} tomas sin registrar: tócalas para registrarlas`}
           </Text>
         </View>
@@ -718,14 +718,14 @@ const styles = StyleSheet.create({
   separator: { height: 10 },
 
   issue: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 14 },
-  issueText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  issueAction: { fontSize: 13, fontWeight: '800' },
+  issueText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  issueAction: { fontSize: 13, fontWeight: '600' },
 
   heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 },
   heroGreeting: { gap: 2, flexShrink: 1 },
   greetingIcon: { marginBottom: 2 },
-  greetingText: { fontSize: 24, fontWeight: '900', letterSpacing: -0.8 },
-  greetingSubtitle: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  greetingText: { fontSize: 24, fontWeight: '800', letterSpacing: -0.8 },
+  greetingSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   countdownChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -736,26 +736,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: 4,
   },
-  countdownText: { fontSize: 13, fontWeight: '800' },
+  countdownText: { fontSize: 13, fontWeight: '600' },
 
   progressCard: { borderRadius: 24, borderWidth: 1, padding: 16, marginBottom: 16, gap: 14 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressBigNumber: { fontSize: 30, fontWeight: '900', letterSpacing: -1 },
+  progressBigNumber: { fontSize: 30, fontWeight: '800', letterSpacing: -1 },
   progressSmall: { fontSize: 16, fontWeight: '700' },
-  progressLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  progressLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
   progressRightStat: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   progressStatItem: { alignItems: 'center', gap: 2 },
-  progressStatValue: { fontSize: 18, fontWeight: '900' },
-  progressStatLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  progressStatValue: { fontSize: 18, fontWeight: '700' },
+  progressStatLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   progressStatDivider: { width: 1, height: 28, borderRadius: 1 },
   progressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressBarFill: { flex: 1, borderRadius: 3, transformOrigin: 'left' },
   motivationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12 },
-  motivationText: { fontSize: 12, fontWeight: '700', flex: 1 },
+  motivationText: { fontSize: 12, fontWeight: '600', flex: 1 },
 
-  segmentBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 18, padding: 4, marginBottom: 16, gap: 4 },
-  segmentBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 14 },
-  segmentBtnText: { fontSize: 13, fontWeight: '800' },
+  segmentBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 16, padding: 4, marginBottom: 16, gap: 4 },
+  segmentBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12 },
+  segmentBtnText: { fontSize: 13, fontWeight: '600' },
 
   listFooterText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 12, paddingHorizontal: 12 },
 });

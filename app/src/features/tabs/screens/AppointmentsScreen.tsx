@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { FloatingActionButton, SelectField, useEnterAnimation, useReducedMotion, useSwapAnimation } from '../../../shared/ui';
 import { appStorage } from '../../../shared/storage';
 import {
@@ -286,10 +286,10 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
     <View>
       <View style={styles.titleBlock}>
         <View style={styles.titleTopRow}>
-          <Text style={[styles.eyebrow, { color: theme.colors.accentSecondary }]}>Citas médicas</Text>
+          <Text style={[styles.eyebrow, { color: theme.colors.accentSecondaryText }]}>Citas médicas</Text>
           <View style={[styles.monthBadge, { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}30` }]}>
             <MaterialCommunityIcons name="calendar-month-outline" size={18} color={theme.colors.accentSecondary} />
-            <Text style={[styles.monthBadgeText, { color: theme.colors.accentSecondary }]}>{todayLabel}</Text>
+            <Text style={[styles.monthBadgeText, { color: theme.colors.accentSecondaryText }]}>{todayLabel}</Text>
           </View>
         </View>
         <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]} accessibilityRole="header">Agenda</Text>
@@ -313,7 +313,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
               ? '1 cita pasada espera que confirmes tu asistencia.'
               : `${buckets.awaitingCount} citas pasadas esperan que confirmes tu asistencia.`}
           </Text>
-          <Text style={[styles.bannerAction, { color: theme.colors.accentTertiary }]}>Revisar</Text>
+          <Text style={[styles.bannerAction, { color: theme.colors.warningText }]}>Revisar</Text>
         </Pressable>
       ) : null}
 
@@ -545,10 +545,10 @@ function NextAppointmentCard({
       accessibilityLabel={`Próxima cita: ${appointment.title} con ${appointment.doctorName}, ${relativeDayLabel(date, now)} a las ${formatClock(date)}`}
     >
       <View style={styles.nextTop}>
-        <Text style={[styles.nextKicker, { color: accent }]}>{inProgress ? 'Cita en curso' : 'Próxima cita'}</Text>
+        <Text style={[styles.nextKicker, { color: readableText(theme, accent) }]}>{inProgress ? 'Cita en curso' : 'Próxima cita'}</Text>
         <View style={[styles.countdownChip, { backgroundColor: `${accent}14` }]}>
           <MaterialCommunityIcons name="timer-sand" size={14} color={accent} />
-          <Text style={[styles.countdownText, { color: accent }]}>
+          <Text style={[styles.countdownText, { color: readableText(theme, accent) }]}>
             {inProgress ? 'Ahora' : countdownLabel(date, now).replace(/^./, (char) => char.toUpperCase())}
           </Text>
         </View>
@@ -556,9 +556,9 @@ function NextAppointmentCard({
 
       <View style={styles.nextBody}>
         <View style={[styles.nextDate, { backgroundColor: `${accent}14` }]}>
-          <Text style={[styles.nextWeekday, { color: accent }]}>{parts.weekday}</Text>
+          <Text style={[styles.nextWeekday, { color: readableText(theme, accent) }]}>{parts.weekday}</Text>
           <Text style={[styles.nextDay, { color: theme.colors.textPrimary }]}>{parts.day}</Text>
-          <Text style={[styles.nextMonth, { color: accent }]}>{parts.month}</Text>
+          <Text style={[styles.nextMonth, { color: readableText(theme, accent) }]}>{parts.month}</Text>
         </View>
         <View style={styles.nextInfo}>
           <Text style={[styles.nextTitle, { color: theme.colors.textPrimary }]} numberOfLines={2}>
@@ -583,7 +583,7 @@ function NextAppointmentCard({
           style={({ pressed }) => [styles.directions, { backgroundColor: `${accent}14` }, pressed && styles.pressed]}
         >
           <MaterialCommunityIcons name="directions" size={18} color={accent} />
-          <Text style={[styles.directionsText, { color: accent }]}>Cómo llegar</Text>
+          <Text style={[styles.directionsText, { color: readableText(theme, accent) }]}>Cómo llegar</Text>
         </Pressable>
       ) : null}
     </View>
@@ -599,13 +599,13 @@ function SegmentButton({
 }: Readonly<{ theme: AppTheme; label: string; selected: boolean; badge?: boolean; onPress: () => void }>) {
   return (
     <Pressable
-      style={[styles.segmentBtn, selected && { backgroundColor: theme.colors.accentSecondary }]}
+      style={[styles.segmentBtn, selected && { backgroundColor: theme.colors.accentSecondaryText }]}
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityState={{ selected }}
       accessibilityHint={badge ? 'Hay citas por confirmar' : undefined}
     >
-      <Text style={[styles.segmentBtnText, { color: selected ? '#fff' : theme.colors.textSecondary }]}>{label}</Text>
+      <Text style={[styles.segmentBtnText, { color: selected ? theme.colors.background : theme.colors.textSecondary }]}>{label}</Text>
       {badge ? <View style={[styles.segmentBadge, { backgroundColor: theme.colors.accentTertiary }]} /> : null}
     </Pressable>
   );
@@ -619,42 +619,42 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
 
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 14 },
-  bannerText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  bannerAction: { fontSize: 13, fontWeight: '800' },
+  bannerText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  bannerAction: { fontSize: 13, fontWeight: '600' },
 
   nextCard: { borderRadius: 24, borderWidth: 1, padding: 16, marginBottom: 16, gap: 14 },
   nextTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  nextKicker: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8 },
+  nextKicker: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
   countdownChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  countdownText: { fontSize: 12.5, fontWeight: '800' },
+  countdownText: { fontSize: 13, fontWeight: '600' },
   nextBody: { flexDirection: 'row', gap: 14, alignItems: 'center' },
-  nextDate: { width: 64, paddingVertical: 8, borderRadius: 18, alignItems: 'center' },
-  nextWeekday: { fontSize: 11, fontWeight: '800', textTransform: 'capitalize' },
-  nextDay: { fontSize: 28, fontWeight: '900', letterSpacing: -1, lineHeight: 32 },
-  nextMonth: { fontSize: 11, fontWeight: '900', letterSpacing: 0.6 },
+  nextDate: { width: 64, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
+  nextWeekday: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
+  nextDay: { fontSize: 28, fontWeight: '800', letterSpacing: -1, lineHeight: 32 },
+  nextMonth: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6 },
   nextInfo: { flex: 1, gap: 3 },
-  nextTitle: { fontSize: 19, fontWeight: '900', letterSpacing: -0.4 },
+  nextTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
   nextMeta: { fontSize: 14, fontWeight: '700' },
-  nextLocation: { fontSize: 12.5, fontWeight: '600' },
-  directions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, borderRadius: 14 },
-  directionsText: { fontSize: 14, fontWeight: '800' },
+  nextLocation: { fontSize: 13, fontWeight: '600' },
+  directions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, borderRadius: 12 },
+  directionsText: { fontSize: 14, fontWeight: '700' },
 
-  segmentBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 18, padding: 4, marginBottom: 12, gap: 4 },
-  segmentBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 14 },
-  segmentBtnText: { fontSize: 13, fontWeight: '800' },
+  segmentBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 16, padding: 4, marginBottom: 12, gap: 4 },
+  segmentBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
+  segmentBtnText: { fontSize: 13, fontWeight: '600' },
   segmentBadge: { width: 8, height: 8, borderRadius: 4 },
 
   filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
-  filterLabel: { fontSize: 13, fontWeight: '800' },
+  filterLabel: { fontSize: 13, fontWeight: '600' },
   filterSelect: { minWidth: 190, minHeight: 44 },
 
   titleBlock: { gap: 3, marginBottom: 16 },
   titleTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 },
-  eyebrow: { fontSize: 12, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
-  monthBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, borderWidth: 1 },
-  monthBadgeText: { fontSize: 12, fontWeight: '900' },
-  screenTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1, lineHeight: 36 },
-  screenSubtitle: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  monthBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  monthBadgeText: { fontSize: 12, fontWeight: '600' },
+  screenTitle: { fontSize: 32, fontWeight: '800', letterSpacing: -1, lineHeight: 36 },
+  screenSubtitle: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
 
   listFooterText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 12, paddingHorizontal: 12 },
 });

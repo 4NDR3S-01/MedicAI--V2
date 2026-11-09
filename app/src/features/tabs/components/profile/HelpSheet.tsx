@@ -118,9 +118,9 @@ export function HelpSheet({ theme, visible, onClose }: Readonly<{ theme: AppThem
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  list: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
+  list: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
   itemBorder: { borderTopWidth: StyleSheet.hairlineWidth },
   question: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 14, minHeight: 52 },
-  questionText: { flex: 1, fontSize: 14.5, fontWeight: '800' },
-  answer: { fontSize: 13.5, lineHeight: 20, fontWeight: '500', paddingHorizontal: 14, paddingBottom: 14 },
+  questionText: { flex: 1, fontSize: 15, fontWeight: '700' },
+  answer: { fontSize: 14, lineHeight: 20, fontWeight: '500', paddingHorizontal: 14, paddingBottom: 14 },
 });

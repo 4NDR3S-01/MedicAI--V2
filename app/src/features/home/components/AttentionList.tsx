@@ -40,10 +40,10 @@ export function AttentionList({ theme, items }: Readonly<{ theme: AppTheme; item
 
 const styles = StyleSheet.create({
   list: { gap: 10 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, borderWidth: 1, padding: 12 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 12 },
   icon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 1 },
-  title: { fontSize: 14.5, fontWeight: '900' },
-  body: { fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
-  action: { fontSize: 13, fontWeight: '900' },
+  title: { fontSize: 15, fontWeight: '700' },
+  body: { fontSize: 13, lineHeight: 17, fontWeight: '500' },
+  action: { fontSize: 13, fontWeight: '600' },
 });

@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, marginBottom: 14 },
-  title: { fontSize: 19, fontWeight: '800' },
+  title: { fontSize: 20, fontWeight: '800' },
   subtitle: { fontSize: 14, marginTop: 4, lineHeight: 20 },
   body: { marginTop: 14, flexShrink: 1 },
   footer: { flexDirection: 'row', gap: 10, marginTop: 16 },

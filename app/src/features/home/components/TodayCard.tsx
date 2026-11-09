@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { AppButton, PressableScale, useReducedMotion } from '../../../shared/ui';
 import { dosageOnDay } from '../../../shared/services/dose-schedule';
 import { countdownLabel } from '../../tabs/utils/appointment-status';
@@ -109,7 +109,7 @@ export function TodayCard({
           <MaterialCommunityIcons name={icon} size={28} color={tone} />
         </View>
         <View style={styles.focusText}>
-          <Text style={[styles.eyebrow, { color: tone }]}>{eyebrow}</Text>
+          <Text style={[styles.eyebrow, { color: readableText(theme, tone) }]}>{eyebrow}</Text>
           <Text style={[styles.title, { color: theme.colors.textPrimary }]} numberOfLines={2}>{title}</Text>
           <Text style={[styles.body, { color: theme.colors.textSecondary }]}>{body}</Text>
         </View>
@@ -126,10 +126,10 @@ export function TodayCard({
         <PressableScale onPress={onOpenMedications} pressedScale={0.99} accessibilityRole="button" accessibilityLabel={`${taken} de ${total} tomas registradas hoy. Ver medicamentos.`} style={styles.progressBlock}>
           <View style={styles.progressHeader}>
             <Text style={[styles.progressText, { color: theme.colors.textSecondary }]}>
-              <Text style={{ color: theme.colors.textPrimary, fontWeight: '900' }}>{taken}</Text> de {total} tomas hoy
+              <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>{taken}</Text> de {total} tomas hoy
             </Text>
             {missedCount ? (
-              <Text style={[styles.missed, { color: theme.colors.accentTertiary }]}>
+              <Text style={[styles.missed, { color: theme.colors.warningText }]}>
                 {missedCount} sin registrar
               </Text>
             ) : null}
@@ -151,18 +151,18 @@ export function TodayCard({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
-  card: { borderRadius: 28, borderWidth: 1.5, padding: 18, gap: 16 },
+  card: { borderRadius: 24, borderWidth: 1.5, padding: 18, gap: 16 },
   focusRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  iconBig: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  iconBig: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   focusText: { flex: 1, gap: 2 },
-  eyebrow: { fontSize: 12, fontWeight: '900', letterSpacing: 0.6, textTransform: 'uppercase' },
-  title: { fontSize: 21, fontWeight: '900', letterSpacing: -0.4 },
-  body: { fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
+  title: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
+  body: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
   actions: { flexDirection: 'row', gap: 10 },
   progressBlock: { gap: 8 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressText: { fontSize: 13.5, fontWeight: '600' },
-  missed: { fontSize: 12.5, fontWeight: '800' },
+  progressText: { fontSize: 14, fontWeight: '600' },
+  missed: { fontSize: 13, fontWeight: '600' },
   track: { height: 10, borderRadius: 5, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 5 },
 });

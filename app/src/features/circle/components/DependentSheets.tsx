@@ -486,8 +486,8 @@ export function HandoverSheet({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
-  selector: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14 },
+  selector: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14 },
   selectorText: { flex: 1, fontSize: 16 },
-  code: { fontSize: 28, fontWeight: '900', letterSpacing: 4, textAlign: 'center' },
+  code: { fontSize: 28, fontWeight: '800', letterSpacing: 4, textAlign: 'center' },
   codeHint: { fontSize: 13, textAlign: 'center' },
 });

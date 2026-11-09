@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { PressableScale } from '../../../shared/ui';
 import type { AppointmentData } from '../../tabs/services/appointments.service';
 import { countdownLabel, dateParts, formatClock, isInProgress } from '../../tabs/utils/appointment-status';
@@ -40,7 +40,7 @@ export function NextAppointmentCard({
         {appointment && date && parts ? (
           <>
             <View style={[styles.dateTile, { backgroundColor: `${accent}14` }]}>
-              <Text style={[styles.month, { color: accent }]}>{parts.month}</Text>
+              <Text style={[styles.month, { color: readableText(theme, accent) }]}>{parts.month}</Text>
               <Text style={[styles.day, { color: theme.colors.textPrimary }]}>{parts.day}</Text>
               <Text style={[styles.weekday, { color: theme.colors.textMuted }]}>{parts.weekday}</Text>
             </View>
@@ -77,15 +77,15 @@ export function NextAppointmentCard({
 
 const styles = StyleSheet.create({
   section: { gap: 10 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 22, borderWidth: 1, padding: 14 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 20, borderWidth: 1, padding: 14 },
   dateTile: { width: 62, borderRadius: 16, alignItems: 'center', paddingVertical: 8 },
-  month: { fontSize: 11, fontWeight: '900', letterSpacing: 0.8 },
-  day: { fontSize: 24, fontWeight: '900', lineHeight: 28 },
+  month: { fontSize: 11, fontWeight: '600', letterSpacing: 0.8 },
+  day: { fontSize: 24, fontWeight: '800', lineHeight: 28 },
   weekday: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   emptyIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   info: { flex: 1, gap: 2 },
-  when: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.4 },
-  title: { fontSize: 16, fontWeight: '900' },
+  when: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  title: { fontSize: 16, fontWeight: '700' },
   meta: { fontSize: 13, fontWeight: '600' },
   location: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   locationText: { flex: 1, fontSize: 12, fontWeight: '600' },

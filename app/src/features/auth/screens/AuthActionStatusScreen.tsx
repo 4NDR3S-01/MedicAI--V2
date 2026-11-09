@@ -121,7 +121,7 @@ export function AuthActionStatusScreen({
 
             {secondaryAction ? (
               <Pressable style={styles.secondaryButton} onPress={secondaryAction.onPress}>
-                <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
+                <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondaryText }]}>
                   {secondaryAction.label}
                 </Text>
               </Pressable>
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 20,
     gap: 12,
   },
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontSize: 27,
+    fontSize: 28,
     fontWeight: '800',
     textAlign: 'center',
   },
@@ -181,12 +181,12 @@ const styles = StyleSheet.create({
   primaryButton: {
     marginTop: 10,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   secondaryButton: {
     paddingVertical: 12,

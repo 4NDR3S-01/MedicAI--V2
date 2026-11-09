@@ -115,7 +115,7 @@ export function GroupPicker({
             style={({ pressed }) => [styles.addChip, { borderColor: theme.colors.inputBorder }, pressed && styles.pressed]}
           >
             <MaterialCommunityIcons name="plus" size={16} color={theme.colors.accentSecondary} />
-            <Text style={[styles.addChipText, { color: theme.colors.accentSecondary }]}>Nuevo grupo</Text>
+            <Text style={[styles.addChipText, { color: theme.colors.accentSecondaryText }]}>Nuevo grupo</Text>
           </Pressable>
         ) : null}
       </View>
@@ -156,9 +156,9 @@ export function GroupPicker({
             ]}
           >
             {busy ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={theme.colors.buttonText} />
             ) : (
-              <Text style={[styles.createButtonText, { color: canCreate ? '#FFFFFF' : theme.colors.textMuted }]}>Crear</Text>
+              <Text style={[styles.createButtonText, { color: canCreate ? theme.colors.buttonText : theme.colors.textMuted }]}>Crear</Text>
             )}
           </Pressable>
         </View>
@@ -341,7 +341,7 @@ export function GroupsSheet({
                     style={({ pressed }) => [styles.addChip, { borderColor: theme.colors.inputBorder }, pressed && styles.pressed]}
                   >
                     <MaterialCommunityIcons name={item.icon} size={16} color={theme.colors.accentSecondary} />
-                    <Text style={[styles.addChipText, { color: theme.colors.accentSecondary }]}>{item.name}</Text>
+                    <Text style={[styles.addChipText, { color: theme.colors.accentSecondaryText }]}>{item.name}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -364,17 +364,17 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 40, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, borderStyle: 'dashed' },
   addChipText: { fontSize: 14, fontWeight: '700' },
-  createRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12, minHeight: 50 },
+  createRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, minHeight: 50 },
   createInput: { flex: 1, fontSize: 16, paddingVertical: 10 },
   createButton: { minWidth: 72, minHeight: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  createButtonText: { fontSize: 14.5, fontWeight: '800' },
+  createButtonText: { fontSize: 15, fontWeight: '700' },
   icons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  iconOption: { width: 48, height: 48, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  iconOption: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   groupRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 12 },
   groupIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  groupName: { fontSize: 15.5, fontWeight: '800' },
-  groupCount: { fontSize: 12.5, marginTop: 1 },
+  groupName: { fontSize: 16, fontWeight: '700' },
+  groupCount: { fontSize: 13, marginTop: 1 },
   iconButton: { padding: 6 },
   suggestions: { gap: 8 },
-  suggestionsTitle: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8 },
+  suggestionsTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
 });

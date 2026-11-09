@@ -159,11 +159,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderRadius: 12,
     minHeight: 52,
   },
   input: { flex: 1, fontSize: 16, paddingHorizontal: 14, paddingVertical: 12 },
   trailingButton: { paddingHorizontal: 14, alignSelf: "stretch", justifyContent: "center" },
   messageRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  message: { fontSize: 12.5, lineHeight: 17, flexShrink: 1 },
+  message: { fontSize: 13, lineHeight: 17, flexShrink: 1 },
 });

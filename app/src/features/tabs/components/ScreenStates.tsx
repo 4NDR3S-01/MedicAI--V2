@@ -37,7 +37,10 @@ export function EmptyState({
   compact = false,
 }: Readonly<EmptyStateProps>) {
   const color = iconColor ?? theme.colors.accentPrimary;
-  const buttonColor = actionColor ?? theme.colors.accentPrimary;
+  // El azul necesita su tono oscuro para que el texto encima sea legible.
+  const isBlue = actionColor === theme.colors.accentSecondary;
+  const buttonColor = isBlue ? theme.colors.accentSecondaryText : actionColor ?? theme.colors.accentPrimary;
+  const buttonTextColor = isBlue ? theme.colors.background : theme.colors.buttonText;
   return (
     <View style={[styles.emptyState, compact && styles.emptyStateCompact]}>
       <View style={[styles.emptyIconBox, compact && styles.emptyIconBoxCompact, { backgroundColor: `${color}12` }]}>
@@ -53,8 +56,8 @@ export function EmptyState({
           accessibilityRole="button"
           style={({ pressed }) => [styles.primaryButton, { backgroundColor: buttonColor, opacity: pressed ? 0.85 : 1 }]}
         >
-          {actionIcon ? <MaterialCommunityIcons name={actionIcon} size={20} color="#fff" /> : null}
-          <Text style={styles.primaryButtonText}>{actionLabel}</Text>
+          {actionIcon ? <MaterialCommunityIcons name={actionIcon} size={20} color={buttonTextColor} /> : null}
+          <Text style={[styles.primaryButtonText, { color: buttonTextColor }]}>{actionLabel}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -124,7 +127,7 @@ const styles = StyleSheet.create({
   emptyStateCompact: { paddingVertical: 12, gap: 8 },
   emptyIconBoxCompact: { width: 76, height: 76, borderRadius: 38, marginBottom: 2 },
   emptyIconBox: { width: 108, height: 108, borderRadius: 54, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  emptyTitle: { fontSize: 21, fontWeight: '900', textAlign: 'center' },
+  emptyTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
   emptySubtext: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 20, paddingHorizontal: 16, opacity: 0.7 },
   primaryButton: {
     flexDirection: 'row',
@@ -140,7 +143,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
-  primaryButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  primaryButtonText: { fontSize: 15, fontWeight: '700' },
 
   skeletonContainer: { paddingHorizontal: 18, paddingTop: 34, gap: 12 },
   skeletonCard: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 16 },

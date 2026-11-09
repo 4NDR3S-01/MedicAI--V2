@@ -228,7 +228,7 @@ export function VerifyEmailPromptScreen({
                 <Text
                   style={[
                     styles.successText,
-                    { color: theme.colors.success },
+                    { color: theme.colors.successText },
                   ]}
                 >
                   Correo reenviado correctamente
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 16,
     gap: 10,
   },
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -398,11 +398,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: 12,
     marginTop: 4,
   },
   primaryButtonText: {
-    fontWeight: '800',
+    fontWeight: '700',
     fontSize: 16,
   },
   secondaryButton: {

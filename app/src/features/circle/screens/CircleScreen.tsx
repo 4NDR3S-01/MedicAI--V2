@@ -279,7 +279,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
         >
           <View style={styles.titleBlock}>
             <View style={styles.titleTopRow}>
-              <Text style={[styles.eyebrow, { color: theme.colors.accentPrimary }]}>Tu red de cuidado</Text>
+              <Text style={[styles.eyebrow, { color: theme.colors.accentPrimaryText }]}>Tu red de cuidado</Text>
               <Pressable
                 onPress={() => setCodeVisible(true)}
                 accessibilityRole="button"
@@ -290,7 +290,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
                 ]}
               >
                 <MaterialCommunityIcons name="ticket-confirmation-outline" size={18} color={theme.colors.accentPrimary} />
-                <Text style={[styles.codeButtonText, { color: theme.colors.accentPrimary }]}>Tengo un código</Text>
+                <Text style={[styles.codeButtonText, { color: theme.colors.accentPrimaryText }]}>Tengo un código</Text>
               </Pressable>
             </View>
             <Text style={[styles.title, { color: theme.colors.textPrimary }]} accessibilityRole="header">Círculo</Text>
@@ -343,7 +343,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
                 ]}
               >
                 <MaterialCommunityIcons name="folder-account-outline" size={20} color={theme.colors.accentSecondary} />
-                <Text style={[styles.groupsButtonText, { color: theme.colors.accentSecondary }]}>Grupos</Text>
+                <Text style={[styles.groupsButtonText, { color: theme.colors.accentSecondaryText }]}>Grupos</Text>
               </Pressable>
             </View>
           ) : null}
@@ -541,32 +541,32 @@ function HowItWorks({ theme, icon, text }: Readonly<{ theme: AppTheme; icon: key
 
 const styles = StyleSheet.create({
   historyLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, marginTop: 8 },
-  historyLinkText: { fontSize: 13.5, fontWeight: '700' },
+  historyLinkText: { fontSize: 14, fontWeight: '700' },
   screen: { flex: 1 },
   content: { paddingHorizontal: 18, paddingTop: 14, gap: 18 },
   pressed: { opacity: 0.7 },
   section: { gap: 10 },
   titleBlock: { gap: 3 },
   titleTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 },
-  eyebrow: { fontSize: 12, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
-  codeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, borderWidth: 1 },
-  codeButtonText: { fontSize: 12.5, fontWeight: '900' },
-  title: { fontSize: 32, fontWeight: '900', letterSpacing: -1, lineHeight: 36 },
-  subtitle: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  codeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  codeButtonText: { fontSize: 13, fontWeight: '600' },
+  title: { fontSize: 32, fontWeight: '800', letterSpacing: -1, lineHeight: 36 },
+  subtitle: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
   empty: { gap: 14 },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   toolbarHint: { flex: 1, fontSize: 13, fontWeight: '600' },
   groupSelect: { flex: 1, minHeight: 46 },
-  groupsButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 46, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1.5 },
-  groupsButtonText: { fontSize: 14, fontWeight: '800' },
+  groupsButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 46, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.5 },
+  groupsButtonText: { fontSize: 14, fontWeight: '700' },
   choices: { gap: 10 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 16, padding: 14 },
-  choiceIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  choiceIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   choiceText: { flex: 1, gap: 2 },
-  choiceTitle: { fontSize: 15.5, fontWeight: '800' },
-  choiceHint: { fontSize: 12.5, lineHeight: 17 },
-  howItWorks: { gap: 10, borderWidth: 1, borderRadius: 18, padding: 14 },
+  choiceTitle: { fontSize: 16, fontWeight: '700' },
+  choiceHint: { fontSize: 13, lineHeight: 17 },
+  howItWorks: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 14 },
   howRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  howIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  howIcon: { width: 32, height: 32, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   howText: { flex: 1, fontSize: 13, lineHeight: 18 },
 });

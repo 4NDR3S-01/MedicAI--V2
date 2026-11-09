@@ -99,9 +99,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   stack: { gap: 22 },
   special: { gap: 8 },
-  specialTitle: { fontSize: 15, fontWeight: '800' },
-  specialHint: { fontSize: 12.5, marginBottom: 2 },
+  specialTitle: { fontSize: 15, fontWeight: '700' },
+  specialHint: { fontSize: 13, marginBottom: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  rowLabel: { fontSize: 14.5, fontWeight: '700' },
+  rowLabel: { fontSize: 15, fontWeight: '700' },
   rowHint: { fontSize: 12, lineHeight: 16, marginTop: 1 },
 });

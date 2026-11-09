@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 52,
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
   },
   triggerText: { flex: 1, fontSize: 16, fontWeight: '700' },
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 12,
   },
-  optionText: { flex: 1, fontSize: 15.5 },
+  optionText: { flex: 1, fontSize: 16 },
 });

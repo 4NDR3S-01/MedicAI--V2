@@ -17,6 +17,14 @@ export type AppTheme = {
     inputPlaceholder: string;
     buttonText: string;
     success: string;
+    /**
+     * Variantes para TEXTO de los acentos (≥ 4.5:1 sobre surface/background).
+     * Los acentos "puros" quedan para fondos, bordes e íconos.
+     */
+    accentPrimaryText: string;
+    accentSecondaryText: string;
+    warningText: string;
+    successText: string;
   };
   blobs: {
     one: string;

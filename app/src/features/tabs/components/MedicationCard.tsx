@@ -2,7 +2,7 @@ import { memo, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LayoutAnimation, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { dosageOnDay, isAsNeeded, isTreatmentFinished } from '../../../shared/services/dose-schedule';
 import type { MedicationData } from '../services/medications.service';
 import type { DoseSlot, DoseState } from '../utils/dose-status';
@@ -144,7 +144,7 @@ function MedicationCardBase({
             {medication.name}
           </Text>
           <View style={styles.medMetaRow}>
-            <Text style={[styles.dosageText, { color: accentColor }]}>
+            <Text style={[styles.dosageText, { color: readableText(theme, accentColor) }]}>
               {dosageToday}
               {medication.dosageSteps?.length ? <Text style={styles.todayTag}> hoy</Text> : null}
             </Text>
@@ -184,7 +184,7 @@ function MedicationCardBase({
                 ]}
               >
                 <View style={[styles.doseDot, { backgroundColor: color }]} />
-                <Text style={[styles.dosePillTime, { color, fontWeight: slot.state === 'due' ? '900' : '700' }]}>
+                <Text style={[styles.dosePillTime, { color: readableText(theme, color), fontWeight: slot.state === 'due' ? '900' : '700' }]}>
                   {slot.time}
                   {slot.viewerTime ? <Text style={styles.viewerTime}>{` · tú ${slot.viewerTime}`}</Text> : null}
                 </Text>
@@ -216,7 +216,7 @@ function MedicationCardBase({
           ]}
         >
           <MaterialCommunityIcons name="hand-pointing-up" size={16} color={theme.colors.accentPrimary} />
-          <Text style={[styles.logButtonText, { color: theme.colors.accentPrimary }]}>Registrar una toma ahora</Text>
+          <Text style={[styles.logButtonText, { color: theme.colors.accentPrimaryText }]}>Registrar una toma ahora</Text>
         </Pressable>
       ) : null}
 
@@ -279,7 +279,7 @@ function MedicationCardBase({
             size={14}
             color={accentColor}
           />
-          <Text style={[styles.statusPillText, { color: accentColor }]}>{statusText}</Text>
+          <Text style={[styles.statusPillText, { color: readableText(theme, accentColor) }]}>{statusText}</Text>
         </View>
         <View style={styles.cardActions}>
           {canEdit ? (
@@ -326,9 +326,9 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   medIconCircle: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   cardHeaderInfo: { flex: 1, gap: 3 },
-  medName: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  medName: { fontSize: 18, fontWeight: '700', letterSpacing: -0.3 },
   medMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dosageText: { fontSize: 13, fontWeight: '700' },
+  dosageText: { fontSize: 13, fontWeight: '600' },
   todayTag: { fontSize: 11, fontWeight: '600' },
   logButton: {
     flexDirection: 'row',
@@ -336,12 +336,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     minHeight: 44,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
   },
-  logButtonText: { fontSize: 14, fontWeight: '800' },
-  stockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
-  stockText: { fontSize: 12, fontWeight: '700', flex: 1 },
+  logButtonText: { fontSize: 14, fontWeight: '700' },
+  stockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12 },
+  stockText: { fontSize: 12, fontWeight: '600', flex: 1 },
   metaDot: { width: 3, height: 3, borderRadius: 2 },
   frequencyText: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
   doseTimeline: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -365,14 +365,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
   },
-  expandChipText: { fontSize: 11, fontWeight: '800' },
-  notesRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
+  expandChipText: { fontSize: 11, fontWeight: '600' },
+  notesRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12 },
   notesText: { fontSize: 11, fontWeight: '600', flex: 1 },
   auditRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  auditText: { fontSize: 11.5, fontWeight: '600' },
+  auditText: { fontSize: 12, fontWeight: '600' },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20 },
-  statusPillText: { fontSize: 11, fontWeight: '800' },
+  statusPillText: { fontSize: 11, fontWeight: '600' },
   cardActions: { flexDirection: 'row', gap: 6 },
   actionBtn: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   actionBtnPressed: { opacity: 0.6 },

@@ -206,7 +206,7 @@ export function RelationPicker({
     <View style={styles.relationPicker}>
       {suggested.length ? (
         <View style={styles.relationGroup}>
-          <Text style={[styles.groupLabel, { color: theme.colors.accentSecondary }]}>Sugerido</Text>
+          <Text style={[styles.groupLabel, { color: theme.colors.accentSecondaryText }]}>Sugerido</Text>
           <View style={styles.chips}>{suggested.map(chip)}</View>
         </View>
       ) : null}
@@ -357,7 +357,7 @@ export function PermissionEditor({
           style={({ pressed }) => [styles.customToggle, pressed && styles.pressed]}
         >
           <MaterialCommunityIcons name="tune-variant" size={18} color={theme.colors.accentSecondary} />
-          <Text style={[styles.customToggleText, { color: theme.colors.accentSecondary }]}>
+          <Text style={[styles.customToggleText, { color: theme.colors.accentSecondaryText }]}>
             {customOpen ? 'Ocultar detalle' : preset === null ? 'Personalizado · ver detalle' : 'Personalizar'}
           </Text>
           <MaterialCommunityIcons name={customOpen ? 'chevron-up' : 'chevron-down'} size={18} color={theme.colors.accentSecondary} />
@@ -463,46 +463,46 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
   avatar: { alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontWeight: '900' },
+  avatarText: { fontWeight: '800' },
 
   reminderBox: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12 },
   reminderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  reminderTitle: { fontSize: 14, fontWeight: '800' },
+  reminderTitle: { fontSize: 14, fontWeight: '700' },
   reminderHintText: { fontSize: 12, lineHeight: 16, marginTop: 1 },
   reminderSelect: { minHeight: 46 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12, minHeight: 46 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, minHeight: 46 },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 10 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
-  sectionHint: { fontSize: 12.5, lineHeight: 17, marginTop: 2 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2 },
+  sectionHint: { fontSize: 13, lineHeight: 17, marginTop: 2 },
   note: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12 },
   noteText: { flex: 1, fontSize: 13, lineHeight: 18.5 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, alignSelf: 'flex-start' },
-  badgeText: { fontSize: 11.5, fontWeight: '800' },
+  badgeText: { fontSize: 12, fontWeight: '600' },
 
   relationPicker: { gap: 14 },
   relationGroup: { gap: 8 },
-  groupLabel: { fontSize: 11.5, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8 },
+  groupLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  error: { color: '#D64545', fontSize: 12.5, fontWeight: '600' },
+  error: { color: '#D64545', fontSize: 13, fontWeight: '600' },
 
   careList: { gap: 8 },
   careOption: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, borderWidth: 1.5 },
-  careTitle: { fontSize: 15, fontWeight: '800' },
-  careHint: { fontSize: 12.5, lineHeight: 17, marginTop: 1 },
+  careTitle: { fontSize: 15, fontWeight: '700' },
+  careHint: { fontSize: 13, lineHeight: 17, marginTop: 1 },
 
   editor: { gap: 10 },
   presetList: { gap: 8 },
-  preset: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5 },
-  presetLabel: { fontSize: 14.5, fontWeight: '800' },
-  presetHint: { fontSize: 12.5, lineHeight: 17, marginTop: 1 },
+  preset: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5 },
+  presetLabel: { fontSize: 15, fontWeight: '700' },
+  presetHint: { fontSize: 13, lineHeight: 17, marginTop: 1 },
   customToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, alignSelf: 'flex-start' },
-  customToggleText: { fontSize: 13.5, fontWeight: '800' },
+  customToggleText: { fontSize: 14, fontWeight: '700' },
   groups: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 12 },
   groupDivider: { borderTopWidth: StyleSheet.hairlineWidth },
   groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50 },
-  groupTitle: { flex: 1, fontSize: 15, fontWeight: '800' },
-  groupSummary: { fontSize: 12.5, fontWeight: '700' },
+  groupTitle: { flex: 1, fontSize: 15, fontWeight: '700' },
+  groupSummary: { fontSize: 13, fontWeight: '600' },
   permissionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingVertical: 6 },
   indent: { width: 20 },
   permissionLabel: { fontSize: 14, fontWeight: '700' },

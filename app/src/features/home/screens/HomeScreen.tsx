@@ -222,7 +222,7 @@ export function HomeScreen({
               {avatar ? (
                 <Image source={{ uri: avatar.url }} style={styles.avatarImage} accessibilityIgnoresInvertColors />
               ) : (
-                <Text style={[styles.avatarText, { color: theme.colors.accentPrimary }]}>{initialsOf(userFullName || firstName || '?')}</Text>
+                <Text style={[styles.avatarText, { color: theme.colors.accentPrimaryText }]}>{initialsOf(userFullName || firstName || '?')}</Text>
               )}
             </PressableScale>
           </View>
@@ -294,7 +294,7 @@ export function HomeScreen({
                   </Text>
                   <View style={[styles.assistantCta, { backgroundColor: theme.colors.buttonText }]}>
                     <MaterialCommunityIcons name="chat-processing-outline" size={16} color={theme.colors.accentPrimary} />
-                    <Text style={[styles.assistantCtaText, { color: theme.colors.accentPrimary }]}>Preguntar</Text>
+                    <Text style={[styles.assistantCtaText, { color: theme.colors.accentPrimaryText }]}>Preguntar</Text>
                   </View>
                 </View>
                 <MaterialCommunityIcons name="robot-outline" size={96} color="rgba(255,255,255,0.16)" style={styles.assistantIcon} />
@@ -324,16 +324,16 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, gap: 2 },
   greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   greeting: { fontSize: 15, fontWeight: '700' },
-  name: { fontSize: 30, fontWeight: '900', letterSpacing: -0.8 },
-  date: { fontSize: 13, fontWeight: '700' },
+  name: { fontSize: 30, fontWeight: '800', letterSpacing: -0.8 },
+  date: { fontSize: 13, fontWeight: '600' },
   avatar: { width: 54, height: 54, borderRadius: 27, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: 54, height: 54, borderRadius: 27 },
-  avatarText: { fontSize: 19, fontWeight: '900' },
-  assistant: { borderRadius: 26, padding: 20, overflow: 'hidden', minHeight: 150 },
+  avatarText: { fontSize: 20, fontWeight: '800' },
+  assistant: { borderRadius: 24, padding: 20, overflow: 'hidden', minHeight: 150 },
   assistantText: { width: '78%', gap: 8 },
-  assistantTitle: { fontSize: 19, fontWeight: '900', letterSpacing: -0.3 },
-  assistantBody: { fontSize: 13.5, lineHeight: 19, fontWeight: '600', opacity: 0.92 },
+  assistantTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  assistantBody: { fontSize: 14, lineHeight: 19, fontWeight: '500', opacity: 0.92 },
   assistantCta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, marginTop: 4 },
-  assistantCtaText: { fontSize: 13, fontWeight: '900' },
+  assistantCtaText: { fontSize: 13, fontWeight: '600' },
   assistantIcon: { position: 'absolute', right: -14, bottom: -14, transform: [{ rotate: '-10deg' }] },
 });

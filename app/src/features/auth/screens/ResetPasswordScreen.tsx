@@ -174,7 +174,7 @@ export function ResetPasswordScreen({
             accessibilityRole="button"
             accessibilityState={{ disabled: isSubmitting }}
           >
-            <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondary }]}>
+            <Text style={[styles.secondaryButtonText, { color: theme.colors.accentSecondaryText }]}>
               Cancelar
             </Text>
           </Pressable>
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 18,
     gap: 10,
   },
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
@@ -244,12 +244,12 @@ const styles = StyleSheet.create({
     minHeight: 50,
     justifyContent: 'center',
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 12,
     marginTop: 8,
     alignItems: 'center',
   },
   primaryButtonText: {
-    fontWeight: '800',
+    fontWeight: '700',
     fontSize: 16,
   },
   secondaryButton: {

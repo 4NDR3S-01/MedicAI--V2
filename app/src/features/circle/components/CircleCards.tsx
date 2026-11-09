@@ -57,10 +57,10 @@ function MemberCardBase({
       </View>
 
       {member.person.isManaged ? (
-        <Badge label="A tu cargo · sin cuenta propia" color={theme.colors.accentTertiary} icon="human-child" />
+        <Badge label="A tu cargo · sin cuenta propia" color={theme.colors.warningText} icon="human-child" />
       ) : null}
       {careLine && !member.person.isManaged ? (
-        <Badge label={careLine} color={member.care === 'CARES_FOR_ME' ? theme.colors.accentSecondary : theme.colors.accentPrimary} icon="hand-heart-outline" />
+        <Badge label={careLine} color={member.care === 'CARES_FOR_ME' ? theme.colors.accentSecondaryText : theme.colors.accentPrimaryText} icon="hand-heart-outline" />
       ) : null}
 
       <View style={[styles.access, { borderTopColor: theme.colors.surfaceBorder }]}>
@@ -78,7 +78,7 @@ function MemberCardBase({
           style={({ pressed }) => [styles.careButton, { backgroundColor: `${theme.colors.accentSecondary}12` }, pressed && styles.pressed]}
         >
           <MaterialCommunityIcons name="eye-outline" size={18} color={theme.colors.accentSecondary} />
-          <Text style={[styles.careButtonText, { color: theme.colors.accentSecondary }]}>Ver lo que comparte {first}</Text>
+          <Text style={[styles.careButtonText, { color: theme.colors.accentSecondaryText }]}>Ver lo que comparte {first}</Text>
         </Pressable>
       ) : null}
     </Pressable>
@@ -131,8 +131,8 @@ export function ReceivedInvitationCard({
       </View>
       <View style={styles.footerRow}>
         <Text style={[styles.meta, { color: theme.colors.textMuted }]}>{days <= 1 ? 'Vence hoy' : `Vence en ${days} días`}</Text>
-        <View style={[styles.cta, { backgroundColor: theme.colors.accentSecondary }]}>
-          <Text style={styles.ctaText}>Ver invitación</Text>
+        <View style={[styles.cta, { backgroundColor: theme.colors.accentSecondaryText }]}>
+          <Text style={[styles.ctaText, { color: theme.colors.background }]}>Ver invitación</Text>
           <MaterialCommunityIcons name="arrow-right" size={16} color="#fff" />
         </View>
       </View>
@@ -161,9 +161,9 @@ export function SentInvitationCard({
   const pending = invitation.state === 'PENDING';
   let badge: { label: string; color: string; icon: IconName };
   if (invitation.state === 'DECLINED') badge = { label: 'Rechazada', color: theme.colors.textMuted, icon: 'close-circle-outline' };
-  else if (invitation.state === 'EXPIRED') badge = { label: 'Vencida', color: theme.colors.accentTertiary, icon: 'clock-alert-outline' };
-  else if (invitation.inviteeHasAccount === false) badge = { label: 'Aún no tiene cuenta', color: theme.colors.accentTertiary, icon: 'account-clock-outline' };
-  else badge = { label: 'Pendiente', color: theme.colors.accentSecondary, icon: 'clock-outline' };
+  else if (invitation.state === 'EXPIRED') badge = { label: 'Vencida', color: theme.colors.warningText, icon: 'clock-alert-outline' };
+  else if (invitation.inviteeHasAccount === false) badge = { label: 'Aún no tiene cuenta', color: theme.colors.warningText, icon: 'account-clock-outline' };
+  else badge = { label: 'Pendiente', color: theme.colors.accentSecondaryText, icon: 'clock-outline' };
 
   const subtitle = invitation.inviteeName && invitation.inviteeEmail
     ? invitation.inviteeEmail
@@ -234,19 +234,19 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   card: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  name: { fontSize: 16.5, fontWeight: '800', letterSpacing: -0.2 },
+  name: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2 },
   relation: { fontSize: 13, fontWeight: '600', marginTop: 1 },
   access: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 6 },
   accessLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  accessText: { flex: 1, fontSize: 12.5, fontWeight: '600' },
+  accessText: { flex: 1, fontSize: 13, fontWeight: '600' },
   careButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 42, borderRadius: 12 },
-  careButtonText: { fontSize: 13.5, fontWeight: '800' },
+  careButtonText: { fontSize: 14, fontWeight: '700' },
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  meta: { fontSize: 12.5, lineHeight: 17 },
+  meta: { fontSize: 13, lineHeight: 17 },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
-  ctaText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
+  ctaText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   iconCircle: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   actions: { flexDirection: 'row', gap: 18, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   textAction: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4 },
-  textActionLabel: { fontSize: 13.5, fontWeight: '800' },
+  textActionLabel: { fontSize: 14, fontWeight: '700' },
 });

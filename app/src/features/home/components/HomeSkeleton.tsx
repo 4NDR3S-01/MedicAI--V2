@@ -38,7 +38,7 @@ export function HomeSkeleton({ theme }: Readonly<{ theme: AppTheme }>) {
       {/* Ahora */}
       <View style={[card, styles.today]}>
         <View style={styles.row}>
-          {bone(56, 56, { borderRadius: 18 })}
+          {bone(56, 56, { borderRadius: 16 })}
           <View style={styles.lines}>
             {bone('35%', 11)}
             {bone('70%', 22)}
@@ -46,8 +46,8 @@ export function HomeSkeleton({ theme }: Readonly<{ theme: AppTheme }>) {
           </View>
         </View>
         <View style={styles.row}>
-          {bone('38%', 48, { borderRadius: 14 })}
-          {bone('58%', 48, { borderRadius: 14 })}
+          {bone('38%', 48, { borderRadius: 12 })}
+          {bone('58%', 48, { borderRadius: 12 })}
         </View>
         <View style={styles.lines}>
           {bone('45%', 12)}
@@ -89,7 +89,7 @@ export function HomeSkeleton({ theme }: Readonly<{ theme: AppTheme }>) {
       {/* Asistente */}
       <View style={styles.section}>
         {bone('28%', 18)}
-        {bone('100%', 150, { borderRadius: 26 })}
+        {bone('100%', 150, { borderRadius: 24 })}
       </View>
     </Animated.View>
   );
@@ -98,8 +98,8 @@ export function HomeSkeleton({ theme }: Readonly<{ theme: AppTheme }>) {
 const styles = StyleSheet.create({
   stack: { gap: 18 },
   section: { gap: 10 },
-  card: { borderRadius: 22, borderWidth: 1 },
-  today: { borderRadius: 28, padding: 18, gap: 16 },
+  card: { borderRadius: 20, borderWidth: 1 },
+  today: { borderRadius: 24, padding: 18, gap: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   lines: { flex: 1, gap: 8 },
   timeline: { paddingVertical: 6, paddingHorizontal: 14 },

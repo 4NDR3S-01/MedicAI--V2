@@ -193,8 +193,8 @@ const styles = StyleSheet.create({
   event: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: 16, borderWidth: 1 },
   icon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, gap: 4 },
-  title: { fontSize: 14.5, fontWeight: '700', lineHeight: 20 },
+  title: { fontSize: 15, fontWeight: '500', lineHeight: 20 },
   meta: { fontSize: 12, fontWeight: '600' },
   change: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  changeText: { fontSize: 12.5, flex: 1 },
+  changeText: { fontSize: 13, flex: 1 },
 });

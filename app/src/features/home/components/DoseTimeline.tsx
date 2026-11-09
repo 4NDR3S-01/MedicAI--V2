@@ -73,17 +73,17 @@ export function DoseTimeline({
 
 const styles = StyleSheet.create({
   section: { gap: 10 },
-  card: { borderRadius: 22, borderWidth: 1, paddingVertical: 6, paddingHorizontal: 14 },
+  card: { borderRadius: 20, borderWidth: 1, paddingVertical: 6, paddingHorizontal: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56 },
-  time: { width: 46, fontSize: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  time: { width: 46, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
   rail: { width: 14, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
   dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 3 },
   lineTop: { position: 'absolute', top: 0, height: '50%', width: 2 },
   lineBottom: { position: 'absolute', top: '50%', bottom: 0, width: 2 },
   info: { flex: 1, gap: 1 },
-  name: { fontSize: 15, fontWeight: '800' },
+  name: { fontSize: 15, fontWeight: '700' },
   strike: { textDecorationLine: 'line-through' },
-  dosage: { fontSize: 12.5, fontWeight: '600' },
+  dosage: { fontSize: 13, fontWeight: '600' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
-  badgeText: { fontSize: 11.5, fontWeight: '800' },
+  badgeText: { fontSize: 12, fontWeight: '600' },
 });

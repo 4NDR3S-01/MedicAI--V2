@@ -14,7 +14,7 @@ export function SectionHeader({
       <Text style={[styles.title, { color: theme.colors.textPrimary }]} accessibilityRole="header">{title}</Text>
       {action && onAction ? (
         <PressableScale onPress={onAction} hitSlop={10} accessibilityRole="button" style={styles.action}>
-          <Text style={[styles.actionText, { color: theme.colors.accentPrimary }]}>{action}</Text>
+          <Text style={[styles.actionText, { color: theme.colors.accentPrimaryText }]}>{action}</Text>
         </PressableScale>
       ) : null}
     </View>
@@ -23,7 +23,7 @@ export function SectionHeader({
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
-  title: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
+  title: { fontSize: 18, fontWeight: '700', letterSpacing: -0.3 },
   action: { minHeight: 32, justifyContent: 'center' },
-  actionText: { fontSize: 13.5, fontWeight: '800' },
+  actionText: { fontSize: 14, fontWeight: '700' },
 });

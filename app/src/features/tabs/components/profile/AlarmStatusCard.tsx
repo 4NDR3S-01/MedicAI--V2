@@ -107,10 +107,10 @@ export function AlarmStatusCard({ theme, onIssueChange }: Readonly<{ theme: AppT
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 22, borderWidth: 1, padding: 14, gap: 12 },
+  card: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 12 },
   header: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  icon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 3 },
-  title: { fontSize: 15.5, fontWeight: '900' },
-  body: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  title: { fontSize: 16, fontWeight: '700' },
+  body: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
 });

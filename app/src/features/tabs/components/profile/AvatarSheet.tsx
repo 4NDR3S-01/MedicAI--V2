@@ -72,7 +72,7 @@ export function AvatarSheet({
           'Usar mis iniciales',
           () => void choose('initials', INITIALS_AVATAR),
           <View style={[styles.initials, { backgroundColor: `${theme.colors.accentPrimary}18` }]}>
-            <Text style={[styles.initialsText, { color: theme.colors.accentPrimary }]}>{initialsOf(name)}</Text>
+            <Text style={[styles.initialsText, { color: theme.colors.accentPrimaryText }]}>{initialsOf(name)}</Text>
           </View>,
         )}
         {AVATAR_OPTIONS.map((option, index) =>
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
   tile: { width: SIZE + 6, height: SIZE + 6, borderRadius: (SIZE + 6) / 2, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
   image: { width: SIZE, height: SIZE, borderRadius: SIZE / 2 },
   initials: { width: SIZE, height: SIZE, borderRadius: SIZE / 2, alignItems: 'center', justifyContent: 'center' },
-  initialsText: { fontSize: 22, fontWeight: '900' },
+  initialsText: { fontSize: 24, fontWeight: '800' },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: SIZE, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
   check: { position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });

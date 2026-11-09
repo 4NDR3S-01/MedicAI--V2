@@ -551,7 +551,7 @@ export function RegisterScreen({
               >
                 <Text style={[styles.loginLinkText, { color: theme.colors.textMuted }]} maxFontSizeMultiplier={1.4}>
                   ¿Ya tienes cuenta?{" "}
-                  <Text style={{ color: theme.colors.accentSecondary, fontWeight: "800" }}>Inicia sesión</Text>
+                  <Text style={{ color: theme.colors.accentSecondaryText, fontWeight: "800" }}>Inicia sesión</Text>
                 </Text>
               </Pressable>
             ) : null}
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 4, marginBottom: 14 },
   headerCompact: { marginBottom: 10 },
   title: { fontSize: 26, fontWeight: "800" },
-  titleCompact: { fontSize: 22 },
+  titleCompact: { fontSize: 24 },
   subtitle: { fontSize: 14, marginTop: 2, fontWeight: "600" },
   progress: { flexDirection: "row", gap: 6, paddingHorizontal: 4, marginBottom: 12 },
   progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
@@ -607,7 +607,7 @@ const styles = StyleSheet.create({
   card: { flex: 1, borderWidth: 1, borderRadius: 24, overflow: "hidden" },
   scrollContent: { padding: 18, paddingBottom: 24 },
   scrollContentCompact: { padding: 14, paddingBottom: 20 },
-  restoredBanner: { borderRadius: 14, padding: 12, marginBottom: 16 },
+  restoredBanner: { borderRadius: 12, padding: 12, marginBottom: 16 },
   restoredText: { fontSize: 13, lineHeight: 19 },
   footer: {
     paddingHorizontal: 14,

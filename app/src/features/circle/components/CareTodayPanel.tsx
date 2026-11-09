@@ -143,7 +143,7 @@ export function CareTodayPanel({
             accessibilityRole="button"
             style={({ pressed }) => [styles.more, { borderTopColor: theme.colors.surfaceBorder }, pressed && styles.pressed]}
           >
-            <Text style={[styles.moreText, { color: theme.colors.accentSecondary }]}>
+            <Text style={[styles.moreText, { color: theme.colors.accentSecondaryText }]}>
               {expanded ? 'Ver menos' : `Ver a las ${rows.length} personas`}
             </Text>
             <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.colors.accentSecondary} />
@@ -212,8 +212,8 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   dot: { position: 'absolute', right: -2, top: -2, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
-  name: { fontSize: 15, fontWeight: '800' },
-  parts: { fontSize: 12.5, lineHeight: 17, marginTop: 2 },
+  name: { fontSize: 15, fontWeight: '700' },
+  parts: { fontSize: 13, lineHeight: 17, marginTop: 2 },
   more: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  moreText: { fontSize: 13.5, fontWeight: '800' },
+  moreText: { fontSize: 14, fontWeight: '700' },
 });

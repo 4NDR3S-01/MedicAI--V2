@@ -231,8 +231,8 @@ const styles = StyleSheet.create({
   group: { gap: 8 },
   groupTitle: { fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  addRow: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderRadius: 14, paddingRight: 5, minHeight: 50 },
+  addRow: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderRadius: 12, paddingRight: 5, minHeight: 50 },
   addInput: { flex: 1, fontSize: 15, paddingHorizontal: 14, paddingVertical: 10 },
   addButton: { width: 40, height: 40, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  error: { fontSize: 12.5, marginTop: -4 },
+  error: { fontSize: 13, marginTop: -4 },
 });

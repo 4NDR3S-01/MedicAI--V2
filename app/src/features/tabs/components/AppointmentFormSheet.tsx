@@ -535,7 +535,7 @@ export function AppointmentFormSheet({
                             : { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder },
                         ]}
                       >
-                        <Text style={[styles.weekDayText, { color: selected ? '#fff' : theme.colors.textSecondary }]}>{day.short}</Text>
+                        <Text style={[styles.weekDayText, { color: selected ? theme.colors.buttonText : theme.colors.textSecondary }]}>{day.short}</Text>
                       </PressableScale>
                     );
                   })}
@@ -665,12 +665,12 @@ const styles = StyleSheet.create({
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   weekRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
   weekDay: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  weekDayText: { fontSize: 14, fontWeight: '800' },
-  hint: { fontSize: 12.5, lineHeight: 17 },
-  selector: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12 },
-  selectorText: { flex: 1, fontSize: 15.5 },
+  weekDayText: { fontSize: 14, fontWeight: '700' },
+  hint: { fontSize: 13, lineHeight: 17 },
+  selector: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12 },
+  selectorText: { flex: 1, fontSize: 16 },
   mapButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   info: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12 },
-  infoText: { flex: 1, fontSize: 13.5, lineHeight: 19 },
+  infoText: { flex: 1, fontSize: 14, lineHeight: 19 },
   formError: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
 });

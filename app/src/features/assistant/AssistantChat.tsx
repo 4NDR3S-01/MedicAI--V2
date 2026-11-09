@@ -555,7 +555,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                 <PressableScale onPress={enablePersonal} accessibilityRole="button" accessibilityLabel="Sin acceso a tu información. Activar" style={styles.statusRow}>
                   <View style={[styles.statusDot, { backgroundColor: theme.colors.textMuted }]} />
                   <Text style={[styles.status, styles.flexShrink, { color: theme.colors.textMuted }]} numberOfLines={1}>Sin acceso a tus datos</Text>
-                  <Text style={[styles.status, styles.statusAction, { color: theme.colors.accentPrimary }]}>Activar</Text>
+                  <Text style={[styles.status, styles.statusAction, { color: theme.colors.accentPrimaryText }]}>Activar</Text>
                 </PressableScale>
               )}
             </View>
@@ -569,7 +569,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                   style={[styles.voiceButton, { backgroundColor: `${theme.colors.accentPrimary}16`, borderColor: `${theme.colors.accentPrimary}40` }]}
                 >
                   <MaterialCommunityIcons name="headset" size={18} color={theme.colors.accentPrimary} />
-                  {compact ? null : <Text style={[styles.voiceLabel, { color: theme.colors.accentPrimary }]}>Voz</Text>}
+                  {compact ? null : <Text style={[styles.voiceLabel, { color: theme.colors.accentPrimaryText }]}>Voz</Text>}
                 </PressableScale>
                 {messages.length ? (
                   <PressableScale
@@ -693,7 +693,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                   {message.failed ? (
                     <PressableScale onPress={() => void send(message.content, { retryOf: message.id })} accessibilityRole="button" style={styles.retry}>
                       <MaterialCommunityIcons name="alert-circle-outline" size={14} color={theme.colors.accentTertiary} />
-                      <Text style={[styles.retryText, { color: theme.colors.accentTertiary }]}>No se envió · Reintentar</Text>
+                      <Text style={[styles.retryText, { color: theme.colors.warningText }]}>No se envió · Reintentar</Text>
                     </PressableScale>
                   ) : null}
                   </View>
@@ -856,24 +856,24 @@ const styles = StyleSheet.create({
   headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   botAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   headerText: { flex: 1, minWidth: 0, gap: 2, paddingRight: 4 },
-  title: { fontSize: 17, fontWeight: '900' },
+  title: { fontSize: 18, fontWeight: '700' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  status: { fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
-  statusAction: { fontWeight: '900', flexShrink: 0 },
+  status: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  statusAction: { fontWeight: '700', flexShrink: 0 },
   flexShrink: { flexShrink: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   voiceButton: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, minWidth: 38, paddingHorizontal: 12, borderRadius: 19, borderWidth: 1, justifyContent: 'center' },
-  voiceLabel: { fontSize: 13.5, fontWeight: '900' },
+  voiceLabel: { fontSize: 14, fontWeight: '700' },
   iconButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   messages: { padding: 16, gap: 12, flexGrow: 1 },
   welcome: { alignItems: 'center', gap: 10, paddingTop: 16 },
   welcomeIcon: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  welcomeTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
-  welcomeBody: { fontSize: 14.5, lineHeight: 21, fontWeight: '500', textAlign: 'center', paddingHorizontal: 8 },
+  welcomeTitle: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  welcomeBody: { fontSize: 15, lineHeight: 21, fontWeight: '500', textAlign: 'center', paddingHorizontal: 8 },
   suggestions: { alignSelf: 'stretch', gap: 8, marginTop: 10 },
   suggestion: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13 },
-  suggestionText: { flex: 1, fontSize: 14.5, fontWeight: '700' },
+  suggestionText: { flex: 1, fontSize: 15, fontWeight: '700' },
   messageWrap: { maxWidth: '88%', gap: 6 },
   mineWrap: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   theirsWrap: { alignSelf: 'flex-start', alignItems: 'stretch' },
@@ -886,26 +886,26 @@ const styles = StyleSheet.create({
   lightShadow: { shadowColor: '#10243A', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   mine: { borderBottomRightRadius: 6 },
   theirs: { borderBottomLeftRadius: 6 },
-  mineText: { fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  mineText: { fontSize: 15, lineHeight: 21, fontWeight: '500' },
   listen: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 2, paddingHorizontal: 2, minHeight: 28 },
-  listenText: { fontSize: 12.5, fontWeight: '700' },
+  listenText: { fontSize: 13, fontWeight: '600' },
   retry: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
-  retryText: { fontSize: 12.5, fontWeight: '800' },
+  retryText: { fontSize: 13, fontWeight: '600' },
   emergency: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginBottom: 8, padding: 12, borderRadius: 16, borderWidth: 1 },
-  emergencyText: { flex: 1, fontSize: 13.5, lineHeight: 18, fontWeight: '700' },
+  emergencyText: { flex: 1, fontSize: 14, lineHeight: 18, fontWeight: '500' },
   callButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
-  callText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  callText: { color: '#2B1700', fontSize: 14, fontWeight: '700' },
   composer: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6, gap: 6, borderTopWidth: StyleSheet.hairlineWidth },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  input: { flex: 1, minHeight: 48, maxHeight: 130, borderRadius: 22, borderWidth: 1, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 13, fontSize: 15.5, textAlignVertical: 'top' },
+  input: { flex: 1, minHeight: 48, maxHeight: 130, borderRadius: 20, borderWidth: 1, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 13, fontSize: 16, textAlignVertical: 'top' },
   send: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   attach: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  photo: { width: 200, height: 150, borderRadius: 14, marginBottom: 8 },
+  photo: { width: 200, height: 150, borderRadius: 12, marginBottom: 8 },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   previewImage: { width: 52, height: 52, borderRadius: 12 },
   previewText: { flex: 1, fontSize: 13, fontWeight: '600' },
-  dictation: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, borderRadius: 26, borderWidth: 1, paddingHorizontal: 16 },
+  dictation: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, borderRadius: 24, borderWidth: 1, paddingHorizontal: 16 },
   recDot: { width: 12, height: 12, borderRadius: 6 },
-  dictationText: { flex: 1, fontSize: 14.5, fontWeight: '700' },
-  disclaimer: { fontSize: 11.5, fontWeight: '600', textAlign: 'center' },
+  dictationText: { flex: 1, fontSize: 15, fontWeight: '700' },
+  disclaimer: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
 });

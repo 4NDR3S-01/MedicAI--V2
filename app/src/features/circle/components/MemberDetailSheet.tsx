@@ -281,7 +281,7 @@ export function MemberDetailSheet({
               </Text>
               {careLine && !managing ? (
                 <View style={styles.badgeRow}>
-                  <Badge label={careLine} color={theme.colors.accentPrimary} icon="hand-heart-outline" />
+                  <Badge label={careLine} color={theme.colors.accentPrimaryText} icon="hand-heart-outline" />
                 </View>
               ) : null}
             </View>
@@ -289,7 +289,7 @@ export function MemberDetailSheet({
           {!managing && !editingRelation ? (
             <Pressable onPress={startEditRelation} accessibilityRole="button" style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
               <MaterialCommunityIcons name="pencil-outline" size={16} color={theme.colors.accentSecondary} />
-              <Text style={[styles.linkButtonText, { color: theme.colors.accentSecondary }]}>Cambiar relación o cuidado</Text>
+              <Text style={[styles.linkButtonText, { color: theme.colors.accentSecondaryText }]}>Cambiar relación o cuidado</Text>
             </Pressable>
           ) : null}
         </View>
@@ -354,7 +354,7 @@ export function MemberDetailSheet({
                     ]}
                   >
                     <MaterialCommunityIcons name={action.icon} size={20} color={theme.colors.accentSecondary} />
-                    <Text style={[styles.careActionText, { color: theme.colors.accentSecondary }]}>{action.label}</Text>
+                    <Text style={[styles.careActionText, { color: theme.colors.accentSecondaryText }]}>{action.label}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -450,16 +450,16 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   card: { borderWidth: 1, borderRadius: 20, padding: 14, gap: 10 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  relationTitle: { fontSize: 18, fontWeight: '900' },
+  relationTitle: { fontSize: 18, fontWeight: '700' },
   relationSub: { fontSize: 13, marginTop: 2 },
   badgeRow: { flexDirection: 'row', marginTop: 8 },
   linkButton: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 4 },
-  linkButtonText: { fontSize: 13.5, fontWeight: '800' },
+  linkButtonText: { fontSize: 14, fontWeight: '700' },
   section: { gap: 12 },
   inlineActions: { flexDirection: 'row', gap: 10 },
   careActions: { flexDirection: 'row', gap: 8 },
   careAction: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
-  careActionText: { fontSize: 12.5, fontWeight: '800' },
+  careActionText: { fontSize: 13, fontWeight: '600' },
   danger: { borderTopWidth: 1, paddingTop: 16, gap: 8 },
   dependentActions: { gap: 8 },
 });

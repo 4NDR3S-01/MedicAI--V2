@@ -20,7 +20,7 @@ export function FloatingActionButton({
   onPress,
   accessibilityLabel,
   backgroundColor = theme.colors.accentPrimary,
-  iconColor = '#fff',
+  iconColor = theme.colors.buttonText,
 }: Readonly<FloatingActionButtonProps>) {
   return (
     <View style={styles.container} pointerEvents="box-none">

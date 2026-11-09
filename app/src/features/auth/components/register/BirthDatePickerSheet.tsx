@@ -94,7 +94,7 @@ export function BirthDatePickerSheet({
             {formatBirthDateLong(formatBirthDate(draft))}
           </Text>
           <View style={[styles.ageBadge, { backgroundColor: `${theme.colors.accentPrimary}22` }]}>
-            <Text style={[styles.ageBadgeText, { color: theme.colors.accentPrimary }]}>
+            <Text style={[styles.ageBadgeText, { color: theme.colors.accentPrimaryText }]}>
               {age} años
             </Text>
           </View>
@@ -217,7 +217,7 @@ function PickerColumn({ theme, title, options, selected, onSelect, wide }: Reado
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   preview: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" },
-  previewDate: { fontSize: 17, fontWeight: "700" },
+  previewDate: { fontSize: 18, fontWeight: "700" },
   ageBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   ageBadgeText: { fontSize: 13, fontWeight: "800" },
   columns: { flexDirection: "row", gap: 10 },
@@ -234,5 +234,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   optionText: { fontSize: 16 },
-  note: { fontSize: 12.5, marginTop: 12, textAlign: "center" },
+  note: { fontSize: 13, marginTop: 12, textAlign: "center" },
 });

@@ -123,7 +123,7 @@ export function DeleteAccountSheet({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
-  lead: { fontSize: 14.5, fontWeight: '700' },
+  lead: { fontSize: 15, fontWeight: '700' },
   list: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   rowText: { flex: 1, fontSize: 14, lineHeight: 20 },

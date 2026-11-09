@@ -125,6 +125,6 @@ const styles = StyleSheet.create({
   subtitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   subtitle: { fontSize: 14 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  badgeText: { fontSize: 12.5, fontWeight: '800' },
+  badgeText: { fontSize: 13, fontWeight: '600' },
   text: { fontSize: 15, lineHeight: 22 },
 });

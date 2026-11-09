@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 },
   headerText: { flex: 1, gap: 2 },
   title: { fontSize: 20, fontWeight: '800' },
-  subtitle: { fontSize: 13.5, lineHeight: 19 },
+  subtitle: { fontSize: 14, lineHeight: 19 },
   closeButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   body: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 20 },
   footer: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },

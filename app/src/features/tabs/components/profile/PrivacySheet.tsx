@@ -145,8 +145,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   points: { gap: 12 },
   point: { gap: 2 },
-  pointTitle: { fontSize: 14.5, fontWeight: '900' },
-  pointBody: { fontSize: 13.5, lineHeight: 19, fontWeight: '500' },
-  card: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
+  pointTitle: { fontSize: 15, fontWeight: '700' },
+  pointBody: { fontSize: 14, lineHeight: 19, fontWeight: '500' },
+  card: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 66 },
 });

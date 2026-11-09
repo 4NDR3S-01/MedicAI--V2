@@ -26,9 +26,9 @@ export function AttendanceSheet({ theme, appointment, busy, onClose, onSelect }:
   const current = shown?.attendanceStatus ?? 'PENDING';
 
   const options: { status: AppointmentAttendanceStatus; label: string; hint: string; icon: IconName; color: string }[] = [
-    { status: 'ATTENDED', label: 'Asistí', hint: 'Fui a la consulta', icon: 'check-circle', color: theme.colors.success },
+    { status: 'ATTENDED', label: 'Asistí', hint: 'Fui a la consulta', icon: 'check-circle', color: theme.colors.successText },
     { status: 'MISSED', label: 'No asistí', hint: 'No pude ir a la consulta', icon: 'close-circle-outline', color: theme.colors.textMuted },
-    { status: 'PENDING', label: 'Sin marcar', hint: 'Volverá a "por confirmar"', icon: 'help-circle-outline', color: theme.colors.accentTertiary },
+    { status: 'PENDING', label: 'Sin marcar', hint: 'Volverá a "por confirmar"', icon: 'help-circle-outline', color: theme.colors.warningText },
   ];
 
   return (
@@ -78,6 +78,6 @@ const styles = StyleSheet.create({
   list: { gap: 10 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1.5 },
   optionText: { flex: 1, gap: 2 },
-  optionLabel: { fontSize: 16, fontWeight: '800' },
+  optionLabel: { fontSize: 16, fontWeight: '700' },
   optionHint: { fontSize: 13 },
 });

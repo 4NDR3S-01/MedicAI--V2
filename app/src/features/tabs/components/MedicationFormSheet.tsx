@@ -675,7 +675,7 @@ export function MedicationFormSheet({
                         : { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder },
                     ]}
                   >
-                    <Text style={[styles.weekDayText, { color: selected ? '#fff' : theme.colors.textSecondary }]}>{day.short}</Text>
+                    <Text style={[styles.weekDayText, { color: selected ? theme.colors.buttonText : theme.colors.textSecondary }]}>{day.short}</Text>
                   </PressableScale>
                 );
               })}
@@ -1101,21 +1101,21 @@ const styles = StyleSheet.create({
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   weekRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
   weekDay: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  weekDayText: { fontSize: 14, fontWeight: '800' },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 14, padding: 8, paddingLeft: 14 },
+  weekDayText: { fontSize: 14, fontWeight: '700' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 12, padding: 8, paddingLeft: 14 },
   stepperLabel: { fontSize: 15, fontWeight: '600', minWidth: 44 },
   stepperButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  stepperValue: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  stepperValue: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', fontVariant: ['tabular-nums'] },
   steps: { gap: 10 },
   stepCard: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12 },
   stepHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  stepTitle: { fontSize: 14, fontWeight: '800' },
+  stepTitle: { fontSize: 14, fontWeight: '700' },
   stepUnit: { fontSize: 15, fontWeight: '700', minWidth: 60, paddingTop: 15 },
   stockRow: { flexDirection: 'row', gap: 10 },
-  selector: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14 },
+  selector: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14 },
   selectorText: { flex: 1, fontSize: 16 },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12 },
-  previewText: { flex: 1, fontSize: 13.5, lineHeight: 19 },
+  previewText: { flex: 1, fontSize: 14, lineHeight: 19 },
   formError: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
   group: { gap: 20 },
   locked: { opacity: 0.5 },

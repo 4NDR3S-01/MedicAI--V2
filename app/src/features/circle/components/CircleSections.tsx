@@ -90,7 +90,7 @@ export function CircleSections({
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.more, { borderColor: theme.colors.surfaceBorder }, pressed && styles.pressed]}
               >
-                <Text style={[styles.moreText, { color: theme.colors.accentSecondary }]}>
+                <Text style={[styles.moreText, { color: theme.colors.accentSecondaryText }]}>
                   Mostrar {Math.min(hidden, PAGE_SIZE)} más · quedan {hidden}
                 </Text>
               </Pressable>
@@ -149,7 +149,7 @@ export function CircleSections({
                 </View>
                 {onReinvite ? (
                   <Pressable onPress={() => onReinvite(item)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Invitar de nuevo a ${displayName(item.person)}`}>
-                    <Text style={[styles.reinvite, { color: theme.colors.accentSecondary }]}>Invitar</Text>
+                    <Text style={[styles.reinvite, { color: theme.colors.accentSecondaryText }]}>Invitar</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -167,11 +167,11 @@ const styles = StyleSheet.create({
   sections: { gap: 22 },
   section: { gap: 10 },
   previousToggle: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  previousToggleText: { flex: 1, fontSize: 13.5, fontWeight: '800' },
+  previousToggleText: { flex: 1, fontSize: 14, fontWeight: '700' },
   previous: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderStyle: 'dashed', borderRadius: 16, padding: 12 },
   previousName: { fontSize: 14, fontWeight: '700' },
   previousMeta: { fontSize: 12, marginTop: 2 },
-  reinvite: { fontSize: 13.5, fontWeight: '800' },
-  more: { alignItems: 'center', paddingVertical: 12, borderWidth: 1, borderRadius: 14, borderStyle: 'dashed' },
-  moreText: { fontSize: 13.5, fontWeight: '800' },
+  reinvite: { fontSize: 14, fontWeight: '700' },
+  more: { alignItems: 'center', paddingVertical: 12, borderWidth: 1, borderRadius: 12, borderStyle: 'dashed' },
+  moreText: { fontSize: 14, fontWeight: '700' },
 });

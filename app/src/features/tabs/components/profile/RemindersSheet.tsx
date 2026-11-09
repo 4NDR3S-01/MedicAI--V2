@@ -136,5 +136,5 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  foot: { fontSize: 12.5, fontWeight: '600', textAlign: 'center' },
+  foot: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
 });

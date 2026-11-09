@@ -68,7 +68,7 @@ export function ProposalCard({
     footer = (
       <View style={styles.saved}>
         <MaterialCommunityIcons name="check-circle" size={18} color={theme.colors.success} />
-        <Text style={[styles.savedText, { color: theme.colors.success }]}>{savedText}</Text>
+        <Text style={[styles.savedText, { color: theme.colors.successText }]}>{savedText}</Text>
       </View>
     );
   } else if (status === 'dismissed') {
@@ -107,12 +107,12 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   actions: { flexDirection: 'row', gap: 8, paddingTop: 4 },
-  card: { borderRadius: 18, borderWidth: 1.5, padding: 14, gap: 6, marginTop: 4 },
+  card: { borderRadius: 16, borderWidth: 1.5, padding: 14, gap: 6, marginTop: 4 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
   icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  kind: { fontSize: 11.5, fontWeight: '900', letterSpacing: 0.5, textTransform: 'uppercase' },
-  title: { fontSize: 16, fontWeight: '900' },
-  detail: { fontSize: 13.5, fontWeight: '600' },
+  kind: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  title: { fontSize: 16, fontWeight: '700' },
+  detail: { fontSize: 14, fontWeight: '600' },
   saved: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4 },
-  savedText: { fontSize: 13.5, fontWeight: '800' },
+  savedText: { fontSize: 14, fontWeight: '700' },
 });
