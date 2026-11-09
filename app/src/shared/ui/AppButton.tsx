@@ -36,7 +36,7 @@ export function AppButton({
   const palette = {
     primary: { bg: theme.colors.accentPrimary, fg: theme.colors.buttonText, border: theme.colors.accentPrimary },
     secondary: { bg: theme.colors.inputBackground, fg: theme.colors.textSecondary, border: theme.colors.inputBorder },
-    ghost: { bg: 'transparent', fg: theme.colors.accentSecondary, border: 'transparent' },
+    ghost: { bg: 'transparent', fg: theme.colors.accentSecondaryText, border: 'transparent' },
   }[variant];
 
   const iconNode = icon ? <Ionicons name={icon} size={iconOnly ? 22 : 18} color={palette.fg} /> : null;

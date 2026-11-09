@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { AppButton, BottomSheet } from '../../../shared/ui';
 import type { MedicationData } from '../services/medications.service';
 import { dosageOnDay } from '../../../shared/services/dose-schedule';
@@ -107,7 +107,7 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
             </Text>
             <View style={[styles.badge, { backgroundColor: `${color}1F` }]}>
               <MaterialCommunityIcons name={meta.icon} size={14} color={color} />
-              <Text style={[styles.badgeText, { color }]}>{meta.label}</Text>
+              <Text style={[styles.badgeText, { color: readableText(theme, color) }]}>{meta.label}</Text>
             </View>
           </View>
         ) : undefined

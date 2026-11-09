@@ -91,6 +91,7 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
   const [groupFilter, setGroupFilter] = useState<GroupFilter>('all');
   const [groupsVisible, setGroupsVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   const groups = overview?.groups ?? [];
   const setGroups = (next: CircleGroup[]) => circle.update((current) => ({ ...current, groups: next }));
@@ -277,26 +278,21 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
             />
           }
         >
-          <View style={styles.titleBlock}>
-            <View style={styles.titleTopRow}>
-              <Text style={[styles.eyebrow, { color: theme.colors.accentPrimaryText }]}>Tu red de cuidado</Text>
-              <Pressable
-                onPress={() => setCodeVisible(true)}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.codeButton,
-                  { backgroundColor: `${theme.colors.accentPrimary}12`, borderColor: `${theme.colors.accentPrimary}30` },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <MaterialCommunityIcons name="ticket-confirmation-outline" size={18} color={theme.colors.accentPrimary} />
-                <Text style={[styles.codeButtonText, { color: theme.colors.accentPrimaryText }]}>Tengo un código</Text>
-              </Pressable>
-            </View>
+          <View style={styles.titleRow}>
             <Text style={[styles.title, { color: theme.colors.textPrimary }]} accessibilityRole="header">Círculo</Text>
-            <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-              Las personas que te acompañan con tus medicamentos y citas, y a quienes acompañas tú.
-            </Text>
+            <Pressable
+              onPress={() => setMenuVisible(true)}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Más opciones del Círculo"
+              style={({ pressed }) => [
+                styles.menuButton,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+                pressed && styles.pressed,
+              ]}
+            >
+              <MaterialCommunityIcons name="dots-horizontal" size={22} color={theme.colors.textPrimary} />
+            </Pressable>
           </View>
 
           {circle.errorMessage && overview ? (
@@ -318,34 +314,15 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
             <CareTodayPanel theme={theme} members={visibleOverview.members} data={careData.data} onOpen={(member) => openCare(member)} />
           ) : null}
 
-          {overview?.members.length ? (
-            <View style={styles.toolbar}>
-              {groups.length ? (
-                <SelectField
-                  theme={theme}
-                  value={groupFilter}
-                  options={groupOptions}
-                  onChange={setGroupFilter}
-                  accessibilityLabel="Mostrar grupo"
-                  style={styles.groupSelect}
-                />
-              ) : (
-                <Text style={[styles.toolbarHint, { color: theme.colors.textMuted }]}>Organiza a las personas en grupos</Text>
-              )}
-              <Pressable
-                onPress={() => setGroupsVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Administrar grupos"
-                style={({ pressed }) => [
-                  styles.groupsButton,
-                  { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <MaterialCommunityIcons name="folder-account-outline" size={20} color={theme.colors.accentSecondary} />
-                <Text style={[styles.groupsButtonText, { color: theme.colors.accentSecondaryText }]}>Grupos</Text>
-              </Pressable>
-            </View>
+          {overview?.members.length && groups.length ? (
+            <SelectField
+              theme={theme}
+              value={groupFilter}
+              options={groupOptions}
+              onChange={setGroupFilter}
+              accessibilityLabel="Mostrar grupo"
+              style={styles.groupSelect}
+            />
           ) : null}
 
           {showSearch ? (
@@ -354,17 +331,6 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
 
           {body}
 
-          {overview ? (
-            <Pressable
-              onPress={() => setHistoryVisible(true)}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.historyLink, pressed && styles.pressed]}
-            >
-              <MaterialCommunityIcons name="history" size={18} color={theme.colors.textSecondary} />
-              <Text style={[styles.historyLinkText, { color: theme.colors.textSecondary }]}>Historial de accesos a tu información</Text>
-              <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
-            </Pressable>
-          ) : null}
         </ScrollView>
       </Animated.View>
 
@@ -394,6 +360,25 @@ export function CircleScreen({ theme, contentBottomInset }: Readonly<CircleScree
             invitations: { ...current.invitations, sent: [invitation, ...current.invitations.sent] },
           }))
         }
+      />
+
+      <CircleMenuSheet
+        theme={theme}
+        visible={menuVisible}
+        showHistory={Boolean(overview)}
+        onClose={() => setMenuVisible(false)}
+        onCode={() => {
+          setMenuVisible(false);
+          setCodeVisible(true);
+        }}
+        onGroups={() => {
+          setMenuVisible(false);
+          setGroupsVisible(true);
+        }}
+        onHistory={() => {
+          setMenuVisible(false);
+          setHistoryVisible(true);
+        }}
       />
 
       <AddChoiceSheet
@@ -528,6 +513,56 @@ function AddChoiceSheet({
   );
 }
 
+/** Acciones poco frecuentes del Círculo, fuera de la vista principal. */
+function CircleMenuSheet({
+  theme,
+  visible,
+  showHistory,
+  onClose,
+  onCode,
+  onGroups,
+  onHistory,
+}: Readonly<{
+  theme: AppTheme;
+  visible: boolean;
+  showHistory: boolean;
+  onClose: () => void;
+  onCode: () => void;
+  onGroups: () => void;
+  onHistory: () => void;
+}>) {
+  const options = [
+    { icon: 'ticket-confirmation-outline' as const, title: 'Tengo un código', hint: 'Únete con el código que te compartieron.', onPress: onCode },
+    { icon: 'folder-account-outline' as const, title: 'Grupos', hint: 'Organiza a las personas (no cambia permisos).', onPress: onGroups },
+    ...(showHistory
+      ? [{ icon: 'history' as const, title: 'Historial de accesos', hint: 'Quién recibió o perdió acceso a tu información.', onPress: onHistory }]
+      : []),
+  ];
+  return (
+    <BottomSheet theme={theme} visible={visible} onClose={onClose} title="Círculo">
+      <View>
+        {options.map((option) => (
+          <Pressable
+            key={option.title}
+            onPress={option.onPress}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}
+          >
+            <View style={[styles.choiceIcon, { backgroundColor: `${theme.colors.accentPrimary}14` }]}>
+              <MaterialCommunityIcons name={option.icon} size={22} color={theme.colors.accentPrimaryText} />
+            </View>
+            <View style={styles.choiceText}>
+              <Text style={[styles.choiceTitle, { color: theme.colors.textPrimary }]}>{option.title}</Text>
+              <Text style={[styles.choiceHint, { color: theme.colors.textMuted }]}>{option.hint}</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+          </Pressable>
+        ))}
+      </View>
+    </BottomSheet>
+  );
+}
+
 function HowItWorks({ theme, icon, text }: Readonly<{ theme: AppTheme; icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }>) {
   return (
     <View style={styles.howRow}>
@@ -540,25 +575,16 @@ function HowItWorks({ theme, icon, text }: Readonly<{ theme: AppTheme; icon: key
 }
 
 const styles = StyleSheet.create({
-  historyLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, marginTop: 8 },
-  historyLinkText: { fontSize: 14, fontWeight: '700' },
   screen: { flex: 1 },
   content: { paddingHorizontal: 18, paddingTop: 14, gap: 18 },
   pressed: { opacity: 0.7 },
   section: { gap: 10 },
-  titleBlock: { gap: 3 },
-  titleTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 },
-  eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
-  codeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
-  codeButtonText: { fontSize: 13, fontWeight: '600' },
-  title: { fontSize: 32, fontWeight: '800', letterSpacing: -1, lineHeight: 36 },
-  subtitle: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6 },
+  menuButton: { width: 44, height: 44, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingVertical: 6 },
   empty: { gap: 14 },
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  toolbarHint: { flex: 1, fontSize: 13, fontWeight: '600' },
-  groupSelect: { flex: 1, minHeight: 46 },
-  groupsButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 46, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.5 },
-  groupsButtonText: { fontSize: 14, fontWeight: '700' },
+  groupSelect: { minHeight: 46 },
   choices: { gap: 10 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 16, padding: 14 },
   choiceIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

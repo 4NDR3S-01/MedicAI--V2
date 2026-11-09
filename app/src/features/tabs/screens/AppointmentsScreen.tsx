@@ -280,22 +280,10 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   // ── Render ────────────────────────────────────────────────────────────────
   const hasAppointments = appointments.length > 0;
 
-  const todayLabel = now.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
-
   const header = (
     <View>
       <View style={styles.titleBlock}>
-        <View style={styles.titleTopRow}>
-          <Text style={[styles.eyebrow, { color: theme.colors.accentSecondaryText }]}>Citas médicas</Text>
-          <View style={[styles.monthBadge, { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}30` }]}>
-            <MaterialCommunityIcons name="calendar-month-outline" size={18} color={theme.colors.accentSecondary} />
-            <Text style={[styles.monthBadgeText, { color: theme.colors.accentSecondaryText }]}>{todayLabel}</Text>
-          </View>
-        </View>
-        <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]} accessibilityRole="header">Agenda</Text>
-        <Text style={[styles.screenSubtitle, { color: theme.colors.textSecondary }]}>
-          Tus consultas, recordatorios y asistencia en un solo lugar.
-        </Text>
+        <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]} accessibilityRole="header">Citas</Text>
       </View>
 
       {buckets.awaitingCount > 0 && !(segment === 'history' && historyFilter === 'awaiting') ? (
@@ -441,7 +429,7 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
           data={visibleAppointments}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={header}
-          ListEmptyComponent={emptyState ? <Animated.View style={swap}>{emptyState}</Animated.View> : null}
+          ListEmptyComponent={emptyState ? <Animated.View style={[swap, styles.listEmpty]}>{emptyState}</Animated.View> : null}
           renderItem={({ item }) => (
             <Animated.View style={swap}>
               <AppointmentCard
@@ -614,7 +602,8 @@ function SegmentButton({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   listContent: { paddingHorizontal: 18, paddingTop: 14 },
-  listContentEmpty: { flexGrow: 1, justifyContent: 'center' },
+  listContentEmpty: { flexGrow: 1 },
+  listEmpty: { paddingTop: 40 },
   separator: { height: 10 },
   pressed: { opacity: 0.7 },
 
@@ -648,13 +637,8 @@ const styles = StyleSheet.create({
   filterLabel: { fontSize: 13, fontWeight: '600' },
   filterSelect: { minWidth: 190, minHeight: 44 },
 
-  titleBlock: { gap: 3, marginBottom: 16 },
-  titleTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 },
-  eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
-  monthBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
-  monthBadgeText: { fontSize: 12, fontWeight: '600' },
-  screenTitle: { fontSize: 32, fontWeight: '800', letterSpacing: -1, lineHeight: 36 },
-  screenSubtitle: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  titleBlock: { marginBottom: 16 },
+  screenTitle: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6 },
 
   listFooterText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 12, paddingHorizontal: 12 },
 });

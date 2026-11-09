@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { PressableScale } from '../../../shared/ui';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -30,7 +30,7 @@ export function AttentionList({ theme, items }: Readonly<{ theme: AppTheme; item
               <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{item.title}</Text>
               <Text style={[styles.body, { color: theme.colors.textSecondary }]}>{item.body}</Text>
             </View>
-            <Text style={[styles.action, { color }]}>{item.action}</Text>
+            <Text style={[styles.action, { color: readableText(theme, color) }]}>{item.action}</Text>
           </PressableScale>
         );
       })}

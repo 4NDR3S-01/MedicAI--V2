@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { PressableScale } from '../../../shared/ui';
 import { dosageOnDay } from '../../../shared/services/dose-schedule';
 import { DOSE_STATE_META, doseStateColor } from '../../tabs/components/MedicationCard';
@@ -61,7 +61,7 @@ export function DoseTimeline({
               </View>
               <View style={[styles.badge, { backgroundColor: `${color}14` }]}>
                 <MaterialCommunityIcons name={meta.icon} size={13} color={color} />
-                <Text style={[styles.badgeText, { color }]}>{meta.label}</Text>
+                <Text style={[styles.badgeText, { color: readableText(theme, color) }]}>{meta.label}</Text>
               </View>
             </PressableScale>
           );

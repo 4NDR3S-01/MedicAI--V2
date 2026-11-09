@@ -4,7 +4,6 @@ import {
   Alert,
   Animated,
   AppState,
-  Easing,
   FlatList,
   LayoutAnimation,
   Pressable,
@@ -30,7 +29,7 @@ import * as medicationsAPI from '../services/medications.service';
 import { logDose, pendingDoseLogs, removeQueuedDose } from '../services/dose-queue';
 import type { MedicationData, MedicationLog } from '../services/medications.service';
 import { DoseActionSheet } from '../components/DoseActionSheet';
-import { MedicationCard } from '../components/MedicationCard';
+import { MedicationCard, doseStateColor } from '../components/MedicationCard';
 import { MedicationFormSheet } from '../components/MedicationFormSheet';
 import { EmptyState, SkeletonList } from '../components/ScreenStates';
 import { isAsNeeded } from '../../../shared/services/dose-schedule';
@@ -41,6 +40,7 @@ import {
   getTodayDoseSlots,
   withStockChange,
   type DoseSlot,
+  type DoseState,
 } from '../utils/dose-status';
 
 const CACHE_KEY = 'medicai_medications_cache_v2';
@@ -216,11 +216,13 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       .filter((med) => !isAsNeeded(med))
       .flatMap((med) => (slotsById.get(med.id) ?? []).map((slot) => ({ med, slot })));
     const taken = slots.filter(({ slot }) => slot.state === 'taken').length;
-    const missed = slots.filter(({ slot }) => slot.state === 'missed').length;
+    const missedSlots = slots.filter(({ slot }) => slot.state === 'missed');
+    const missed = missedSlots.length;
     const next = slots
       .filter(({ slot }) => slot.state === 'due' || slot.state === 'upcoming')
       .sort((a, b) => a.slot.at.getTime() - b.slot.at.getTime())[0];
-    return { total: slots.length, taken, missed, next };
+    const states = [...slots].sort((a, b) => a.slot.at.getTime() - b.slot.at.getTime()).map(({ slot }) => slot.state);
+    return { total: slots.length, taken, missed, next, firstMissed: missedSlots[0], states };
   }, [activeMeds, slotsById]);
 
   // ── Acciones ──────────────────────────────────────────────────────────────
@@ -383,8 +385,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 
   // ── Render ────────────────────────────────────────────────────────────────
   const hasMedications = medications.length > 0;
-  const progress = summary.total ? summary.taken / summary.total : 0;
-  const greeting = getGreeting(now);
 
   const header = (
     <View>
@@ -400,34 +400,19 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         </Pressable>
       ) : null}
 
+      <View style={styles.titleRow}>
+        <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]} accessibilityRole="header">Medicinas</Text>
+        {hasMedications && summary.total ? (
+          <NextDoseChip theme={theme} summary={summary} now={now} onOpen={(target) => setDoseTarget(target)} />
+        ) : null}
+      </View>
+
+      {hasMedications && summary.total ? (
+        <DayProgress theme={theme} states={summary.states} />
+      ) : null}
+
       {hasMedications ? (
         <>
-          <View style={styles.heroRow}>
-            <View style={styles.heroGreeting}>
-              <MaterialCommunityIcons name={greeting.icon} size={26} color={theme.colors.accentTertiary} style={styles.greetingIcon} />
-              <Text style={[styles.greetingText, { color: theme.colors.textPrimary }]}>{greeting.text}</Text>
-              <Text style={[styles.greetingSubtitle, { color: theme.colors.textMuted }]}>{greeting.subtitle}</Text>
-            </View>
-            {summary.next ? (
-              <View style={[styles.countdownChip, { backgroundColor: `${theme.colors.accentPrimary}12`, borderColor: `${theme.colors.accentPrimary}30` }]}>
-                <MaterialCommunityIcons name="timer-sand" size={18} color={theme.colors.accentPrimary} />
-                <Text style={[styles.countdownText, { color: theme.colors.accentPrimaryText }]}>
-                  Próxima: {countdownLabel(summary.next.slot.at, now)}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <ProgressCard
-            theme={theme}
-            taken={summary.taken}
-            total={summary.total}
-            missed={summary.missed}
-            activeCount={activeMeds.length}
-            inactiveCount={pausedMeds.length}
-            progress={progress}
-            reducedMotion={reducedMotion}
-          />
 
           <View style={[styles.segmentBar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
             <Pressable
@@ -519,7 +504,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           data={visibleMeds}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={header}
-          ListEmptyComponent={emptyState ? <Animated.View style={swap}>{emptyState}</Animated.View> : null}
+          ListEmptyComponent={emptyState ? <Animated.View style={[swap, styles.listEmpty]}>{emptyState}</Animated.View> : null}
           renderItem={({ item }) => (
             <Animated.View style={swap}>
               <MedicationCard
@@ -537,9 +522,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           )}
           ItemSeparatorComponent={Separator}
           ListFooterComponent={
-            visibleMeds.length > 0 ? (
+            visibleMeds.length > 0 && segment === 'active' ? (
               <Text style={[styles.listFooterText, { color: theme.colors.textMuted }]}>
-                Toca una hora para registrar la toma · Mantén presionada una tarjeta para editar
+                Toca una hora para registrarla · Toca la tarjeta para ver opciones
               </Text>
             ) : null
           }
@@ -598,21 +583,6 @@ const Separator = () => <View style={styles.separator} />;
 
 // ─── Textos del encabezado ──────────────────────────────────────────────────
 
-type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
-
-const getGreeting = (date: Date): { icon: IconName; text: string; subtitle: string } => {
-  const hour = date.getHours();
-  if (hour < 12) return { icon: 'weather-sunset-up', text: 'Buenos días', subtitle: 'Tu rutina matutina' };
-  if (hour < 18) return { icon: 'white-balance-sunny', text: 'Buenas tardes', subtitle: 'No olvides tus dosis' };
-  return { icon: 'weather-night', text: 'Buenas noches', subtitle: 'Últimos recordatorios del día' };
-};
-
-const getMotivationalPhrase = (progress: number): string => {
-  if (progress === 0) return 'Cada dosis cuenta, empieza ahora';
-  if (progress < 0.5) return 'Vas bien, mantén el ritmo';
-  if (progress < 1) return 'Casi terminas el día';
-  return 'Tratamiento completo, excelente trabajo';
-};
 
 const countdownLabel = (target: Date, now: Date): string => {
   const diffMs = target.getTime() - now.getTime();
@@ -623,90 +593,137 @@ const countdownLabel = (target: Date, now: Date): string => {
   return `${minutes}m`;
 };
 
-// ─── Tarjeta de progreso ────────────────────────────────────────────────────
+// ─── Encabezado: próxima toma y progreso del día ───────────────────────────
 
-function ProgressCard({
-  theme,
-  taken,
-  total,
-  missed,
-  activeCount,
-  inactiveCount,
-  progress,
-  reducedMotion,
-}: Readonly<{
-  theme: AppTheme;
-  taken: number;
+type DaySummary = {
   total: number;
+  taken: number;
   missed: number;
-  activeCount: number;
-  inactiveCount: number;
-  progress: number;
-  reducedMotion: boolean;
-}>) {
-  const fill = useRef(new Animated.Value(progress)).current;
-  useEffect(() => {
-    if (reducedMotion) {
-      fill.setValue(progress);
-      return;
-    }
-    Animated.timing(fill, { toValue: progress, duration: 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [progress, reducedMotion, fill]);
+  next?: { med: MedicationData; slot: DoseSlot };
+  firstMissed?: { med: MedicationData; slot: DoseSlot };
+};
 
-  const complete = progress >= 1;
-  let motivationIcon: IconName = 'run-fast';
-  if (complete) motivationIcon = 'trophy';
-  else if (progress >= 0.5) motivationIcon = 'thumb-up-outline';
+/**
+ * Lo que toca ahora, de un vistazo. Teal mientras se espera; naranja cuando
+ * hay que actuar (es la hora o quedó una atrás); verde con el día completo.
+ * Tocarlo abre esa toma.
+ */
+function NextDoseChip({
+  theme,
+  summary,
+  now,
+  onOpen,
+}: Readonly<{ theme: AppTheme; summary: DaySummary; now: Date; onOpen: (target: DoseTarget) => void }>) {
+  let label: string;
+  let icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  let tone: string;
+  let toneText: string;
+  let target: { med: MedicationData; slot: DoseSlot } | undefined;
+
+  if (summary.next?.slot.state === 'due') {
+    label = 'Es la hora';
+    icon = 'alarm-light';
+    tone = theme.colors.accentTertiary;
+    toneText = theme.colors.warningText;
+    target = summary.next;
+  } else if (summary.firstMissed) {
+    label = summary.missed === 1 ? '1 atrasada' : `${summary.missed} atrasadas`;
+    icon = 'alert-circle-outline';
+    tone = theme.colors.accentTertiary;
+    toneText = theme.colors.warningText;
+    target = summary.firstMissed;
+  } else if (summary.next) {
+    label = `Próxima: ${countdownLabel(summary.next.slot.at, now)}`;
+    icon = 'timer-sand';
+    tone = theme.colors.accentPrimary;
+    toneText = theme.colors.accentPrimaryText;
+    target = summary.next;
+  } else {
+    label = 'Todo al día';
+    icon = 'check-circle';
+    tone = theme.colors.success;
+    toneText = theme.colors.successText;
+  }
+
+  const style = [styles.chip, { backgroundColor: `${tone}1A`, borderColor: `${tone}40` }];
+  const content = (
+    <>
+      <MaterialCommunityIcons name={icon} size={16} color={toneText} />
+      <Text style={[styles.chipText, { color: toneText }]} numberOfLines={1}>{label}</Text>
+    </>
+  );
+
+  if (!target) return <View style={style}>{content}</View>;
+  const open = target;
+  return (
+    <Pressable
+      onPress={() => onOpen({ medication: open.med, slot: open.slot })}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${open.med.name} a las ${open.slot.time}`}
+      accessibilityHint="Abre esta toma"
+      style={({ pressed }) => [...style, pressed && { opacity: 0.7 }]}
+    >
+      {content}
+    </Pressable>
+  );
+}
+
+const LEGEND: { state: DoseState; one: string; many: string }[] = [
+  { state: 'taken', one: 'tomada', many: 'tomadas' },
+  { state: 'skipped', one: 'omitida', many: 'omitidas' },
+  { state: 'missed', one: 'sin registrar', many: 'sin registrar' },
+  { state: 'due', one: 'es la hora', many: 'es la hora' },
+  { state: 'upcoming', one: 'pendiente', many: 'pendientes' },
+];
+
+/**
+ * El día en una tarjeta: cifra, porcentaje y una barra con un tramo por toma
+ * (mismos colores que las horas de cada medicamento) + leyenda con conteos.
+ */
+function DayProgress({ theme, states }: Readonly<{ theme: AppTheme; states: DoseState[] }>) {
+  const total = states.length;
+  const taken = states.filter((state) => state === 'taken').length;
+  const percent = total ? Math.round((taken / total) * 100) : 0;
+  const complete = total > 0 && taken === total;
+  const counts = LEGEND.map((item) => ({ ...item, count: states.filter((state) => state === item.state).length })).filter(
+    (item) => item.count > 0,
+  );
+  const segmentColor = (state: DoseState) =>
+    state === 'upcoming' ? `${theme.colors.accentPrimary}40` : doseStateColor(theme, state);
 
   return (
-    <View style={[styles.progressCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-      <View style={styles.progressHeader}>
-        <View>
-          <Text style={[styles.progressBigNumber, { color: theme.colors.textPrimary }]}>
-            {taken}
-            <Text style={[styles.progressSmall, { color: theme.colors.textMuted }]}>/{total}</Text>
-          </Text>
-          <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>dosis hoy</Text>
-        </View>
-        <View style={styles.progressRightStat}>
-          <View style={styles.progressStatItem}>
-            <Text style={[styles.progressStatValue, { color: theme.colors.accentPrimaryText }]}>{activeCount}</Text>
-            <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>activos</Text>
+    <View
+      style={[styles.progressCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+      accessible
+      accessibilityLabel={`${taken} de ${total} tomas hoy. ${counts.map((item) => `${item.count} ${item.count === 1 ? item.one : item.many}`).join(', ')}.`}
+    >
+      <View style={styles.progressRow}>
+        <Text style={[styles.progressText, { color: theme.colors.textSecondary }]}>
+          <Text style={[styles.progressNumber, { color: theme.colors.textPrimary }]}>{taken}</Text>
+          <Text style={{ color: theme.colors.textMuted }}>/{total}</Text>  tomas hoy
+        </Text>
+        <Text style={[styles.progressPercent, { color: complete ? theme.colors.successText : theme.colors.accentPrimaryText }]}>
+          {complete ? '¡Completo!' : `${percent}%`}
+        </Text>
+      </View>
+
+      <View style={styles.segments}>
+        {states.map((state, index) => (
+          <View key={index} style={[styles.segment, { backgroundColor: segmentColor(state) }]} />
+        ))}
+      </View>
+
+      <View style={styles.legend}>
+        {counts.map((item) => (
+          <View key={item.state} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: segmentColor(item.state) }]} />
+            <Text style={[styles.legendText, { color: item.state === 'missed' || item.state === 'due' ? theme.colors.warningText : theme.colors.textSecondary }]}>
+              <Text style={styles.legendCount}>{item.count}</Text> {item.count === 1 ? item.one : item.many}
+            </Text>
           </View>
-          <View style={[styles.progressStatDivider, { backgroundColor: theme.colors.surfaceBorder }]} />
-          <View style={styles.progressStatItem}>
-            <Text style={[styles.progressStatValue, { color: theme.colors.textMuted }]}>{inactiveCount}</Text>
-            <Text style={[styles.progressStatLabel, { color: theme.colors.textMuted }]}>inactivos</Text>
-          </View>
-        </View>
+        ))}
       </View>
-
-      <View
-        style={[styles.progressBarBg, { backgroundColor: `${theme.colors.accentPrimary}10` }]}
-        accessibilityRole="progressbar"
-        accessibilityValue={{ min: 0, max: total, now: taken }}
-      >
-        <Animated.View
-          style={[
-            styles.progressBarFill,
-            { backgroundColor: complete ? theme.colors.success : theme.colors.accentPrimary, transform: [{ scaleX: fill }] },
-          ]}
-        />
-      </View>
-
-      <View style={[styles.motivationRow, { backgroundColor: `${theme.colors.accentPrimary}08` }]}>
-        <MaterialCommunityIcons name={motivationIcon} size={16} color={complete ? theme.colors.success : theme.colors.accentPrimary} />
-        <Text style={[styles.motivationText, { color: theme.colors.accentPrimaryText }]}>{getMotivationalPhrase(progress)}</Text>
-      </View>
-
-      {missed > 0 ? (
-        <View style={[styles.motivationRow, { backgroundColor: `${theme.colors.accentTertiary}10` }]}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={16} color={theme.colors.accentTertiary} />
-          <Text style={[styles.motivationText, { color: theme.colors.warningText }]}>
-            {missed === 1 ? '1 toma sin registrar: tócala para registrarla' : `${missed} tomas sin registrar: tócalas para registrarlas`}
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -714,44 +731,30 @@ function ProgressCard({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   listContent: { paddingHorizontal: 18, paddingTop: 14 },
-  listContentEmpty: { flexGrow: 1, justifyContent: 'center' },
+  listContentEmpty: { flexGrow: 1 },
+  listEmpty: { paddingTop: 40 },
   separator: { height: 10 },
 
   issue: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 14 },
   issueText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '500' },
   issueAction: { fontSize: 13, fontWeight: '600' },
 
-  heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 },
-  heroGreeting: { gap: 2, flexShrink: 1 },
-  greetingIcon: { marginBottom: 2 },
-  greetingText: { fontSize: 24, fontWeight: '800', letterSpacing: -0.8 },
-  greetingSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  countdownChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  countdownText: { fontSize: 13, fontWeight: '600' },
-
-  progressCard: { borderRadius: 24, borderWidth: 1, padding: 16, marginBottom: 16, gap: 14 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressBigNumber: { fontSize: 30, fontWeight: '800', letterSpacing: -1 },
-  progressSmall: { fontSize: 16, fontWeight: '700' },
-  progressLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
-  progressRightStat: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  progressStatItem: { alignItems: 'center', gap: 2 },
-  progressStatValue: { fontSize: 18, fontWeight: '700' },
-  progressStatLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  progressStatDivider: { width: 1, height: 28, borderRadius: 1 },
-  progressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressBarFill: { flex: 1, borderRadius: 3, transformOrigin: 'left' },
-  motivationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12 },
-  motivationText: { fontSize: 12, fontWeight: '600', flex: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 },
+  screenTitle: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6, flexShrink: 1 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
+  chipText: { fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  progressCard: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 12, marginBottom: 16 },
+  progressRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  progressText: { fontSize: 15, fontWeight: '500' },
+  progressNumber: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  progressPercent: { fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  segments: { flexDirection: 'row', gap: 4, height: 10 },
+  segment: { flex: 1, borderRadius: 999 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 13, fontWeight: '500' },
+  legendCount: { fontWeight: '700' },
 
   segmentBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 16, padding: 4, marginBottom: 16, gap: 4 },
   segmentBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12 },

@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import { AppButton } from '../../../shared/ui';
 import type { Proposal } from '../services/assistant.service';
 
@@ -91,7 +91,7 @@ export function ProposalCard({
           <MaterialCommunityIcons name={icon} size={18} color={color} />
         </View>
         <View style={styles.flex}>
-          <Text style={[styles.kind, { color }]}>{kind}</Text>
+          <Text style={[styles.kind, { color: readableText(theme, color) }]}>{kind}</Text>
           <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{title}</Text>
         </View>
       </View>

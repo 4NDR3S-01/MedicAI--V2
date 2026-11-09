@@ -22,7 +22,6 @@ import { AttentionList, type AttentionItem } from '../components/AttentionList';
 import { DoseTimeline } from '../components/DoseTimeline';
 import { HomeSkeleton } from '../components/HomeSkeleton';
 import { NextAppointmentCard } from '../components/NextAppointmentCard';
-import { SectionHeader } from '../components/SectionHeader';
 import { TodayCard } from '../components/TodayCard';
 import { useHomeData, type TodayDose } from '../hooks/useHomeData';
 
@@ -278,26 +277,25 @@ export function HomeScreen({
               </Reveal>
             ) : null}
 
-            <Reveal index={next()} style={styles.section}>
-              <SectionHeader theme={theme} title="Asistente" />
+            <Reveal index={next()}>
               <PressableScale
                 onPress={onOpenAssistant}
                 pressedScale={0.98}
                 accessibilityRole="button"
                 accessibilityLabel="Preguntar al asistente de MedicAI"
-                style={[styles.assistant, { backgroundColor: theme.colors.accentPrimary }]}
+                accessibilityHint="Orienta, pero no reemplaza a tu médico"
+                style={[styles.assistant, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
               >
-                <View style={styles.assistantText}>
-                  <Text style={[styles.assistantTitle, { color: theme.colors.buttonText }]}>¿Dudas sobre un medicamento?</Text>
-                  <Text style={[styles.assistantBody, { color: theme.colors.buttonText }]}>
-                    Pregunta por interacciones, efectos o cómo tomarlo. Orienta, pero no reemplaza a tu médico.
-                  </Text>
-                  <View style={[styles.assistantCta, { backgroundColor: theme.colors.buttonText }]}>
-                    <MaterialCommunityIcons name="chat-processing-outline" size={16} color={theme.colors.accentPrimary} />
-                    <Text style={[styles.assistantCtaText, { color: theme.colors.accentPrimaryText }]}>Preguntar</Text>
-                  </View>
+                <View style={[styles.assistantIcon, { backgroundColor: `${theme.colors.accentSecondary}18` }]}>
+                  <MaterialCommunityIcons name="robot-outline" size={24} color={theme.colors.accentSecondaryText} />
                 </View>
-                <MaterialCommunityIcons name="robot-outline" size={96} color="rgba(255,255,255,0.16)" style={styles.assistantIcon} />
+                <View style={styles.assistantText}>
+                  <Text style={[styles.assistantTitle, { color: theme.colors.textPrimary }]}>Pregúntale al asistente</Text>
+                  <Text style={[styles.assistantBody, { color: theme.colors.textMuted }]} numberOfLines={1}>
+                    Dudas sobre tus medicamentos, por texto o voz
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textMuted} />
               </PressableScale>
             </Reveal>
           </>
@@ -329,11 +327,9 @@ const styles = StyleSheet.create({
   avatar: { width: 54, height: 54, borderRadius: 27, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: 54, height: 54, borderRadius: 27 },
   avatarText: { fontSize: 20, fontWeight: '800' },
-  assistant: { borderRadius: 24, padding: 20, overflow: 'hidden', minHeight: 150 },
-  assistantText: { width: '78%', gap: 8 },
-  assistantTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
-  assistantBody: { fontSize: 14, lineHeight: 19, fontWeight: '500', opacity: 0.92 },
-  assistantCta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, marginTop: 4 },
-  assistantCtaText: { fontSize: 13, fontWeight: '600' },
-  assistantIcon: { position: 'absolute', right: -14, bottom: -14, transform: [{ rotate: '-10deg' }] },
+  assistant: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 20, borderWidth: 1, padding: 16 },
+  assistantIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  assistantText: { flex: 1, gap: 2 },
+  assistantTitle: { fontSize: 16, fontWeight: '700' },
+  assistantBody: { fontSize: 14, fontWeight: '500' },
 });

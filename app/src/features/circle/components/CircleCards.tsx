@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import type { CircleInvitation, CircleMember } from '../services/circle.service';
 import { accessHeadline, hasAnyPermission } from '../utils/permissions';
 import { careSummary, displayName, firstName, relationLabel, relationToMe } from '../utils/relations';
@@ -224,7 +224,7 @@ function TextAction({
       style={({ pressed }) => [styles.textAction, { opacity: disabled ? 0.5 : pressed ? 0.6 : 1 }]}
     >
       <MaterialCommunityIcons name={icon} size={16} color={color} />
-      <Text style={[styles.textActionLabel, { color }]}>{label}</Text>
+      <Text style={[styles.textActionLabel, { color: readableText(theme, color) }]}>{label}</Text>
     </Pressable>
   );
 }

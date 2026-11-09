@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { AppTheme } from '../../../shared/theme';
+import { readableText, type AppTheme } from '../../../shared/theme';
 import type { AppointmentAttendanceStatus, AppointmentData } from '../services/appointments.service';
 import {
   appointmentDate,
@@ -101,7 +101,7 @@ function AppointmentCardBase({
       <View style={styles.header}>
         <View style={[styles.dateBox, { backgroundColor: `${color}12` }]}>
           <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{parts?.day ?? '--'}</Text>
-          <Text style={[styles.dateMonth, { color }]}>{parts?.month ?? '--'}</Text>
+          <Text style={[styles.dateMonth, { color: readableText(theme, color) }]}>{parts?.month ?? '--'}</Text>
         </View>
         <View style={styles.headerInfo}>
           <Text style={[styles.title, { color: theme.colors.textPrimary }]} numberOfLines={2}>
@@ -109,7 +109,7 @@ function AppointmentCardBase({
           </Text>
           <View style={styles.whenRow}>
             <MaterialCommunityIcons name="clock-outline" size={14} color={color} />
-            <Text style={[styles.whenText, { color }]}>{whenLabel}</Text>
+            <Text style={[styles.whenText, { color: readableText(theme, color) }]}>{whenLabel}</Text>
           </View>
         </View>
       </View>
@@ -196,7 +196,7 @@ function AppointmentCardBase({
           style={[styles.statusPill, { backgroundColor: `${color}14` }]}
         >
           <MaterialCommunityIcons name={meta.icon} size={14} color={color} />
-          <Text style={[styles.statusText, { color }]}>{meta.label}</Text>
+          <Text style={[styles.statusText, { color: readableText(theme, color) }]}>{meta.label}</Text>
           {canChangeAttendance ? <MaterialCommunityIcons name="chevron-down" size={14} color={color} /> : null}
         </Pressable>
         {canManage ? (

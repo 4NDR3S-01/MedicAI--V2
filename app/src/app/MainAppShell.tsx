@@ -15,7 +15,6 @@ import { registerPushToken } from '../features/tabs/services/push-registration';
 import * as Notifications from 'expo-notifications';
 import { HomeScreen } from '../features/home';
 import type { AppTheme } from '../shared/theme';
-import { FloatingChatButton } from '../shared/ui';
 import { AssistantChat } from '../features/assistant/AssistantChat';
 import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBottomBar';
 import type { ProfileUser } from '../features/auth/services/auth.service';
@@ -140,7 +139,6 @@ export function MainAppShell({
   return (
     <View style={{ flex: 1 }}>
       {body}
-      {tab === 'home' ? <FloatingChatButton theme={theme} onPress={() => setChatVisible(true)} /> : null}
       <AssistantChat theme={theme} visible={chatVisible} onClose={closeChat} />
       <AppBottomBar theme={theme} activeTab={tab} onSelect={setTab} />
     </View>
