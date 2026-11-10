@@ -1,11 +1,10 @@
-import { useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ActivityIndicator, Alert, Image, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../../shared/theme';
 import { BottomSheet, PressableScale } from '../../../../shared/ui';
 import { updateAvatarOnBackend } from '../../../auth/services/auth.service';
-import { AVATAR_OPTIONS, INITIALS_AVATAR, initialsOf, parseAvatar } from './avatar';
+import { AVATAR_OPTIONS, avatarSource, INITIALS_AVATAR, initialsOf, parseAvatar } from './avatar';
 
 export function AvatarSheet({
   theme,
@@ -22,40 +21,35 @@ export function AvatarSheet({
   onClose: () => void;
   onSaved: (avatarData: string) => void;
 }>) {
-  const [savingId, setSavingId] = useState<string | null>(null);
   const current = parseAvatar(avatarData);
 
-  const choose = async (id: string, data: string) => {
-    if (savingId) return;
-    setSavingId(id);
-    try {
-      await updateAvatarOnBackend(data);
-      onSaved(data);
+  // Se ve al instante y el panel se cierra; se guarda en la cuenta detrás.
+  // Si el servidor no lo acepta, vuelve el anterior y se avisa.
+  const choose = (data: string) => {
+    if (data === avatarData) {
       onClose();
-    } catch (error) {
-      Alert.alert('No se pudo guardar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
-    } finally {
-      setSavingId(null);
+      return;
     }
+    const previous = avatarData ?? INITIALS_AVATAR;
+    onSaved(data);
+    onClose();
+    updateAvatarOnBackend(data).catch((error: unknown) => {
+      onSaved(previous);
+      Alert.alert('No se pudo cambiar tu foto', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
+    });
   };
 
   const tile = (id: string, selected: boolean, label: string, onPress: () => void, child: React.ReactNode) => (
     <PressableScale
       key={id}
       onPress={onPress}
-      disabled={Boolean(savingId)}
       accessibilityRole="radio"
       accessibilityLabel={label}
-      accessibilityState={{ selected, disabled: Boolean(savingId) }}
+      accessibilityState={{ selected }}
       style={[styles.tile, { borderColor: selected ? theme.colors.accentPrimary : theme.colors.surfaceBorder }]}
     >
       {child}
-      {savingId === id ? (
-        <View style={styles.overlay}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      ) : null}
-      {selected && savingId !== id ? (
+      {selected ? (
         <View style={[styles.check, { backgroundColor: theme.colors.accentPrimary, borderColor: theme.colors.background }]}>
           <MaterialCommunityIcons name="check" size={12} color="#fff" />
         </View>
@@ -70,7 +64,7 @@ export function AvatarSheet({
           'initials',
           !current,
           'Usar mis iniciales',
-          () => void choose('initials', INITIALS_AVATAR),
+          () => choose(INITIALS_AVATAR),
           <View style={[styles.initials, { backgroundColor: `${theme.colors.accentPrimary}18` }]}>
             <Text style={[styles.initialsText, { color: theme.colors.accentPrimaryText }]}>{initialsOf(name)}</Text>
           </View>,
@@ -80,10 +74,11 @@ export function AvatarSheet({
             option.id,
             current?.id === option.id,
             `Avatar ${index + 1}`,
-            () => void choose(option.id, JSON.stringify(option)),
-            <Image source={{ uri: option.url }} style={styles.image} accessibilityIgnoresInvertColors />,
+            () => choose(JSON.stringify(option)),
+            <Image source={avatarSource(option)} style={styles.image} accessibilityIgnoresInvertColors />,
           ))}
       </View>
+      <Text style={[styles.credit, { color: theme.colors.textMuted }]}>Ilustraciones: "Personas" de Draftbit (CC BY 4.0), vía DiceBear</Text>
     </BottomSheet>
   );
 }
@@ -95,6 +90,6 @@ const styles = StyleSheet.create({
   image: { width: SIZE, height: SIZE, borderRadius: SIZE / 2 },
   initials: { width: SIZE, height: SIZE, borderRadius: SIZE / 2, alignItems: 'center', justifyContent: 'center' },
   initialsText: { fontSize: 24, fontWeight: '800' },
-  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: SIZE, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+  credit: { fontSize: 11, fontWeight: '500', textAlign: 'center', marginTop: 10 },
   check: { position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });
