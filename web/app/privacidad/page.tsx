@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { CONTROLLER, LegalFooter, LegalHeader, LegalToc, Mail, Section } from "../components/legal";
+import { SiteFooter, SiteHeader } from "../components/site-chrome";
+import { CONTROLLER, LegalFooter, LegalToc, Mail, Section } from "../components/legal";
 
 const POLICY_VERSION = "2026-10-18";
 const LAST_UPDATED = "18 de octubre de 2026";
@@ -28,8 +29,9 @@ const SECTIONS = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen bg-bg text-text">
-      <LegalHeader />
+    <>
+      <SiteHeader />
+      <main className="flex-1 bg-bg text-text">
 
       <article className="mx-auto max-w-3xl px-5 pb-24 pt-12 leading-relaxed">
         <p className="text-sm font-semibold uppercase tracking-wider text-accent">Privacidad</p>
@@ -282,6 +284,8 @@ export default function PrivacyPolicyPage() {
 
         <LegalFooter related={{ href: "/terminos", label: "Términos y condiciones" }} />
       </article>
-    </main>
+      </main>
+      <SiteFooter />
+    </>
   );
 }

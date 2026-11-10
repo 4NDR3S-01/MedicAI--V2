@@ -10,21 +10,6 @@ export const CONTROLLER = {
   country: "Ecuador",
 };
 
-export function LegalHeader() {
-  return (
-    <header className="border-b border-border">
-      <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-5">
-        <Link href="/" className="logo text-xl" aria-label="MedicAI inicio">
-          Medic<span>AI</span>
-        </Link>
-        <a href={`mailto:${CONTROLLER.email}`} className="text-sm text-text-muted hover:text-accent">
-          {CONTROLLER.email}
-        </a>
-      </div>
-    </header>
-  );
-}
-
 export function LegalToc({ sections }: { sections: readonly { id: string; title: string }[] }) {
   return (
     <nav aria-label="Contenido" className="mt-10">
