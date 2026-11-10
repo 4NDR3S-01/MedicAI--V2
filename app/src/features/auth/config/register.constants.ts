@@ -75,6 +75,36 @@ export const ALLERGY_GROUPS = [
   },
 ] as const;
 
+/** Las más comunes: las únicas a la vista; el resto aparece al buscar. */
+export const COMMON_CONDITIONS = ["Hipertensión arterial", "Diabetes", "Asma"] as const;
+export const COMMON_ALLERGIES = ["Penicilina", "AINEs (ibuprofeno, aspirina)", "Mariscos"] as const;
+
+/** Cómo lo dice la gente, para sugerir la opción correcta al escribir. */
+export const MEDICAL_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
+  Diabetes: ["azúcar alta", "azúcar", "glucosa alta", "diabético", "diabética"],
+  "Hipertensión arterial": ["presión alta", "tensión alta", "hipertensión", "hipertenso", "hipertensa"],
+  Asma: ["asmático", "asmática", "asma bronquial"],
+  EPOC: ["enfisema", "bronquitis crónica", "enfermedad pulmonar"],
+  "Enfermedad cardíaca": ["corazón", "cardíaco", "infarto", "arritmia", "insuficiencia cardíaca", "angina"],
+  "Enfermedad renal crónica": ["riñón", "riñones", "insuficiencia renal", "diálisis"],
+  "Enfermedad hepática": ["hígado", "hepatitis", "cirrosis", "hígado graso"],
+  "Enfermedad tiroidea": ["tiroides", "hipotiroidismo", "hipertiroidismo"],
+  Epilepsia: ["convulsiones", "epiléptico", "epiléptica"],
+  "Gastritis o úlcera": ["estómago", "acidez", "reflujo", "úlcera", "gastritis"],
+  Penicilina: ["amoxicilina", "ampicilina", "antibiótico"],
+  Sulfas: ["sulfa", "sulfonamidas", "bactrim"],
+  "AINEs (ibuprofeno, aspirina)": ["ibuprofeno", "aspirina", "naproxeno", "diclofenaco", "ketorolaco", "antiinflamatorios"],
+  "Anestésicos": ["anestesia", "lidocaína"],
+  Mariscos: ["camarón", "camarones", "langosta", "cangrejo", "mejillones"],
+  "Frutos secos": ["maní", "nueces", "almendras", "cacahuate"],
+  Huevo: ["huevos", "clara de huevo"],
+  Leche: ["lácteos", "lactosa", "leche de vaca"],
+  "Látex": ["guantes de látex", "caucho"],
+  Polen: ["rinitis", "alergia estacional"],
+  "Ácaros": ["polvo", "ácaros del polvo"],
+  "Picaduras de insectos": ["abeja", "avispa", "hormiga", "mosquito", "picadura"],
+};
+
 export const SPECIAL_CONDITIONS: ReadonlyArray<{
   key: SpecialConditionKey;
   label: string;

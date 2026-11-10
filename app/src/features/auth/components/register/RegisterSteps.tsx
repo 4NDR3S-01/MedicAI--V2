@@ -19,6 +19,8 @@ import {
   ALLERGY_GROUPS,
   FULL_NAME_MAX_LENGTH,
   HEALTH_CONDITIONS,
+  COMMON_CONDITIONS,
+  COMMON_ALLERGIES,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   SPECIAL_CONDITIONS,
@@ -247,28 +249,6 @@ export function PersonalStep({
         autoComplete="new-password"
         textContentType="newPassword"
         maxLength={PASSWORD_MAX_LENGTH}
-        returnKeyType="next"
-        submitBehavior="submit"
-      />
-
-      <TextField
-        theme={theme}
-        label="Confirmar contraseña"
-        value={data.confirmPassword}
-        error={errors.confirmPassword}
-        inputRef={setRef("confirmPassword")}
-        onLayout={onFieldLayout("confirmPassword")}
-        onChangeText={(confirmPassword) => onChange({ confirmPassword })}
-        onFocus={() => onFocusField("confirmPassword")}
-        onBlur={() => onBlurField("confirmPassword")}
-        onSubmitEditing={() => onSubmitField("confirmPassword")}
-        placeholder="Repite tu contraseña"
-        secureToggle
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="new-password"
-        textContentType="newPassword"
-        maxLength={PASSWORD_MAX_LENGTH}
         returnKeyType="done"
       />
     </View>
@@ -317,6 +297,8 @@ type MedicalStepProps = {
   onChange: (patch: Partial<MedicalInfo>) => void;
   onSectionLayout: (section: "conditions" | "allergies") => (event: LayoutChangeEvent) => void;
   onCustomInputFocus: (section: "conditions" | "allergies") => void;
+  /** Saltar este paso: queda sin responder (no «Ninguna») y se completa en Perfil. */
+  onLater: () => void;
 };
 
 export function MedicalStep({
@@ -326,14 +308,25 @@ export function MedicalStep({
   onChange,
   onSectionLayout,
   onCustomInputFocus,
+  onLater,
 }: Readonly<MedicalStepProps>) {
   return (
     <View style={styles.stack}>
-      <InfoNote
+      <HelperLine
         theme={theme}
         icon="lock-closed-outline"
-        text="Solo lo ves tú. Nos ayuda a advertirte sobre medicamentos que podrían no convenirte. Si no tienes ninguna, elige «Ninguna»."
+        text="Solo lo ves tú. Nos ayuda a advertirte sobre medicamentos que podrían no convenirte."
       />
+      <PressableScale
+        onPress={onLater}
+        accessibilityRole="button"
+        accessibilityHint="Podrás completarlo en Perfil"
+        style={styles.laterRow}
+      >
+        <Text style={[styles.laterText, { color: theme.colors.textMuted }]}>¿Ahora no?</Text>
+        <Text style={[styles.laterAction, { color: theme.colors.accentPrimaryText }]}>Lo completo después</Text>
+        <Ionicons name="chevron-forward" size={16} color={theme.colors.accentPrimaryText} />
+      </PressableScale>
       <View onLayout={onSectionLayout("conditions")}>
         <MedicalMultiSelect
           theme={theme}
@@ -343,7 +336,7 @@ export function MedicalStep({
           icon="medkit-outline"
           noneLabel="Ninguna"
           groups={[{ items: HEALTH_CONDITIONS }]}
-          customPlaceholder="Agregar otra condición"
+          featured={COMMON_CONDITIONS}
           error={errors.conditions}
           value={data.conditions}
           onChange={(conditions: MedicalSelection) => onChange({ conditions })}
@@ -358,7 +351,7 @@ export function MedicalStep({
           icon="alert-circle-outline"
           noneLabel="Ninguna conocida"
           groups={ALLERGY_GROUPS}
-          customPlaceholder="Agregar otra alergia"
+          featured={COMMON_ALLERGIES}
           error={errors.allergies}
           value={data.allergies}
           onChange={(allergies: MedicalSelection) => onChange({ allergies })}
@@ -379,11 +372,7 @@ type SpecialStepProps = {
 export function SpecialStep({ theme, data, onToggle }: Readonly<SpecialStepProps>) {
   return (
     <View style={styles.stack}>
-      <InfoNote
-        theme={theme}
-        icon="information-circle-outline"
-        text="Activa solo las que apliquen ahora. Puedes cambiarlas cuando quieras desde tu perfil."
-      />
+      <HelperLine theme={theme} text="Activa solo las que apliquen ahora. Puedes cambiarlas en Perfil." />
       {SPECIAL_CONDITIONS.map((condition) => {
         const active = data.specialConditions[condition.key];
         return (
@@ -449,7 +438,7 @@ export function SummaryStep({ theme, form, onEditStep, onToggleAiConsent }: Read
   const activeSpecial = SPECIAL_CONDITIONS.filter((item) => medical.specialConditions[item.key]);
   const describeSelection = (selection: MedicalSelection, noneText: string) => {
     if (selection.none) return noneText;
-    return selection.items.length ? selection.items.join(", ") : "Sin especificar";
+    return selection.items.length ? selection.items.join(", ") : "Pendiente · lo completas en Perfil";
   };
 
   return (
@@ -583,6 +572,20 @@ function InfoNote({
   );
 }
 
+/** Ayuda breve antes de un paso: texto gris, sin recuadro (no compite con las tarjetas). */
+function HelperLine({
+  theme,
+  icon,
+  text,
+}: Readonly<{ theme: AppTheme; icon?: keyof typeof Ionicons.glyphMap; text: string }>) {
+  return (
+    <View style={styles.helperLine}>
+      {icon ? <Ionicons name={icon} size={15} color={theme.colors.textMuted} style={styles.helperIcon} /> : null}
+      <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>{text}</Text>
+    </View>
+  );
+}
+
 function SummaryCard({
   theme,
   title,
@@ -642,6 +645,12 @@ function SummaryRow({
 }
 
 const styles = StyleSheet.create({
+  helperLine: { flexDirection: "row", alignItems: "flex-start", gap: 6, paddingHorizontal: 2 },
+  helperIcon: { marginTop: 2 },
+  helperText: { flex: 1, fontSize: 13.5, lineHeight: 19, fontWeight: "500" },
+  laterRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 4, paddingVertical: 6, minHeight: 44 },
+  laterText: { fontSize: 14, fontWeight: "500" },
+  laterAction: { fontSize: 14, fontWeight: "700" },
   flex: { flex: 1 },
   stack: { gap: 16 },
   trailingIcon: { marginRight: 14 },

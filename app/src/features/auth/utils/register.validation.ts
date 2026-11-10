@@ -11,8 +11,7 @@ export type PersonalField =
   | "birthDate"
   | "phone"
   | "email"
-  | "password"
-  | "confirmPassword";
+  | "password";
 
 export const PERSONAL_FIELDS_ORDER: PersonalField[] = [
   "fullName",
@@ -20,7 +19,6 @@ export const PERSONAL_FIELDS_ORDER: PersonalField[] = [
   "phone",
   "email",
   "password",
-  "confirmPassword",
 ];
 
 export type PersonalErrors = Partial<Record<PersonalField, string>>;
@@ -58,11 +56,6 @@ export function validatePersonalData(
     errors.password = `Usa al menos ${PASSWORD_MIN_LENGTH} caracteres.`;
   } else if (personal.password.length > PASSWORD_MAX_LENGTH) {
     errors.password = `Máximo ${PASSWORD_MAX_LENGTH} caracteres.`;
-  }
-
-  if (!personal.confirmPassword) errors.confirmPassword = "Repite tu contraseña.";
-  else if (personal.confirmPassword !== personal.password) {
-    errors.confirmPassword = "Las contraseñas no coinciden.";
   }
 
   return errors;

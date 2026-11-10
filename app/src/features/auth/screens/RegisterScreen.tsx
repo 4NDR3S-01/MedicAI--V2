@@ -64,7 +64,6 @@ const NEXT_FIELD: Partial<Record<PersonalField, PersonalField>> = {
   fullName: "birthDate",
   phone: "email",
   email: "password",
-  password: "confirmPassword",
 };
 
 export function RegisterScreen({
@@ -82,6 +81,8 @@ export function RegisterScreen({
   const [touched, setTouched] = useState<Partial<Record<PersonalField, boolean>>>({});
   const [showAllErrors, setShowAllErrors] = useState(false);
   const [showMedicalErrors, setShowMedicalErrors] = useState(false);
+  /** Eligió «Lo completo después»: la salud deja de ser obligatoria. */
+  const [healthLater, setHealthLater] = useState(false);
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
   const [emailStatusMessage, setEmailStatusMessage] = useState<string | null>(null);
   const [isBirthDateOpen, setIsBirthDateOpen] = useState(false);
@@ -285,7 +286,7 @@ export function RegisterScreen({
   };
 
   const handleSubmitField = (field: PersonalField) => {
-    if (field === "confirmPassword") {
+    if (field === "password") {
       void handleNext();
       return;
     }
@@ -327,7 +328,7 @@ export function RegisterScreen({
       return;
     }
 
-    if (stepIndex === 1 || stepIndex === LAST_STEP) {
+    if ((stepIndex === 1 || stepIndex === LAST_STEP) && !healthLater) {
       if (Object.keys(medicalErrors).length) {
         setShowMedicalErrors(true);
         if (stepIndex !== 1) goToStep(1);
@@ -388,6 +389,11 @@ export function RegisterScreen({
             onChange={updateMedical}
             onSectionLayout={registerRegion}
             onCustomInputFocus={(section) => trackFocus(section, "bottom")}
+            onLater={() => {
+              setHealthLater(true);
+              setShowMedicalErrors(false);
+              goToStep(2);
+            }}
           />
         );
       case "special":

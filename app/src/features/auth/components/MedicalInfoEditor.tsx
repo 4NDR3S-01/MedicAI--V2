@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
-import { ALLERGY_GROUPS, HEALTH_CONDITIONS, SPECIAL_CONDITIONS } from '../config/register.constants';
+import { ALLERGY_GROUPS, HEALTH_CONDITIONS, COMMON_CONDITIONS, COMMON_ALLERGIES, SPECIAL_CONDITIONS } from '../config/register.constants';
 import type { MedicalSelection, SpecialConditionKey } from '../models/register.types';
 import { parseMedicalSelection, serializeMedicalSelection } from '../utils/register.utils';
 import { MedicalMultiSelect } from './register/MedicalMultiSelect';
@@ -52,7 +52,7 @@ export function MedicalInfoEditor({
         icon="medkit-outline"
         noneLabel="Ninguna"
         groups={[{ items: HEALTH_CONDITIONS }]}
-        customPlaceholder="Agregar otra condición"
+        featured={COMMON_CONDITIONS}
         value={parseMedicalSelection(value.conditions)}
         onChange={(selection) => onChange({ ...value, conditions: toText(selection) })}
       />
@@ -63,7 +63,7 @@ export function MedicalInfoEditor({
         icon="alert-circle-outline"
         noneLabel="Ninguna conocida"
         groups={ALLERGY_GROUPS}
-        customPlaceholder="Agregar otra alergia"
+        featured={COMMON_ALLERGIES}
         value={parseMedicalSelection(value.allergies)}
         onChange={(selection) => onChange({ ...value, allergies: toText(selection) })}
       />
