@@ -16,6 +16,7 @@ import * as Notifications from 'expo-notifications';
 import { HomeScreen } from '../features/home';
 import type { AppTheme } from '../shared/theme';
 import { AssistantChat } from '../features/assistant/AssistantChat';
+import { onOpenAssistant, type AssistantRequest } from '../features/assistant/services/assistant-launcher';
 import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBottomBar';
 import type { ProfileUser } from '../features/auth/services/auth.service';
 
@@ -40,7 +41,18 @@ export function MainAppShell({
 }: Readonly<MainAppShellProps>) {
   const [tab, setTab] = useState<MainTabId>('home');
   const [chatVisible, setChatVisible] = useState(false);
+  const [chatRequest, setChatRequest] = useState<AssistantRequest | null>(null);
   const closeChat = useCallback(() => setChatVisible(false), []);
+
+  // Cualquier pantalla puede abrir el asistente (con una pregunta o por voz).
+  useEffect(
+    () =>
+      onOpenAssistant((request) => {
+        setChatRequest(request);
+        setChatVisible(true);
+      }),
+    [],
+  );
   const [avatarData, setAvatarData] = useState<string | null>(initialAvatarData ?? null);
   const contentBottomInset = useMainTabContentInset();
 
@@ -131,7 +143,6 @@ export function MainAppShell({
           onOpenAppointments={() => setTab('appointments')}
           onOpenCircle={() => setTab('family')}
           onOpenProfile={() => setTab('profile')}
-          onOpenAssistant={() => setChatVisible(true)}
         />
       );
   }
@@ -139,7 +150,7 @@ export function MainAppShell({
   return (
     <View style={{ flex: 1 }}>
       {body}
-      <AssistantChat theme={theme} visible={chatVisible} onClose={closeChat} />
+      <AssistantChat theme={theme} visible={chatVisible} onClose={closeChat} request={chatRequest} />
       <AppBottomBar theme={theme} activeTab={tab} onSelect={setTab} />
     </View>
   );

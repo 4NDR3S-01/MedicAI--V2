@@ -12,6 +12,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -21,6 +22,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import type { AppTheme } from '../../shared/theme';
 import { Portal, PressableScale, Reveal, useKeyboardInset, useReducedMotion } from '../../shared/ui';
 import { BufferedTextInput } from '../../shared/ui/BufferedTextInput';
+import type { AssistantRequest } from './services/assistant-launcher';
 import { appStorage } from '../../shared/storage';
 import { reportError } from '../../shared/services/error-reporting';
 import { emitDoseAction } from '../../shared/services/dose-refresh-bus';
@@ -86,7 +88,12 @@ function pendingDoseOf(messages: ChatMessage[]) {
  * este teléfono (se borra al cerrar sesión). Puede preparar medicamentos y
  * citas, que el usuario revisa en el formulario antes de guardar.
  */
-export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: AppTheme; visible: boolean; onClose: () => void }>) {
+export function AssistantChat({
+  theme,
+  visible,
+  onClose,
+  request = null,
+}: Readonly<{ theme: AppTheme; visible: boolean; onClose: () => void; request?: AssistantRequest | null }>) {
   const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
   /** Pantallas estrechas: cabecera sin avatar y botón de voz sin texto. */
@@ -117,6 +124,8 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
   const [caption, setCaption] = useState<string | null>(null);
   const [dictation, setDictation] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const voiceActive = useRef(false);
+  const inputRef = useRef<TextInput>(null);
+  const handledRequest = useRef(0);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
@@ -423,6 +432,19 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
     if (!visible && (voiceActive.current || voiceMode)) endConversation();
     if (!visible) voice.cancel();
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cómo se abrió: con una pregunta ya escrita, directo por voz o para escribir.
+  useEffect(() => {
+    if (!visible || !loaded || !request || handledRequest.current === request.id) return undefined;
+    handledRequest.current = request.id;
+    if (request.text) setInput(request.text.slice(0, MESSAGE_MAX));
+    // Tras la animación de entrada: el teclado o el micrófono no compiten con ella.
+    const timer = setTimeout(() => {
+      if (request.voice) void startConversation();
+      else inputRef.current?.focus();
+    }, 380);
+    return () => clearTimeout(timer);
+  }, [visible, loaded, request]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const attachPhoto = () => {
     const choose = (source: 'camera' | 'library') => {
@@ -785,6 +807,7 @@ export function AssistantChat({ theme, visible, onClose }: Readonly<{ theme: App
                     <MaterialCommunityIcons name="camera-outline" size={22} color={theme.colors.textSecondary} />
                   </PressableScale>
                   <BufferedTextInput
+                    inputRef={inputRef}
                     value={input}
                     onChangeText={(text) => setInput(text.slice(0, MESSAGE_MAX))}
                     placeholder="Escribe o dicta tu pregunta…"

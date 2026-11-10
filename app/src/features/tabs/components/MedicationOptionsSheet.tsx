@@ -6,6 +6,7 @@ import { BottomSheet, SheetInfo, SheetInfoLine, SheetOptionRow } from '../../../
 import { dosageOnDay } from '../../../shared/services/dose-schedule';
 import type { MedicationData } from '../services/medications.service';
 import { changedByNote } from '../utils/audit';
+import { openAssistant } from '../../assistant/services/assistant-launcher';
 import { formatQuantity, isLowStock, scheduleLabel, stockDaysLeft, stockUnitLabel } from '../utils/medication-form';
 
 type MedicationOptionsSheetProps = {
@@ -19,6 +20,8 @@ type MedicationOptionsSheetProps = {
   onToggleActive: (medication: MedicationData) => void;
   onEdit: (medication: MedicationData) => void;
   onDelete: (medication: MedicationData) => void;
+  /** Muestra "Preguntar al asistente" (solo con medicamentos propios). */
+  canAsk?: boolean;
 };
 
 /**
@@ -37,6 +40,7 @@ export function MedicationOptionsSheet({
   onToggleActive,
   onEdit,
   onDelete,
+  canAsk = false,
 }: Readonly<MedicationOptionsSheetProps>) {
   // Conserva el contenido mientras el panel se cierra.
   const last = useRef(medication);
@@ -90,6 +94,18 @@ export function MedicationOptionsSheet({
             {med.notes ? <SheetInfoLine theme={theme} icon="note-text-outline" text={med.notes} /> : null}
             {audit ? <SheetInfoLine theme={theme} icon="account-edit-outline" text={audit} /> : null}
           </SheetInfo>
+        ) : null}
+
+        {canAsk ? (
+          <SheetOptionRow
+            theme={theme}
+            icon="robot-outline"
+            label="Preguntar al asistente"
+            hint="Para qué sirve, cómo tomarlo, qué evitar"
+            onPress={thenClose((m) =>
+              openAssistant({ text: `¿Para qué sirve ${m.name} (${dosageToday}) y qué debo tener en cuenta al tomarlo?` }),
+            )}
+          />
         ) : null}
 
         {canEdit ? (

@@ -24,6 +24,7 @@ import { HomeSkeleton } from '../components/HomeSkeleton';
 import { NextAppointmentCard } from '../components/NextAppointmentCard';
 import { TodayCard } from '../components/TodayCard';
 import { useHomeData, type TodayDose } from '../hooks/useHomeData';
+import { openAssistant } from '../../assistant/services/assistant-launcher';
 
 export type HomeScreenProps = {
   theme: AppTheme;
@@ -36,7 +37,6 @@ export type HomeScreenProps = {
   onOpenAppointments?: () => void;
   onOpenCircle?: () => void;
   onOpenProfile?: () => void;
-  onOpenAssistant?: () => void;
 };
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -67,7 +67,6 @@ export function HomeScreen({
   onOpenAppointments = noop,
   onOpenCircle = noop,
   onOpenProfile = noop,
-  onOpenAssistant = noop,
 }: Readonly<HomeScreenProps>) {
   const home = useHomeData();
   const { summary, now } = home;
@@ -227,6 +226,10 @@ export function HomeScreen({
           </View>
         </Reveal>
 
+        <Reveal index={next()}>
+          <AskBar theme={theme} />
+        </Reveal>
+
         {home.status === 'loading' ? (
           <HomeSkeleton theme={theme} />
         ) : (
@@ -277,39 +280,54 @@ export function HomeScreen({
               </Reveal>
             ) : null}
 
-            <Reveal index={next()}>
-              <PressableScale
-                onPress={onOpenAssistant}
-                pressedScale={0.98}
-                accessibilityRole="button"
-                accessibilityLabel="Preguntar al asistente de MedicAI"
-                accessibilityHint="Orienta, pero no reemplaza a tu médico"
-                style={[styles.assistant, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
-              >
-                <View style={[styles.assistantIcon, { backgroundColor: `${theme.colors.accentSecondary}18` }]}>
-                  <MaterialCommunityIcons name="robot-outline" size={24} color={theme.colors.accentSecondaryText} />
-                </View>
-                <View style={styles.assistantText}>
-                  <Text style={[styles.assistantTitle, { color: theme.colors.textPrimary }]}>Pregúntale al asistente</Text>
-                  <Text style={[styles.assistantBody, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                    Dudas sobre tus medicamentos, por texto o voz
-                  </Text>
-                </View>
-                <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textMuted} />
-              </PressableScale>
-            </Reveal>
           </>
         )}
       </ScrollView>
 
       <DoseActionSheet
         theme={theme}
+        canAsk
         target={doseTarget}
         busy={busy}
         onClose={() => setDoseTarget(null)}
         onRegister={(action) => doseTarget && void register(doseTarget, action)}
         onUndo={() => void undo()}
       />
+    </View>
+  );
+}
+
+/**
+ * Acceso principal al asistente: parece un buscador (se entiende sin explicar).
+ * El texto abre el chat para escribir; el micrófono, la conversación por voz.
+ */
+function AskBar({ theme }: Readonly<{ theme: AppTheme }>) {
+  return (
+    <View style={[styles.ask, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+      <PressableScale
+        onPress={() => openAssistant()}
+        pressedScale={0.98}
+        accessibilityRole="button"
+        accessibilityLabel="Pregúntale a MedicAI"
+        accessibilityHint="Abre el asistente para escribir tu pregunta"
+        style={styles.askMain}
+      >
+        <View style={[styles.askIcon, { backgroundColor: `${theme.colors.accentSecondary}1A` }]}>
+          <MaterialCommunityIcons name="robot-outline" size={20} color={theme.colors.accentSecondaryText} />
+        </View>
+        <Text style={[styles.askText, { color: theme.colors.textMuted }]} numberOfLines={1}>
+          Pregúntale a MedicAI…
+        </Text>
+      </PressableScale>
+      <PressableScale
+        onPress={() => openAssistant({ voice: true })}
+        accessibilityRole="button"
+        accessibilityLabel="Hablar con MedicAI"
+        accessibilityHint="Empieza una conversación por voz"
+        style={[styles.askMic, { backgroundColor: theme.colors.accentPrimary }]}
+      >
+        <MaterialCommunityIcons name="microphone" size={22} color={theme.colors.buttonText} />
+      </PressableScale>
     </View>
   );
 }
@@ -327,9 +345,9 @@ const styles = StyleSheet.create({
   avatar: { width: 54, height: 54, borderRadius: 27, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: 54, height: 54, borderRadius: 27 },
   avatarText: { fontSize: 20, fontWeight: '800' },
-  assistant: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 20, borderWidth: 1, padding: 16 },
-  assistantIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  assistantText: { flex: 1, gap: 2 },
-  assistantTitle: { fontSize: 16, fontWeight: '700' },
-  assistantBody: { fontSize: 14, fontWeight: '500' },
+  ask: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 28, borderWidth: 1, padding: 6, paddingLeft: 8 },
+  askMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+  askIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  askText: { flex: 1, fontSize: 16, fontWeight: '500' },
+  askMic: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

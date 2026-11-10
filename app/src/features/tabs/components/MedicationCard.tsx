@@ -52,6 +52,8 @@ type MedicationCardProps = {
   canEdit?: boolean;
   canDelete?: boolean;
   canLog?: boolean;
+  /** Medicamento propio: ofrece preguntar al asistente desde sus opciones. */
+  canAsk?: boolean;
 };
 
 /**
@@ -73,6 +75,7 @@ function MedicationCardBase({
   canEdit = true,
   canDelete = true,
   canLog = true,
+  canAsk = false,
 }: Readonly<MedicationCardProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -231,6 +234,7 @@ function MedicationCardBase({
           onToggleActive={onToggleActive}
           onEdit={onEdit}
           onDelete={onDelete}
+          canAsk={canAsk}
         />
       ) : null}
     </>

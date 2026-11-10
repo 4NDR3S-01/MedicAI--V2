@@ -517,6 +517,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                 onDelete={handleDelete}
                 onDosePress={handleDosePress}
                 onLogAsNeeded={handleLogAsNeeded}
+                canAsk
               />
             </Animated.View>
           )}
@@ -569,6 +570,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
 
       <DoseActionSheet
         theme={theme}
+        canAsk
         target={doseTarget}
         busy={doseBusy}
         onClose={() => setDoseTarget(null)}

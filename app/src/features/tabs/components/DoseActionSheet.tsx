@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { readableText, type AppTheme } from '../../../shared/theme';
 import { AppButton, BottomSheet } from '../../../shared/ui';
@@ -9,6 +9,7 @@ import { dosageOnDay } from '../../../shared/services/dose-schedule';
 import { loggedByNote } from '../utils/audit';
 import { DOSE_EARLY_WINDOW_MS, type DoseSlot } from '../utils/dose-status';
 import { DOSE_STATE_META, doseStateColor } from './MedicationCard';
+import { openAssistant } from '../../assistant/services/assistant-launcher';
 
 type DoseActionSheetProps = {
   theme: AppTheme;
@@ -19,12 +20,14 @@ type DoseActionSheetProps = {
   onUndo: () => void;
   /** Sin permiso para registrar tomas: solo se informa del estado. */
   readOnly?: boolean;
+  /** Toma propia: ofrece preguntar al asistente. */
+  canAsk?: boolean;
 };
 
 const formatTime = (date: Date) =>
   `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUndo, readOnly = false }: Readonly<DoseActionSheetProps>) {
+export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUndo, readOnly = false, canAsk = false }: Readonly<DoseActionSheetProps>) {
   // Mantiene el contenido mientras el panel se cierra (target ya es null).
   const lastTarget = useRef(target);
   if (target) lastTarget.current = target;
@@ -93,6 +96,18 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
     }
   }
 
+  // Duda sobre esta toma (propia): el panel se cierra y el chat abre con la pregunta escrita.
+  const askAssistant = () => {
+    if (!medication || !slot) return;
+    const dose = dosageOnDay(medication, slot.at);
+    const text = state === 'missed'
+      ? `Olvidé mi toma de ${medication.name} (${dose}) de las ${slot.time}. ¿Qué debo hacer?`
+      : `Tengo una duda sobre mi toma de ${medication.name} (${dose}) de las ${slot.time}.`;
+    onClose();
+    setTimeout(() => openAssistant({ text }), 220);
+  };
+  const showAsk = canAsk && !readOnly && Boolean(slot) && state !== 'taken' && state !== 'skipped';
+
   return (
     <BottomSheet
       theme={theme}
@@ -115,6 +130,20 @@ export function DoseActionSheet({ theme, target, busy, onClose, onRegister, onUn
       footer={footer}
     >
       {body}
+      {showAsk ? (
+        <Pressable
+          onPress={askAssistant}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel="Preguntar al asistente sobre esta toma"
+          style={({ pressed }) => [styles.ask, pressed && styles.pressed]}
+        >
+          <MaterialCommunityIcons name="robot-outline" size={18} color={theme.colors.accentSecondaryText} />
+          <Text style={[styles.askText, { color: theme.colors.accentSecondaryText }]}>
+            {state === 'missed' ? '¿La olvidaste? Pregúntale al asistente' : 'Preguntar al asistente'}
+          </Text>
+        </Pressable>
+      ) : null}
     </BottomSheet>
   );
 }
@@ -127,4 +156,7 @@ const styles = StyleSheet.create({
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   badgeText: { fontSize: 13, fontWeight: '600' },
   text: { fontSize: 15, lineHeight: 22 },
+  ask: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, minHeight: 40 },
+  askText: { fontSize: 15, fontWeight: '700' },
+  pressed: { opacity: 0.6 },
 });
