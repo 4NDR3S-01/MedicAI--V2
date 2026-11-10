@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { AppTheme } from '../shared/theme';
 
@@ -27,7 +28,8 @@ const TABS: { tab: MainTabId; label: string; icon: IconName; activeIcon: IconNam
 ];
 
 const BAR_HEIGHT = 64;
-const BAR_BOTTOM_GAP = 8;
+// Barra fija de lado a lado: nada del contenido se ve por debajo ni a los lados.
+const BAR_BOTTOM_GAP = 0;
 
 /** Se mantiene por compatibilidad: ya no hay botón central que sobresalga. */
 export const MAIN_TAB_FAB_OVERFLOW = 0;
@@ -45,13 +47,18 @@ export function useMainTabContentInset(): number {
 
 export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomBarProps>) {
   const barBackground = theme.mode === 'light' ? '#FFFFFF' : '#0A1C2D';
+  // La pantalla termina encima de la barra de gestos (área segura): la barra se
+  // extiende por debajo con su mismo color para que no quede una franja distinta.
+  const { bottom: safeBottom } = useSafeAreaInsets();
 
   return (
-    <View style={styles.outer} pointerEvents="box-none">
-      <View
-        style={[styles.bar, { backgroundColor: barBackground, borderColor: theme.colors.surfaceBorder }]}
-        accessibilityRole="tablist"
-      >
+    <View
+      style={[
+        styles.outer,
+        { backgroundColor: barBackground, borderTopColor: theme.colors.surfaceBorder, bottom: -safeBottom, paddingBottom: safeBottom },
+      ]}
+    >
+      <View style={styles.bar} accessibilityRole="tablist">
         {TABS.map((item) => (
           <Tab key={item.tab} theme={theme} item={item} active={activeTab === item.tab} onPress={() => onSelect(item.tab)} />
         ))}
@@ -89,19 +96,18 @@ function Tab({
 const styles = StyleSheet.create({
   outer: {
     position: 'absolute',
-    left: 12,
-    right: 12,
+    left: 0,
+    right: 0,
     bottom: BAR_BOTTOM_GAP,
+    borderTopWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
   },
   bar: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 560,
     height: BAR_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 24,
-    borderWidth: 1,
     paddingHorizontal: 4,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, height: '100%' },
