@@ -369,19 +369,30 @@ public class AlarmActivity extends Activity {
             set.start();
         }
 
-        // Círculo blanco con el ícono de la app (el mismo del lanzador).
+        // Círculo teal (degradado de la marca) con la cruz de MedicAI en blanco.
+        // No se usa el ícono del lanzador: trae su propio fondo y la forma que
+        // le da cada teléfono, y no encaja en el círculo.
         android.widget.ImageView logo = new android.widget.ImageView(this);
-        GradientDrawable badgeBg = new GradientDrawable();
+        GradientDrawable badgeBg = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[] {COLOR_ACCENT, COLOR_ACCENT_DARK}
+        );
         badgeBg.setShape(GradientDrawable.OVAL);
-        badgeBg.setColor(Color.WHITE);
+        badgeBg.setStroke(dpToPx(2), 0x33FFFFFF);
         logo.setBackground(badgeBg);
-        logo.setClipToOutline(true);
-        logo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        logo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        int markPad = dpToPx(24);
+        logo.setPadding(markPad, markPad, markPad, markPad);
         logo.setElevation(dpToPx(8));
-        try {
-            logo.setImageDrawable(getPackageManager().getApplicationIcon(getApplicationInfo()));
-        } catch (Exception e) {
-            android.util.Log.w("MedicAI-Alarm", "App icon unavailable: " + e.getMessage());
+        int markId = getResources().getIdentifier("medicai_alarm_mark", "drawable", getPackageName());
+        if (markId != 0) {
+            logo.setImageResource(markId);
+        } else {
+            try {
+                logo.setImageDrawable(getPackageManager().getApplicationIcon(getApplicationInfo()));
+            } catch (Exception e) {
+                android.util.Log.w("MedicAI-Alarm", "App icon unavailable: " + e.getMessage());
+            }
         }
         frame.addView(logo, new android.widget.FrameLayout.LayoutParams(badge, badge, Gravity.CENTER));
 

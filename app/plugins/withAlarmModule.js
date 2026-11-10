@@ -80,6 +80,19 @@ const withAlarmModule = config => {
         console.log('[withAlarmModule] Copied', file);
       }
 
+      // Recursos (p. ej. la cruz de la pantalla de alarma): android-native/res → app/src/main/res
+      const resSrc = path.join(__dirname, '..', 'android-native', 'res');
+      if (fs.existsSync(resSrc)) {
+        const resDest = path.join(androidRoot, 'app', 'src', 'main', 'res');
+        for (const dir of fs.readdirSync(resSrc)) {
+          fs.mkdirSync(path.join(resDest, dir), { recursive: true });
+          for (const file of fs.readdirSync(path.join(resSrc, dir))) {
+            fs.copyFileSync(path.join(resSrc, dir, file), path.join(resDest, dir, file));
+            console.log('[withAlarmModule] Copied res', `${dir}/${file}`);
+          }
+        }
+      }
+
       return config;
     },
   ]);
