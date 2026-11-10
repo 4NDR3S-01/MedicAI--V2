@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../../shared/theme';
-import { AppButton, FieldShell, FormSheet, SelectableChip } from '../../../../shared/ui';
+import { AppButton, FieldShell, FormSheet, PressableScale } from '../../../../shared/ui';
 import {
   getAppointmentReminderLeadMinutes,
   getMedicationReminderLeadMinutes,
@@ -16,7 +17,6 @@ import { getStoredSession } from '../../../auth';
 import { updateProfileOnBackend, type ProfileUser } from '../../../auth/services/auth.service';
 import { fetchAppointments } from '../../services/appointments.service';
 import { fetchMedications } from '../../services/medications.service';
-import { ProfileNote } from './ProfileParts';
 
 export const MEDICATION_LEAD_OPTIONS = [0, 5, 10, 15, 30, 60];
 export const APPOINTMENT_LEAD_OPTIONS = [30, 60, 120, 1440];
@@ -107,34 +107,58 @@ export function RemindersSheet({
       }
     >
       <FieldShell theme={theme} label="Medicamentos">
-        <View style={styles.chips}>
-          {MEDICATION_LEAD_OPTIONS.map((minutes) => (
-            <SelectableChip key={minutes} theme={theme} label={formatLead(minutes)} selected={medicationLead === minutes} onPress={() => setMedicationLead(minutes)} />
-          ))}
-        </View>
+        <LeadStepper theme={theme} options={MEDICATION_LEAD_OPTIONS} value={medicationLead} onChange={setMedicationLead} />
+        <Text style={[styles.help, { color: theme.colors.textMuted }]}>A la hora exacta siempre suena la alarma completa.</Text>
       </FieldShell>
-      <ProfileNote theme={theme} icon="alarm-light-outline" color={theme.colors.accentPrimary}>
-        A la hora exacta de cada toma siempre suena la alarma completa. Esto solo agrega un aviso previo.
-      </ProfileNote>
 
       <FieldShell theme={theme} label="Citas">
-        <View style={styles.chips}>
-          {APPOINTMENT_LEAD_OPTIONS.map((minutes) => (
-            <SelectableChip key={minutes} theme={theme} label={formatLead(minutes)} selected={appointmentLead === minutes} onPress={() => setAppointmentLead(minutes)} />
-          ))}
-        </View>
+        <LeadStepper theme={theme} options={APPOINTMENT_LEAD_OPTIONS} value={appointmentLead} onChange={setAppointmentLead} />
+        <Text style={[styles.help, { color: theme.colors.textMuted }]}>
+          También te avisamos a la hora y luego te preguntamos si asististe.
+        </Text>
       </FieldShell>
-      <ProfileNote theme={theme} icon="calendar-clock" color={theme.colors.accentSecondary}>
-        Para cada cita recibirás este aviso, otro a la hora y, al final del día, la pregunta de si asististe.
-      </ProfileNote>
-      <Text style={[styles.foot, { color: theme.colors.textMuted }]}>Al guardar se reprograman todos tus avisos.</Text>
     </FormSheet>
+  );
+}
+
+/** − 5 min antes + : recorre las opciones permitidas. */
+function LeadStepper({
+  theme,
+  options,
+  value,
+  onChange,
+}: Readonly<{ theme: AppTheme; options: number[]; value: number; onChange: (minutes: number) => void }>) {
+  const index = Math.max(0, options.indexOf(value));
+  const button = (icon: 'remove' | 'add', next: number, label: string) => {
+    const disabled = next < 0 || next >= options.length;
+    return (
+      <PressableScale
+        onPress={() => !disabled && onChange(options[next])}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={[styles.stepButton, { backgroundColor: `${theme.colors.accentPrimary}14`, opacity: disabled ? 0.35 : 1 }]}
+      >
+        <Ionicons name={icon} size={22} color={theme.colors.accentPrimaryText} />
+      </PressableScale>
+    );
+  };
+  return (
+    <View style={[styles.stepper, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}>
+      {button('remove', index - 1, 'Menos tiempo')}
+      <Text style={[styles.stepValue, { color: theme.colors.textPrimary }]} accessibilityLiveRegion="polite">
+        {formatLead(options[index])}
+      </Text>
+      {button('add', index + 1, 'Más tiempo')}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  foot: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  help: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, padding: 6, gap: 8 },
+  stepButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  stepValue: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700' },
 });

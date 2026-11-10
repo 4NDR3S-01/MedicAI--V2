@@ -46,8 +46,13 @@ export function SessionsSheet({ theme, visible, onClose }: Readonly<{ theme: App
     void load();
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const close = (session: DeviceSession) => {
-    Alert.alert('Cerrar sesión en este dispositivo', `${session.deviceName ?? 'El dispositivo'} tendrá que volver a iniciar sesión.`, [
+  /** Cierra todas las sesiones de un grupo (mismo modelo de teléfono). */
+  const close = (group: SessionGroup) => {
+    const many = group.sessions.length > 1;
+    Alert.alert(
+      many ? `Cerrar ${group.sessions.length} sesiones` : 'Cerrar sesión en este dispositivo',
+      `${group.name} tendrá que volver a iniciar sesión.`,
+      [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Cerrar sesión',
@@ -55,9 +60,11 @@ export function SessionsSheet({ theme, visible, onClose }: Readonly<{ theme: App
         onPress: () => {
           void (async () => {
             try {
-              setBusyId(session.id);
-              await closeSession(await token(), session.id);
-              setSessions((current) => current?.filter((item) => item.id !== session.id) ?? null);
+              setBusyId(group.key);
+              const accessToken = await token();
+              for (const session of group.sessions) await closeSession(accessToken, session.id);
+              const closed = new Set(group.sessions.map((session) => session.id));
+              setSessions((current) => current?.filter((item) => !closed.has(item.id)) ?? null);
             } catch (closeError) {
               Alert.alert('No se pudo cerrar', closeError instanceof Error ? closeError.message : 'Inténtalo de nuevo.');
             } finally {
@@ -66,7 +73,8 @@ export function SessionsSheet({ theme, visible, onClose }: Readonly<{ theme: App
           })();
         },
       },
-    ]);
+      ],
+    );
   };
 
   const closeOthers = () => {
@@ -94,6 +102,8 @@ export function SessionsSheet({ theme, visible, onClose }: Readonly<{ theme: App
   };
 
   const others = sessions?.filter((item) => !item.current) ?? [];
+  const current = sessions?.find((item) => item.current) ?? null;
+  const groups = groupSessions(others, current?.deviceName ?? null);
 
   return (
     <FormSheet
@@ -116,47 +126,107 @@ export function SessionsSheet({ theme, visible, onClose }: Readonly<{ theme: App
       ) : !sessions ? (
         <ActivityIndicator color={theme.colors.accentPrimary} />
       ) : (
-        sessions.map((session) => (
-          <View key={session.id} style={[styles.row, { borderColor: theme.colors.surfaceBorder, backgroundColor: theme.colors.surface }]}>
-            <View style={[styles.icon, { backgroundColor: `${theme.colors.accentSecondary}14` }]}>
-              <MaterialCommunityIcons name={platformIcon(session.platform)} size={22} color={theme.colors.accentSecondary} />
+        <>
+          {current ? (
+            <View style={[styles.card, { borderColor: theme.colors.surfaceBorder, backgroundColor: theme.colors.surface }]}>
+              <SessionRow theme={theme} platform={current.platform} name={current.deviceName ?? 'Este dispositivo'} meta="Este dispositivo" metaColor={theme.colors.success} />
             </View>
-            <View style={styles.flex}>
-              <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                {session.deviceName ?? 'Dispositivo'}
-              </Text>
-              <Text style={[styles.meta, { color: session.current ? theme.colors.success : theme.colors.textMuted }]}>
-                {session.current ? 'Este dispositivo' : lastUsedLabel(session.lastUsedAt)}
-              </Text>
-            </View>
-            {!session.current ? (
-              <Pressable
-                onPress={() => close(session)}
-                disabled={busyId !== null}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Cerrar sesión en ${session.deviceName ?? 'este dispositivo'}`}
-              >
-                {busyId === session.id ? (
-                  <ActivityIndicator color={theme.colors.accentTertiary} />
-                ) : (
-                  <MaterialCommunityIcons name="logout" size={22} color={theme.colors.accentTertiary} />
-                )}
-              </Pressable>
-            ) : null}
-          </View>
-        ))
+          ) : null}
+          {groups.length ? (
+            <>
+              <Text style={[styles.section, { color: theme.colors.textMuted }]}>Otros · {others.length}</Text>
+              <View style={[styles.card, { borderColor: theme.colors.surfaceBorder, backgroundColor: theme.colors.surface }]}>
+                {groups.map((group, index) => (
+                  <View key={group.key} style={index > 0 ? [styles.divider, { borderTopColor: theme.colors.surfaceBorder }] : null}>
+                    <SessionRow
+                      theme={theme}
+                      platform={group.sessions[0].platform}
+                      name={group.name}
+                      meta={group.meta}
+                      metaColor={theme.colors.textMuted}
+                      action={
+                        <Pressable
+                          onPress={() => close(group)}
+                          disabled={busyId !== null}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Cerrar sesión en ${group.name}`}
+                          style={styles.closeButton}
+                        >
+                          {busyId === group.key ? (
+                            <ActivityIndicator color={theme.colors.accentTertiary} />
+                          ) : (
+                            <Text style={[styles.closeText, { color: theme.colors.accentTertiary }]}>Cerrar</Text>
+                          )}
+                        </Pressable>
+                      }
+                    />
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : null}
+        </>
       )}
     </FormSheet>
   );
 }
 
+type SessionGroup = { key: string; name: string; meta: string; sessions: DeviceSession[] };
+
+/** Mismo modelo en una sola fila (p. ej. sesiones viejas de antes de reinstalar). */
+function groupSessions(sessions: DeviceSession[], currentName: string | null): SessionGroup[] {
+  const byName = new Map<string, DeviceSession[]>();
+  for (const session of sessions) {
+    const name = session.deviceName ?? 'Dispositivo';
+    byName.set(name, [...(byName.get(name) ?? []), session]);
+  }
+  return [...byName.entries()]
+    .map(([name, list]) => {
+      const sorted = [...list].sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
+      const last = lastUsedLabel(sorted[0].lastUsedAt);
+      const parts = [sorted.length > 1 ? `${sorted.length} sesiones · ${last.charAt(0).toLowerCase()}${last.slice(1)}` : last];
+      if (name === currentName) parts.push('sesión anterior');
+      return { key: `group:${name}`, name, meta: parts.join(' · '), sessions: sorted };
+    })
+    .sort((a, b) => b.sessions[0].lastUsedAt.localeCompare(a.sessions[0].lastUsedAt));
+}
+
+function SessionRow({
+  theme,
+  platform,
+  name,
+  meta,
+  metaColor,
+  action,
+}: Readonly<{ theme: AppTheme; platform: string | null; name: string; meta: string; metaColor: string; action?: React.ReactNode }>) {
+  return (
+    <View style={styles.row}>
+      <View style={[styles.icon, { backgroundColor: `${theme.colors.accentSecondary}14` }]}>
+        <MaterialCommunityIcons name={platformIcon(platform)} size={20} color={theme.colors.accentSecondary} />
+      </View>
+      <View style={styles.flex}>
+        <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={[styles.meta, { color: metaColor }]}>{meta}</Text>
+      </View>
+      {action}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  card: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth },
+  section: { fontSize: 12.5, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: -4 },
+  closeButton: { minHeight: 40, minWidth: 56, alignItems: 'center', justifyContent: 'center' },
+  closeText: { fontSize: 14, fontWeight: '800' },
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   error: { fontSize: 14, textAlign: 'center' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 12 },
-  icon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  icon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 15, fontWeight: '700' },
   meta: { fontSize: 13, marginTop: 2, fontWeight: '600' },
 });

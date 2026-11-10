@@ -10,8 +10,9 @@ import { ProfileNote } from './ProfileParts';
 
 export const SUPPORT_EMAIL = 'soporte@medicai.lat';
 
-const FAQ: { question: string; answer: string }[] = [
+const FAQ: { question: string; answer: string; settings?: boolean }[] = [
   {
+    settings: true,
     question: 'Las alarmas no suenan o llegan tarde',
     answer:
       'Revisa la tarjeta "Estado de las alarmas" en tu perfil y toca "Resolver ahora". En algunos teléfonos (Xiaomi, Huawei, Oppo, Samsung) también hay que quitar el ahorro de batería para MedicAI y permitir el inicio automático.',
@@ -52,7 +53,7 @@ const supportFooter = () =>
   ].join('\n');
 
 export function HelpSheet({ theme, visible, onClose }: Readonly<{ theme: AppTheme; visible: boolean; onClose: () => void }>) {
-  const [open, setOpen] = useState<number | null>(0);
+  const [open, setOpen] = useState<number | null>(null);
 
   const toggle = (index: number) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -96,19 +97,23 @@ export function HelpSheet({ theme, visible, onClose }: Readonly<{ theme: AppThem
                 <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={22} color={theme.colors.textMuted} />
               </PressableScale>
               {expanded ? <Text style={[styles.answer, { color: theme.colors.textSecondary }]}>{item.answer}</Text> : null}
+              {expanded && item.settings ? (
+                <View style={styles.answerAction}>
+                  <AppButton
+                    theme={theme}
+                    label="Abrir ajustes del teléfono"
+                    variant="secondary"
+                    icon="settings-outline"
+                    iconPosition="left"
+                    onPress={() => void Linking.openSettings()}
+                  />
+                </View>
+              ) : null}
             </View>
           );
         })}
       </View>
 
-      <AppButton
-        theme={theme}
-        label="Abrir ajustes del teléfono"
-        variant="secondary"
-        icon="settings-outline"
-        iconPosition="left"
-        onPress={() => void Linking.openSettings()}
-      />
       <ProfileNote theme={theme} icon="information-outline">
         Respondemos en {SUPPORT_EMAIL}, normalmente en uno o dos días hábiles. No incluyas datos de salud en el correo.
       </ProfileNote>
@@ -123,4 +128,5 @@ const styles = StyleSheet.create({
   question: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 14, minHeight: 52 },
   questionText: { flex: 1, fontSize: 15, fontWeight: '700' },
   answer: { fontSize: 14, lineHeight: 20, fontWeight: '500', paddingHorizontal: 14, paddingBottom: 14 },
+  answerAction: { paddingHorizontal: 14, paddingBottom: 14, marginTop: -4 },
 });

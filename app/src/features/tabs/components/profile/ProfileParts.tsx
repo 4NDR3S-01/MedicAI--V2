@@ -36,7 +36,7 @@ type SettingsItemProps = {
   color?: string;
   onPress?: () => void;
   /** chevron (abre algo), external (sale de la app), none, o un interruptor. */
-  trailing?: 'chevron' | 'external' | 'none';
+  trailing?: 'chevron' | 'external' | 'none' | 'expand' | 'collapse';
   toggle?: { value: boolean; onChange: (value: boolean) => void; disabled?: boolean };
   destructive?: boolean;
   /** Punto de aviso (p. ej. falta un permiso). */
@@ -81,6 +81,9 @@ export function SettingsItem({
       ) : null}
       {!toggle && trailing === 'chevron' ? <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textMuted} /> : null}
       {!toggle && trailing === 'external' ? <MaterialCommunityIcons name="open-in-new" size={18} color={theme.colors.textMuted} /> : null}
+      {!toggle && (trailing === 'expand' || trailing === 'collapse') ? (
+        <MaterialCommunityIcons name={trailing === 'expand' ? 'chevron-down' : 'chevron-up'} size={22} color={theme.colors.textMuted} />
+      ) : null}
     </>
   );
 

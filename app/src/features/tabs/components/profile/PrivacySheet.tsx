@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
+import { Alert, LayoutAnimation, Linking, StyleSheet, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../../shared/theme';
 import { AppButton, FormSheet } from '../../../../shared/ui';
@@ -7,12 +7,13 @@ import { PRIVACY_POLICY_URL } from '../../../../shared/config/links';
 import { getStoredSession } from '../../../auth';
 import { updateProfileOnBackend, type ProfileUser } from '../../../auth/services/auth.service';
 import { requestDataExport } from '../../services/account.service';
-import { ProfileNote, SettingsItem } from './ProfileParts';
+import { SettingsItem } from './ProfileParts';
 
 const POINTS: { title: string; body: string }[] = [
   { title: 'Lo que guardamos', body: 'Tu cuenta, tu información de salud, tus medicamentos, tomas y citas, y tu Círculo. Solo para que la app funcione.' },
   { title: 'Quién lo ve', body: 'Tú y las personas de tu Círculo a las que das permiso. No vendemos tus datos ni los usamos para publicidad.' },
   { title: 'Tus derechos', body: 'Puedes consultar, corregir, descargar o eliminar tus datos cuando quieras (Ley Orgánica de Protección de Datos Personales del Ecuador).' },
+  { title: 'Seguridad', body: 'Tus datos viajan cifrados y tu sesión se guarda en el almacén seguro del teléfono.' },
 ];
 
 /** Privacidad: uso de datos en el asistente, copia de los datos, historial y política. */
@@ -35,6 +36,7 @@ export function PrivacySheet({
 }>) {
   const [savingConsent, setSavingConsent] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   const changeConsent = async (value: boolean) => {
     setSavingConsent(true);
@@ -85,15 +87,6 @@ export function PrivacySheet({
       onClose={onClose}
       footer={<AppButton theme={theme} label="Listo" onPress={onClose} style={styles.flex} />}
     >
-      <View style={styles.points}>
-        {POINTS.map((point) => (
-          <View key={point.title} style={styles.point}>
-            <Text style={[styles.pointTitle, { color: theme.colors.textPrimary }]}>{point.title}</Text>
-            <Text style={[styles.pointBody, { color: theme.colors.textSecondary }]}>{point.body}</Text>
-          </View>
-        ))}
-      </View>
-
       <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
         <SettingsItem
           theme={theme}
@@ -125,6 +118,29 @@ export function PrivacySheet({
         <View style={[styles.divider, { backgroundColor: theme.colors.surfaceBorder }]} />
         <SettingsItem
           theme={theme}
+          icon="shield-check-outline"
+          title="Cómo cuidamos tus datos"
+          subtitle="Qué guardamos, quién lo ve y tus derechos"
+          color={theme.colors.accentSecondary}
+          trailing={infoOpen ? 'collapse' : 'expand'}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setInfoOpen((current) => !current);
+          }}
+        />
+        {infoOpen ? (
+          <View style={styles.points}>
+            {POINTS.map((point) => (
+              <View key={point.title} style={styles.point}>
+                <Text style={[styles.pointTitle, { color: theme.colors.textPrimary }]}>{point.title}</Text>
+                <Text style={[styles.pointBody, { color: theme.colors.textSecondary }]}>{point.body}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        <View style={[styles.divider, { backgroundColor: theme.colors.surfaceBorder }]} />
+        <SettingsItem
+          theme={theme}
           icon="file-document-outline"
           title="Política de privacidad"
           subtitle="medicai.lat/privacidad"
@@ -133,17 +149,13 @@ export function PrivacySheet({
           onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
         />
       </View>
-
-      <ProfileNote theme={theme} icon="lock-outline">
-        Tus datos viajan cifrados y tu sesión se guarda en el almacén seguro del teléfono.
-      </ProfileNote>
     </FormSheet>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  points: { gap: 12 },
+  points: { gap: 12, paddingLeft: 66, paddingRight: 16, paddingBottom: 14 },
   point: { gap: 2 },
   pointTitle: { fontSize: 15, fontWeight: '700' },
   pointBody: { fontSize: 14, lineHeight: 19, fontWeight: '500' },
