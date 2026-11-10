@@ -28,8 +28,7 @@ const TABS: { tab: MainTabId; label: string; icon: IconName; activeIcon: IconNam
 ];
 
 const BAR_HEIGHT = 64;
-// Barra fija de lado a lado: nada del contenido se ve por debajo ni a los lados.
-const BAR_BOTTOM_GAP = 0;
+const BAR_BOTTOM_GAP = 8;
 
 /** Se mantiene por compatibilidad: ya no hay botón central que sobresalga. */
 export const MAIN_TAB_FAB_OVERFLOW = 0;
@@ -47,23 +46,35 @@ export function useMainTabContentInset(): number {
 
 export function AppBottomBar({ theme, activeTab, onSelect }: Readonly<AppBottomBarProps>) {
   const barBackground = theme.mode === 'light' ? '#FFFFFF' : '#0A1C2D';
-  // La pantalla termina encima de la barra de gestos (área segura): la barra se
-  // extiende por debajo con su mismo color para que no quede una franja distinta.
+  // La pantalla termina encima de la barra de gestos (área segura): el fondo se
+  // extiende por debajo para que no quede una franja de otro color.
   const { bottom: safeBottom } = useSafeAreaInsets();
 
   return (
-    <View
-      style={[
-        styles.outer,
-        { backgroundColor: barBackground, borderTopColor: theme.colors.surfaceBorder, bottom: -safeBottom, paddingBottom: safeBottom },
-      ]}
-    >
-      <View style={styles.bar} accessibilityRole="tablist">
-        {TABS.map((item) => (
-          <Tab key={item.tab} theme={theme} item={item} active={activeTab === item.tab} onPress={() => onSelect(item.tab)} />
-        ))}
+    <>
+      {/* Solo el hueco BAJO la barra (y el área de la barra de gestos): ahí no debe verse el contenido. */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.backdrop,
+          {
+            backgroundColor: theme.colors.background,
+            bottom: -safeBottom,
+            height: BAR_BOTTOM_GAP + safeBottom,
+          },
+        ]}
+      />
+      <View style={styles.outer} pointerEvents="box-none">
+        <View
+          style={[styles.bar, { backgroundColor: barBackground, borderColor: theme.colors.surfaceBorder }]}
+          accessibilityRole="tablist"
+        >
+          {TABS.map((item) => (
+            <Tab key={item.tab} theme={theme} item={item} active={activeTab === item.tab} onPress={() => onSelect(item.tab)} />
+          ))}
+        </View>
       </View>
-    </View>
+    </>
   );
 }
 
@@ -94,20 +105,22 @@ function Tab({
 }
 
 const styles = StyleSheet.create({
+  backdrop: { position: 'absolute', left: 0, right: 0 },
   outer: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 12,
+    right: 12,
     bottom: BAR_BOTTOM_GAP,
-    borderTopWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
   },
   bar: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 520,
     height: BAR_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: 24,
+    borderWidth: 1,
     paddingHorizontal: 4,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, height: '100%' },
