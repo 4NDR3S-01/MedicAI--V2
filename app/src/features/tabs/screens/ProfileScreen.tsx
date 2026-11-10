@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { Alert, Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -39,7 +39,7 @@ export type ProfileScreenProps = {
   onAccountDeleted?: () => void;
 };
 
-type Sheet = 'avatar' | 'edit' | 'reminders' | 'sessions' | 'privacy' | 'history' | 'help' | 'delete' | null;
+type Sheet = 'avatar' | 'edit' | 'health' | 'reminders' | 'sessions' | 'privacy' | 'history' | 'help' | 'delete' | null;
 
 const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }[] = [
   { value: 'system', label: 'Sistema', icon: 'theme-light-dark' },
@@ -83,6 +83,10 @@ export function ProfileScreen({
     avatar: avatarData,
   });
   const [sheet, setSheet] = useState<Sheet>(null);
+  // Mantiene el modo del formulario mientras se cierra (sheet ya es null).
+  const editSection = useRef<'personal' | 'health'>('personal');
+  if (sheet === 'edit') editSection.current = 'personal';
+  else if (sheet === 'health') editSection.current = 'health';
   const [refreshing, setRefreshing] = useState(false);
   const [lead, setLead] = useState<{ medication: number; appointment: number } | null>(null);
   const [appearance, setAppearance] = useState<ThemePreference>(getThemePreference);
@@ -247,7 +251,7 @@ export function ProfileScreen({
 
           {/* Salud */}
           <PressableScale
-            onPress={() => setSheet('edit')}
+            onPress={() => setSheet('health')}
             pressedScale={0.99}
             accessibilityRole="button"
             accessibilityLabel="Información de salud. Toca para editar."
@@ -388,7 +392,8 @@ export function ProfileScreen({
 
       <EditProfileSheet
         theme={theme}
-        visible={sheet === 'edit'}
+        visible={sheet === 'edit' || sheet === 'health'}
+        section={editSection.current}
         profile={profile}
         onClose={close}
         onSaved={(user, payload) => {

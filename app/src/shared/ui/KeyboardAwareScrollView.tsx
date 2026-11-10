@@ -57,6 +57,8 @@ type KeyboardAwareScrollViewProps = {
   /** Al cambiar (p. ej. el paso de un asistente), vuelve arriba del todo. */
   scrollToTopKey?: string | number;
   style?: StyleProp<ViewStyle>;
+  /** Alto según el contenido (hasta el disponible), en vez de ocupar todo. */
+  fitContent?: boolean;
 };
 
 /**
@@ -71,6 +73,7 @@ export function KeyboardAwareScrollView({
   reserveKeyboardSpace = true,
   scrollToTopKey,
   style,
+  fitContent = false,
 }: Readonly<KeyboardAwareScrollViewProps>) {
   const { keyboardVisible, bottomInset } = useKeyboardInset();
   const reducedMotion = useReducedMotion();
@@ -102,10 +105,10 @@ export function KeyboardAwareScrollView({
 
   return (
     <RevealFocusedInputContext.Provider value={revealFocusedInput}>
-      <View style={[styles.flex, style, { paddingBottom: reserveKeyboardSpace ? bottomInset : 0 }]}>
+      <View style={[fitContent ? styles.fit : styles.flex, style, { paddingBottom: reserveKeyboardSpace ? bottomInset : 0 }]}>
         <ScrollView
           ref={scrollRef}
-          style={styles.flex}
+          style={fitContent ? styles.fitScroll : styles.flex}
           contentContainerStyle={styles.grow}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -129,4 +132,6 @@ export function KeyboardAwareScrollView({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   grow: { flexGrow: 1 },
+  fit: { flexShrink: 1 },
+  fitScroll: { flexGrow: 0 },
 });

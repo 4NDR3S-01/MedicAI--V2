@@ -30,6 +30,8 @@ type FormSheetProps = {
   footer?: ReactNode;
   /** Al cambiar (p. ej. el paso de un asistente), el contenido vuelve arriba. */
   scrollToTopKey?: string | number;
+  /** Panel del alto de su contenido (formularios cortos), en vez de casi toda la pantalla. */
+  fitContent?: boolean;
   children: ReactNode;
 };
 
@@ -47,6 +49,7 @@ export function FormSheet({
   dismissDisabled = false,
   footer,
   scrollToTopKey,
+  fitContent = false,
   children,
 }: Readonly<FormSheetProps>) {
   const insets = useSafeAreaInsets();
@@ -112,6 +115,7 @@ export function FormSheet({
                   },
                 ],
               },
+              fitContent ? styles.sheetFit : null,
               keyboardVisible ? styles.sheetWithKeyboard : null,
             ]}
           >
@@ -139,6 +143,7 @@ export function FormSheet({
 
             <KeyboardAwareScrollView
               reserveKeyboardSpace={false}
+              fitContent={fitContent}
               scrollToTopKey={scrollToTopKey}
               contentContainerStyle={styles.body}
               revealExtraSpace={24}
@@ -181,6 +186,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     overflow: 'hidden',
   },
+  sheetFit: { flex: 0, flexShrink: 1 },
   sheetWithKeyboard: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, marginTop: 10 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 },

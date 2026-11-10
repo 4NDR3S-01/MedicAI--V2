@@ -60,12 +60,15 @@ export function EditProfileSheet({
   theme,
   visible,
   profile,
+  section = 'personal',
   onClose,
   onSaved,
 }: Readonly<{
   theme: AppTheme;
   visible: boolean;
   profile: Partial<ProfileUser>;
+  /** Qué se edita: datos personales (botón "Editar") o salud (tarjeta de salud). */
+  section?: 'personal' | 'health';
   onClose: () => void;
   onSaved: (user: ProfileUser | null, payload: Partial<ProfileUser>) => void;
 }>) {
@@ -86,7 +89,9 @@ export function EditProfileSheet({
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (patch: Partial<Form>) => setForm((current) => ({ ...current, ...patch }));
-  const errors = showErrors ? validate(form) : {};
+  const isHealth = section === 'health';
+  // La salud no toca el teléfono: un número antiguo inválido no debe impedir guardarla.
+  const errors = showErrors && !isHealth ? validate(form) : {};
   const dateColors = useFieldColors(theme, iosPicker, false);
   const phoneColors = useFieldColors(theme, false, Boolean(errors.phone));
   const country = getPhoneCountry(form.phoneCountryIso);
@@ -123,7 +128,7 @@ export function EditProfileSheet({
 
   const save = async () => {
     setShowErrors(true);
-    if (Object.keys(validate(form)).length) return;
+    if (!isHealth && Object.keys(validate(form)).length) return;
     if (sameForm(form, initial)) {
       onClose();
       return;
@@ -156,8 +161,9 @@ export function EditProfileSheet({
     <FormSheet
       theme={theme}
       visible={visible}
-      title="Datos personales"
-      subtitle="Ayudan a tus cuidadores y al asistente a darte información segura."
+      title={isHealth ? 'Información de salud' : 'Datos personales'}
+      fitContent={!isHealth}
+      subtitle={isHealth ? 'Ayuda a tus cuidadores y al asistente a darte información segura.' : 'Tu nombre, fecha de nacimiento y teléfono.'}
       onClose={requestClose}
       dismissDisabled={saving}
       footer={
@@ -167,6 +173,8 @@ export function EditProfileSheet({
         </>
       }
     >
+      {isHealth ? null : (
+      <>
       <TextField
         theme={theme}
         label="Nombre completo"
@@ -252,14 +260,16 @@ export function EditProfileSheet({
           </View>
         </View>
       </FieldShell>
+      </>
+      )}
 
-      <View style={[styles.divider, { backgroundColor: theme.colors.surfaceBorder }]} />
-      <Text style={[styles.section, { color: theme.colors.textPrimary }]}>Información de salud</Text>
-      <MedicalInfoEditor
-        theme={theme}
-        value={form}
-        onChange={(medical) => update(medical)}
-      />
+      {isHealth ? (
+        <MedicalInfoEditor
+          theme={theme}
+          value={form}
+          onChange={(medical) => update(medical)}
+        />
+      ) : null}
 
       <CountryPickerSheet
         theme={theme}
