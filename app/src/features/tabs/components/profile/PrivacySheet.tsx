@@ -12,7 +12,7 @@ import { ProfileNote, SettingsItem } from './ProfileParts';
 const POINTS: { title: string; body: string }[] = [
   { title: 'Lo que guardamos', body: 'Tu cuenta, tu información de salud, tus medicamentos, tomas y citas, y tu Círculo. Solo para que la app funcione.' },
   { title: 'Quién lo ve', body: 'Tú y las personas de tu Círculo a las que das permiso. No vendemos tus datos ni los usamos para publicidad.' },
-  { title: 'Tus derechos', body: 'Puedes consultar, corregir, descargar o eliminar tus datos cuando quieras (Ley 1581 de 2012).' },
+  { title: 'Tus derechos', body: 'Puedes consultar, corregir, descargar o eliminar tus datos cuando quieras (Ley Orgánica de Protección de Datos Personales del Ecuador).' },
 ];
 
 /** Privacidad: uso de datos en el asistente, copia de los datos, historial y política. */

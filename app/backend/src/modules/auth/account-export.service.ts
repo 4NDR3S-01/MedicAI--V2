@@ -8,7 +8,7 @@ const EXPORT_COOLDOWN_MS = 60 * 60_000;
 const NAME = { id: true, fullName: true } as const;
 
 /**
- * "Descargar mis datos" (derecho de acceso, Ley 1581 de 2012): reúne toda la
+ * "Descargar mis datos" (derecho de acceso, LOPDP del Ecuador): reúne toda la
  * información de la cuenta en un JSON legible y la envía como adjunto al
  * correo de la cuenta (así solo la recibe su dueño). Nunca incluye
  * contraseñas, tokens ni datos internos de seguridad.
@@ -109,7 +109,7 @@ export class AccountExportService {
 
     return {
       generado: new Date().toISOString(),
-      nota: 'Copia de tus datos en MedicAI (Ley 1581 de 2012, derecho de acceso). Las fechas están en UTC.',
+      nota: 'Copia de tus datos en MedicAI (derecho de acceso, Ley Orgánica de Protección de Datos Personales del Ecuador). Las fechas están en UTC.',
       cuenta: {
         correo: user.email,
         nombre: user.fullName,
