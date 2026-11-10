@@ -12,11 +12,13 @@ import {
   NO_PERMISSIONS,
   PERMISSION_PRESETS,
   hasAnyPermission,
+  presetOf,
   permissionPhrases,
   type PermissionSet,
 } from '../utils/permissions';
 import {
   CARE_OPTIONS,
+  COMMON_RELATIONS,
   relationLabel,
   suggestedCare,
   type CareValue,
@@ -30,6 +32,8 @@ type Method = 'email' | 'code';
 type Step = 0 | 1 | 2 | 3;
 
 const STEP_TITLES = ['Persona', 'Relación', 'Permisos', 'Revisar'];
+/** «esta persona» al inicio de una frase → «Esta persona». */
+const capitalize = (text: string) => text.charAt(0).toLocaleUpperCase('es') + text.slice(1);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const preset = (id: 'none' | 'view' | 'help' | 'manage'): PermissionSet =>
@@ -88,6 +92,10 @@ export function InviteSheet({
   const [careTouched, setCareTouched] = useState(false);
   const [granted, setGranted] = useState<PermissionSet>(NO_PERMISSIONS);
   const [requested, setRequested] = useState<PermissionSet>(NO_PERMISSIONS);
+  /** La solicitud de acceso es secundaria: plegada con un resumen. */
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [careOpen, setCareOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
   const [permissionsTouched, setPermissionsTouched] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,12 +118,15 @@ export function InviteSheet({
     setCreated(null);
     setGroupIds([]);
     setReminderMode('OFF');
+    setRequestOpen(false);
+    setCareOpen(false);
+    setGroupsOpen(false);
   }, [visible, initialEmail]);
 
   // Solo tiene sentido si pides ver sus medicamentos o citas (y lo pides para ti).
   const canAskReminders = !ownerId && (requested.viewMedications || requested.viewAppointments);
   const wantsReminders = canAskReminders && reminderMode !== 'OFF';
-  const personName = name.trim() || (method === 'email' && email.includes('@') ? email.split('@')[0] : 'esta persona');
+  const personName = name.trim() || 'esta persona';
   const ownerInfo = ownerId ? `la información de ${ownerName ?? 'esta persona'}` : 'tu información';
   const subject = ownerId ? (ownerName ?? 'Esta persona') : 'Tú';
 
@@ -126,13 +137,29 @@ export function InviteSheet({
     return null;
   };
   const error = showErrors ? stepError() : null;
+  const requestPreset = presetOf({ ...requested, manageCircle: false });
+  const requestSummary = !hasAnyPermission(requested)
+    ? 'Sin acceso'
+    : PERMISSION_PRESETS.find((item) => item.id === requestPreset)?.label ?? 'Personalizado';
+
+  // Cerrar con datos escritos: se pregunta antes de perderlos.
+  const requestClose = () => {
+    if (saving) return;
+    if (step === 0 && !email.trim() && !name.trim()) {
+      onClose();
+      return;
+    }
+    Alert.alert('¿Descartar la invitación?', 'Se perderá lo que escribiste.', [
+      { text: 'Seguir editando', style: 'cancel' },
+      { text: 'Descartar', style: 'destructive', onPress: onClose },
+    ]);
+  };
 
   const goNext = async () => {
     setShowErrors(true);
     if (stepError()) return;
     // Al salir del paso del selector, un grupo escrito sin confirmar se crea
     // (si no, se perdía al desmontarse el campo).
-    if (step === 0 && groupPickerRef.current && !(await groupPickerRef.current.commitDraft())) return;
     setShowErrors(false);
     if (step === 1 && !permissionsTouched) {
       const defaults = defaultsFor(care, relation);
@@ -146,6 +173,8 @@ export function InviteSheet({
 
   const submit = async () => {
     if (!relation) return;
+    // Un grupo escrito sin confirmar se crea antes de enviar.
+    if (groupPickerRef.current && !(await groupPickerRef.current.commitDraft())) return;
     const session = await getStoredSession();
     if (!session?.accessToken) {
       Alert.alert('Sesión expirada', 'Vuelve a iniciar sesión para continuar.');
@@ -226,7 +255,7 @@ export function InviteSheet({
       subtitle={`Paso ${step + 1} de 4 · ${STEP_TITLES[step]}`}
       fitContent={false}
       scrollToTopKey={step}
-      onClose={onClose}
+      onClose={requestClose}
       dismissDisabled={saving}
       footer={
         <>
@@ -234,7 +263,7 @@ export function InviteSheet({
             theme={theme}
             label={step === 0 ? 'Cancelar' : 'Atrás'}
             variant="secondary"
-            onPress={() => (step === 0 ? onClose() : setStep((current) => (current - 1) as Step))}
+            onPress={() => (step === 0 ? requestClose() : setStep((current) => (current - 1) as Step))}
             disabled={saving}
             style={styles.flex}
           />
@@ -312,22 +341,6 @@ export function InviteSheet({
             autoCapitalize="words"
             helper="Solo para que la reconozcas en tu lista mientras responde."
           />
-          {!ownerId ? (
-            <>
-              <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
-              <GroupPicker
-                ref={groupPickerRef}
-                theme={theme}
-                groups={groups}
-                value={groupIds}
-                onChange={setGroupIds}
-                onCreate={(group, next) => {
-                  onGroupCreated?.(group);
-                  setGroupIds(next);
-                }}
-              />
-            </>
-          ) : null}
         </>
       ) : null}
 
@@ -336,7 +349,7 @@ export function InviteSheet({
           <SectionTitle
             theme={theme}
             title={ownerId ? `¿Qué es ${ownerName ?? 'esta persona'} para ${personName}?` : `¿Qué eres tú para ${personName}?`}
-            hint={`${personName} confirmará qué es para ${ownerId ? ownerName ?? 'esta persona' : 'ti'} al aceptar.`}
+            hint={`${capitalize(personName)} confirmará qué es para ${ownerId ? ownerName ?? 'esta persona' : 'ti'} al aceptar.`}
           />
           <RelationPicker
             theme={theme}
@@ -347,18 +360,41 @@ export function InviteSheet({
               if (!careTouched) setCare(suggestedCare(code));
             }}
             onCustomLabelChange={setRelationText}
+            suggested={COMMON_RELATIONS}
             error={error}
           />
-          <SectionTitle theme={theme} title="¿Quién cuida a quién?" hint="Sirve para organizar tu Círculo. No da acceso por sí solo." />
-          <CarePicker
-            theme={theme}
-            value={care}
-            name={personName}
-            onChange={(value) => {
-              setCareTouched(true);
-              setCare(value);
-            }}
-          />
+          {relation ? (
+            <>
+              <SectionTitle theme={theme} title="¿Quién cuida a quién?" hint="Sirve para organizar tu Círculo. No da acceso por sí solo." />
+              {careOpen ? (
+                <CarePicker
+                  theme={theme}
+                  value={care}
+                  name={personName}
+                  onChange={(value) => {
+                    setCareTouched(true);
+                    setCare(value);
+                  }}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => setCareOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityHint="Cambiar quién cuida a quién"
+                  style={({ pressed }) => [styles.requestRow, { borderColor: theme.colors.surfaceBorder }, pressed && { opacity: 0.8 }]}
+                >
+                  <MaterialCommunityIcons name={careOption?.icon ?? 'account-multiple-outline'} size={20} color={theme.colors.accentPrimary} />
+                  <View style={styles.flex}>
+                    <Text style={[styles.requestTitle, { color: theme.colors.textPrimary }]}>{careOption?.title(personName) ?? ''}</Text>
+                    <Text style={[styles.requestHint, { color: theme.colors.textMuted }]}>
+                      {careTouched ? 'Elegido por ti' : `Sugerido por «${relationLabel({ code: relation, label: relationText })}»`}
+                    </Text>
+                  </View>
+                  <Text style={[styles.changeText, { color: theme.colors.accentPrimaryText }]}>Cambiar</Text>
+                </Pressable>
+              )}
+            </>
+          ) : null}
         </>
       ) : null}
 
@@ -377,20 +413,39 @@ export function InviteSheet({
               setGranted(value);
             }}
           />
-          <SectionTitle
-            theme={theme}
-            title={ownerId ? `Lo que ${ownerName ?? 'esta persona'} pide poder hacer con su información` : 'Lo que te gustaría poder hacer con su información'}
-            hint={`Es una solicitud: ${personName} la revisará y decidirá qué acepta.`}
-          />
-          <PermissionEditor
-            theme={theme}
-            value={requested}
-            allowCircleAdmin={false}
-            onChange={(value) => {
-              setPermissionsTouched(true);
-              setRequested(value);
-            }}
-          />
+          <Pressable
+            onPress={() => setRequestOpen((current) => !current)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: requestOpen }}
+            style={({ pressed }) => [styles.requestRow, { borderColor: theme.colors.surfaceBorder }, pressed && { opacity: 0.8 }]}
+          >
+            <MaterialCommunityIcons name="hand-heart-outline" size={20} color={theme.colors.accentPrimary} />
+            <View style={styles.flex}>
+              <Text style={[styles.requestTitle, { color: theme.colors.textPrimary }]}>
+                {ownerId ? `Acceso que ${ownerName ?? 'esta persona'} pide` : 'Pedir acceso a su información'}
+              </Text>
+              <Text style={[styles.requestHint, { color: theme.colors.textMuted }]}>
+                {requestSummary} · Opcional
+              </Text>
+            </View>
+            <MaterialCommunityIcons name={requestOpen ? 'chevron-up' : 'chevron-down'} size={20} color={theme.colors.textMuted} />
+          </Pressable>
+          {requestOpen ? (
+            <>
+              <Text style={[styles.requestHint, { color: theme.colors.textMuted }]}>
+                Es una solicitud: {personName} la revisará y decidirá qué acepta.
+              </Text>
+              <PermissionEditor
+                theme={theme}
+                value={requested}
+                allowCircleAdmin={false}
+                onChange={(value) => {
+                  setPermissionsTouched(true);
+                  setRequested(value);
+                }}
+              />
+            </>
+          ) : null}
           {canAskReminders ? (
             <ReminderModePicker theme={theme} value={reminderMode} name={personName} onChange={setReminderMode} />
           ) : null}
@@ -422,6 +477,39 @@ export function InviteSheet({
               label="Sus recordatorios en tu teléfono"
               value={REMINDER_OPTIONS.find((option) => option.value === reminderMode)?.label ?? ''}
             />
+          ) : null}
+          {!ownerId ? (
+            groupsOpen ? (
+              <>
+                <SectionTitle theme={theme} title="Añadir a un grupo" hint="Opcional. Solo tú ves tus grupos." />
+                <GroupPicker
+                  ref={groupPickerRef}
+                  theme={theme}
+                  groups={groups}
+                  value={groupIds}
+                  onChange={setGroupIds}
+                  onCreate={(group, next) => {
+                    onGroupCreated?.(group);
+                    setGroupIds(next);
+                  }}
+                />
+              </>
+            ) : (
+              <Pressable
+                onPress={() => setGroupsOpen(true)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.requestRow, { borderColor: theme.colors.surfaceBorder }, pressed && { opacity: 0.8 }]}
+              >
+                <MaterialCommunityIcons name="folder-account-outline" size={20} color={theme.colors.accentSecondary} />
+                <View style={styles.flex}>
+                  <Text style={[styles.requestTitle, { color: theme.colors.textPrimary }]}>Grupo</Text>
+                  <Text style={[styles.requestHint, { color: theme.colors.textMuted }]}>
+                    {groups.filter((group) => groupIds.includes(group.id)).map((group) => group.name).join(', ') || 'Ninguno · Opcional'}
+                  </Text>
+                </View>
+                <Text style={[styles.changeText, { color: theme.colors.accentPrimaryText }]}>Cambiar</Text>
+              </Pressable>
+            )
           ) : null}
           {!hasAnyPermission(granted) && !hasAnyPermission(requested) ? (
             <InfoNote theme={theme} color={theme.colors.accentTertiary} icon="alert-circle-outline">
@@ -461,6 +549,10 @@ function PhraseList({ theme, phrases, empty }: Readonly<{ theme: AppTheme; phras
 }
 
 const styles = StyleSheet.create({
+  requestRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, minHeight: 56 },
+  requestTitle: { fontSize: 15, fontWeight: '700' },
+  changeText: { fontSize: 14, fontWeight: '800' },
+  requestHint: { fontSize: 13, lineHeight: 18, fontWeight: '500', marginTop: 2 },
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   progress: { flexDirection: 'row', gap: 6 },

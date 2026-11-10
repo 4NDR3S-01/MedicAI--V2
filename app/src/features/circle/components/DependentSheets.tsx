@@ -49,6 +49,8 @@ export function DependentSheet({
 }>) {
   const editing = Boolean(member);
   const [medical, setMedical] = useState<MedicalInfo>(EMPTY_MEDICAL_INFO);
+  /** Al crear, la información médica (opcional y larga) va plegada. */
+  const [medicalOpen, setMedicalOpen] = useState(false);
   const [reminderMode, setReminderMode] = useState<ReminderMode>('ALARM');
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const groupPickerRef = useRef<GroupPickerHandle>(null);
@@ -73,6 +75,7 @@ export function DependentSheet({
     setMyRelation(null);
     setMyRelationText('');
     setMedical(EMPTY_MEDICAL_INFO);
+    setMedicalOpen(Boolean(member));
     setGroupIds([]);
     setReminderMode('ALARM');
     setShowErrors(false);
@@ -255,8 +258,25 @@ export function DependentSheet({
         </>
       ) : null}
 
-      <SectionTitle theme={theme} title="Información médica" hint="Opcional. Ayuda a evitar medicamentos que no le convengan." />
-      <MedicalInfoEditor theme={theme} value={medical} onChange={setMedical} subject="other" />
+      {medicalOpen ? (
+        <>
+          <SectionTitle theme={theme} title="Información médica" hint="Opcional. Ayuda a evitar medicamentos que no le convengan." />
+          <MedicalInfoEditor theme={theme} value={medical} onChange={setMedical} subject="other" />
+        </>
+      ) : (
+        <PressableScale
+          onPress={() => setMedicalOpen(true)}
+          accessibilityRole="button"
+          style={[styles.addMedical, { borderColor: theme.colors.surfaceBorder }]}
+        >
+          <Ionicons name="medkit-outline" size={20} color={theme.colors.accentPrimary} />
+          <Text style={[styles.addMedicalTitle, { color: theme.colors.textPrimary }]}>
+            Agregar información médica
+          </Text>
+          <Text style={[styles.addMedicalHint, { color: theme.colors.textMuted }]}>Opcional</Text>
+          <Ionicons name="add" size={20} color={theme.colors.accentPrimary} />
+        </PressableScale>
+      )}
 
       {!editing ? (
         <>
@@ -484,6 +504,9 @@ export function HandoverSheet({
 }
 
 const styles = StyleSheet.create({
+  addMedical: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderStyle: 'dashed', borderRadius: 16, paddingHorizontal: 14, minHeight: 56 },
+  addMedicalTitle: { flex: 1, fontSize: 15, fontWeight: '700' },
+  addMedicalHint: { fontSize: 13, fontWeight: '500' },
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   selector: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14 },

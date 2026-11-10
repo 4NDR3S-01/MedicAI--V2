@@ -4,13 +4,16 @@ import { Alert, LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react
 
 import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FormSheet, useReducedMotion } from '../../../shared/ui';
+import { ERROR_COLOR } from '../../../shared/ui/FormField';
 import { syncOwnReminders } from '../../tabs/services/reminders-sync';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
 import type { CircleGroup, CircleMember, ReminderMode } from '../services/circle.service';
-import { samePermissions, type PermissionSet } from '../utils/permissions';
+import { PERMISSION_KEYS, PERMISSION_PRESETS, presetOf, samePermissions, type PermissionSet } from '../utils/permissions';
 import {
+  CARE_OPTIONS,
+  COMMON_RELATIONS,
   careSummary,
   displayName,
   firstName,
@@ -19,12 +22,14 @@ import {
   type CareValue,
   type RelationCode,
 } from '../utils/relations';
-import { Avatar, Badge, CarePicker, InfoNote, PermissionEditor, PermissionList, RelationPicker, ReminderModePicker, SectionTitle } from './CircleParts';
+import { Avatar, CarePicker, PermissionEditor, PermissionList, RelationPicker, REMINDER_OPTIONS, ReminderModePicker, SectionTitle } from './CircleParts';
 import { CoCaregiverSheet, DependentSheet, HandoverSheet } from './DependentSheets';
 import { GroupPicker } from './CircleGroups';
 
 
 export type CareTab = 'medications' | 'appointments' | 'health';
+
+type View_ = 'main' | 'relation' | 'theyCan' | 'iCan' | 'reminders' | 'groups';
 
 export type MemberDetailSheetProps = {
   theme: AppTheme;
@@ -67,11 +72,15 @@ export function MemberDetailSheet({
   const [care, setCare] = useState<CareValue>('NONE');
   const [busy, setBusy] = useState<'permissions' | 'relation' | 'remove' | 'reminders' | null>(null);
   const [dependentSheet, setDependentSheet] = useState<'edit' | 'caregiver' | 'handover' | null>(null);
+  /** Pantalla dentro de la hoja: la lista de ajustes o el detalle de una fila. */
+  const [view, setView] = useState<View_>('main');
+  const [careOpen, setCareOpen] = useState(false);
 
   useEffect(() => {
     if (!member) return;
     setDraft(member.theyCan);
     setEditingRelation(false);
+    setView('main');
   }, [member?.linkId, Boolean(member)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!shown) return null;
@@ -117,7 +126,9 @@ export function MemberDetailSheet({
     setRelation(code);
     setRelationText(code === 'OTHER' ? shown.myRelation.label ?? '' : '');
     setCare(shown.care);
+    setCareOpen(false);
     setEditingRelation(true);
+    setView('relation');
   };
 
   const saveRelation = async () => {
@@ -134,6 +145,7 @@ export function MemberDetailSheet({
       });
       animate();
       setEditingRelation(false);
+      setView('main');
       onChanged(updated);
     } catch (error) {
       Alert.alert('No se pudo guardar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
@@ -241,194 +253,228 @@ export function MemberDetailSheet({
     );
   };
 
-  const careActions: { tab: CareTab; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; allowed: boolean }[] = [
-    { tab: 'medications', label: 'Medicamentos', icon: 'pill', allowed: iCan.viewMedications },
-    { tab: 'appointments', label: 'Citas', icon: 'calendar-heart', allowed: iCan.viewAppointments },
-    { tab: 'health', label: 'Salud', icon: 'heart-pulse', allowed: iCan.viewHealth },
-  ];
-  const visibleCareActions = managing ? [] : careActions.filter((action) => action.allowed);
+
+  // ── Resúmenes de cada fila (cómo está ahora) ──
+  const permissionSummary = (value: PermissionSet, empty: string) => {
+    const count = PERMISSION_KEYS.filter((key) => value[key]).length;
+    if (!count) return empty;
+    const preset = PERMISSION_PRESETS.find((item) => item.id === presetOf({ ...value, manageCircle: false }));
+    return `${preset?.label ?? 'Personalizado'} · ${count} ${count === 1 ? 'permiso' : 'permisos'}`;
+  };
+  const groupSummary = groups.filter((group) => memberGroupIds.includes(group.id)).map((group) => group.name).join(', ') || 'Ninguno';
+  const reminderSummary = REMINDER_OPTIONS.find((option) => option.value === reminders)?.label ?? 'No recibir';
+
+  const open = (next: View_) => {
+    animate();
+    setView(next);
+  };
+  const back = () => open('main');
+
+  const subTitle: Record<Exclude<View_, 'main'>, string> = {
+    relation: 'Relación y cuidado',
+    theyCan: `Lo que ${first} puede hacer`,
+    iCan: 'Lo que tú puedes hacer',
+    reminders: 'Sus recordatorios',
+    groups: 'Grupo',
+  };
+
+  let footer: React.ReactNode;
+  if (view === 'theyCan' && permissionsDirty) {
+    footer = (
+      <>
+        <AppButton theme={theme} label="Descartar" variant="secondary" onPress={() => setDraft(shown.theyCan)} disabled={busy !== null} style={styles.flex} />
+        <AppButton theme={theme} label="Guardar permisos" icon="checkmark" onPress={() => void savePermissions().then(back)} loading={busy === 'permissions'} style={styles.flexWide} />
+      </>
+    );
+  } else if (view === 'relation') {
+    footer = (
+      <>
+        <AppButton theme={theme} label="Cancelar" variant="secondary" onPress={back} disabled={busy === 'relation'} style={styles.flex} />
+        <AppButton theme={theme} label="Guardar" icon="checkmark" onPress={() => void saveRelation()} loading={busy === 'relation'} style={styles.flexWide} />
+      </>
+    );
+  } else if (view !== 'main') {
+    footer = <AppButton theme={theme} label="Listo" variant="secondary" onPress={back} style={styles.flex} />;
+  } else {
+    footer = <AppButton theme={theme} label="Cerrar" variant="secondary" onPress={onClose} style={styles.flex} />;
+  }
 
   return (
     <>
       <FormSheet
         theme={theme}
         visible={Boolean(member)}
-        title={name}
-        subtitle={isDependent ? 'Perfil a cargo · sin cuenta propia' : shown.person.email}
+        title={view === 'main' ? name : subTitle[view]}
+        subtitle={view === 'main' ? (isDependent ? 'Perfil a cargo · sin cuenta propia' : shown.person.email) : name}
         onClose={onClose}
         dismissDisabled={busy !== null}
-        footer={
-          permissionsDirty ? (
-            <>
-              <AppButton theme={theme} label="Descartar" variant="secondary" onPress={() => setDraft(shown.theyCan)} disabled={busy !== null} style={styles.flex} />
-              <AppButton theme={theme} label="Guardar permisos" icon="checkmark" onPress={() => void savePermissions()} loading={busy === 'permissions'} style={styles.flexWide} />
-            </>
-          ) : (
-            <AppButton theme={theme} label="Cerrar" variant="secondary" onPress={onClose} style={styles.flex} />
-          )
-        }
+        footer={footer}
       >
-        {/* Relación */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <View style={styles.headerRow}>
-            <Avatar name={name} seed={shown.person.id} size={56} />
-            <View style={styles.flex}>
-              <Text style={[styles.relationTitle, { color: theme.colors.textPrimary }]}>
-                {managing ? `${relationLabel(shown.relation)} de ${ownerName ?? 'esta persona'}` : relationToMe(shown.relation)}
-              </Text>
-              <Text style={[styles.relationSub, { color: theme.colors.textMuted }]}>
-                {managing ? `${ownerName ?? 'Esta persona'} es su` : 'Tú eres su'} {relationLabel(shown.myRelation).toLowerCase()}
-              </Text>
-              {careLine && !managing ? (
-                <View style={styles.badgeRow}>
-                  <Badge label={careLine} color={theme.colors.accentPrimaryText} icon="hand-heart-outline" />
-                </View>
-              ) : null}
-            </View>
-          </View>
-          {!managing && !editingRelation ? (
-            <Pressable onPress={startEditRelation} accessibilityRole="button" style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
-              <MaterialCommunityIcons name="pencil-outline" size={16} color={theme.colors.accentSecondary} />
-              <Text style={[styles.linkButtonText, { color: theme.colors.accentSecondaryText }]}>Cambiar relación o cuidado</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        {view !== 'main' ? (
+          <Pressable onPress={back} accessibilityRole="button" style={({ pressed }) => [styles.backLink, pressed && styles.pressed]}>
+            <MaterialCommunityIcons name="chevron-left" size={20} color={theme.colors.accentPrimaryText} />
+            <Text style={[styles.backText, { color: theme.colors.accentPrimaryText }]}>Volver</Text>
+          </Pressable>
+        ) : null}
 
-        {editingRelation ? (
+        {view === 'main' ? (
+          <>
+            {/* Relación (toca el lápiz para cambiarla) */}
+            <Pressable
+              disabled={managing}
+              onPress={startEditRelation}
+              accessibilityRole={managing ? undefined : 'button'}
+              accessibilityHint={managing ? undefined : 'Cambiar relación o cuidado'}
+              style={({ pressed }) => [styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }, pressed && styles.pressed]}
+            >
+              <View style={styles.headerRow}>
+                <Avatar name={name} seed={shown.person.id} size={48} />
+                <View style={styles.flex}>
+                  <Text style={[styles.relationTitle, { color: theme.colors.textPrimary }]}>
+                    {managing ? `${relationLabel(shown.relation)} de ${ownerName ?? 'esta persona'}` : relationToMe(shown.relation)}
+                  </Text>
+                  <Text style={[styles.relationSub, { color: theme.colors.textMuted }]}>
+                    {managing ? `${ownerName ?? 'Esta persona'} es su` : 'Tú eres su'} {relationLabel(shown.myRelation).toLowerCase()}
+                    {careLine && !managing ? ` · ${careLine}` : ''}
+                  </Text>
+                </View>
+                {managing ? null : <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textMuted} />}
+              </View>
+            </Pressable>
+
+            {/* Permisos, recordatorios y grupo */}
+            <RowGroup theme={theme}>
+              {!isDependent ? (
+                <SettingsRow
+                  theme={theme}
+                  label={managing ? `Lo que ${first} puede hacer con su información` : `Lo que ${first} puede hacer con tu información`}
+                  value={permissionSummary(shown.theyCan, 'Sin acceso')}
+                  onPress={() => open('theyCan')}
+                />
+              ) : null}
+              {!managing ? (
+                <SettingsRow
+                  theme={theme}
+                  label="Lo que tú puedes hacer"
+                  value={permissionSummary(iCan, `${first} no comparte su información contigo`)}
+                  onPress={() => open('iCan')}
+                />
+              ) : null}
+              {canReceiveReminders ? (
+                <SettingsRow theme={theme} label="Sus recordatorios en tu teléfono" value={reminderSummary} onPress={() => open('reminders')} />
+              ) : null}
+              {!managing && onGroupsChange ? (
+                <SettingsRow theme={theme} label="Grupo" value={groupSummary} onPress={() => open('groups')} />
+              ) : null}
+            </RowGroup>
+
+            {/* Su perfil y quién lo cuida */}
+            {!managing && iCan.manageCircle ? (
+              <RowGroup theme={theme}>
+                {isDependent ? <SettingsRow theme={theme} label="Editar su perfil" onPress={() => setDependentSheet('edit')} /> : null}
+                <SettingsRow
+                  theme={theme}
+                  label={isDependent ? `Quién cuida a ${first}` : `Administrar el Círculo de ${first}`}
+                  value={isDependent ? 'Ver cuidadores · Agregar otro' : undefined}
+                  onPress={() => onManageCircle(shown)}
+                />
+                {isDependent ? (
+                  <SettingsRow theme={theme} label="Entregarle su cuenta" value="Cuando ya pueda usar la app" onPress={() => setDependentSheet('handover')} />
+                ) : null}
+              </RowGroup>
+            ) : null}
+
+            {/* Quitar */}
+            <RowGroup theme={theme}>
+              <SettingsRow
+                theme={theme}
+                label={isDependent ? `Dejar de cuidar a ${first}` : `Quitar a ${first} del Círculo`}
+                value={isDependent ? 'Solo si otra persona también lo cuida' : 'Se quitan los permisos en ambos sentidos'}
+                destructive
+                disabled={busy !== null}
+                onPress={remove}
+              />
+              {isDependent && iCan.manageCircle ? (
+                <SettingsRow
+                  theme={theme}
+                  label="Eliminar el perfil"
+                  value="Borra sus medicamentos, citas y alarmas"
+                  destructive
+                  disabled={busy !== null}
+                  onPress={deleteDependent}
+                />
+              ) : null}
+            </RowGroup>
+          </>
+        ) : null}
+
+        {view === 'relation' ? (
           <View style={styles.section}>
             <SectionTitle theme={theme} title={`¿Qué eres para ${first}?`} />
-            <RelationPicker theme={theme} value={relation} customLabel={relationText} onChange={setRelation} onCustomLabelChange={setRelationText} />
-            <SectionTitle theme={theme} title="¿Quién cuida a quién?" />
-            <CarePicker theme={theme} value={care} name={first} onChange={setCare} />
-            <View style={styles.inlineActions}>
-              <AppButton
-                theme={theme}
-                label="Cancelar"
-                variant="secondary"
-                onPress={() => {
-                  animate();
-                  setEditingRelation(false);
-                }}
-                disabled={busy === 'relation'}
-                style={styles.flex}
-              />
-              <AppButton theme={theme} label="Guardar" icon="checkmark" onPress={() => void saveRelation()} loading={busy === 'relation'} style={styles.flexWide} />
-            </View>
-          </View>
-        ) : null}
-
-        {/* Grupos (privados) */}
-      {!managing && onGroupsChange ? (
-        <View style={styles.section}>
-          <SectionTitle theme={theme} title="Grupos" hint="Solo tú los ves. No cambian los permisos." />
-          <GroupPicker
-            theme={theme}
-            groups={groups}
-            value={memberGroupIds}
-            onChange={(ids) => void changeGroups(ids)}
-            onCreate={(group, next) => {
-              // El grupo nuevo se crea y se le añade a esta persona.
-              void changeGroups(next, [...groups, group]);
-            }}
-          />
-        </View>
-      ) : null}
-
-      {/* Lo que puedo hacer yo con su información */}
-        {!managing ? (
-          <View style={styles.section}>
-            <SectionTitle theme={theme} title="Tú puedes" hint={isDependent ? `Estás a cargo de ${first}.` : `Lo decide ${first}.`} />
-            <PermissionList theme={theme} value={iCan} perspective="iCan" emptyText={`${first} no comparte su información contigo`} />
-            {visibleCareActions.length ? (
-              <View style={styles.careActions}>
-                {visibleCareActions.map((action) => (
-                  <Pressable
-                    key={action.tab}
-                    onPress={() => onOpenCare(shown, action.tab)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Ver ${action.label.toLowerCase()} de ${first}`}
-                    style={({ pressed }) => [
-                      styles.careAction,
-                      { backgroundColor: `${theme.colors.accentSecondary}12`, borderColor: `${theme.colors.accentSecondary}30` },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <MaterialCommunityIcons name={action.icon} size={20} color={theme.colors.accentSecondary} />
-                    <Text style={[styles.careActionText, { color: theme.colors.accentSecondaryText }]}>{action.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            {canReceiveReminders ? (
-              <ReminderModePicker
-                theme={theme}
-                value={reminders}
-                name={first}
-                onChange={(mode) => void changeReminders(mode)}
-                disabled={busy !== null}
-              />
-            ) : null}
-            {isDependent && iCan.manageCircle ? (
-              <View style={styles.dependentActions}>
-                <AppButton theme={theme} label="Editar su perfil" icon="create-outline" iconPosition="left" variant="secondary" onPress={() => setDependentSheet('edit')} />
-                <AppButton theme={theme} label="Agregar otro cuidador" icon="person-add-outline" iconPosition="left" variant="secondary" onPress={() => setDependentSheet('caregiver')} />
-                <AppButton theme={theme} label="Entregarle su cuenta" icon="key-outline" iconPosition="left" variant="ghost" onPress={() => setDependentSheet('handover')} />
-              </View>
-            ) : null}
-            {iCan.manageCircle ? (
-              <AppButton
-                theme={theme}
-                label={isDependent ? `Ver quién cuida a ${first}` : `Administrar el Círculo de ${first}`}
-                icon="people-outline"
-                iconPosition="left"
-                variant="secondary"
-                onPress={() => onManageCircle(shown)}
-              />
-            ) : null}
-          </View>
-        ) : null}
-
-        {/* Lo que la otra persona puede hacer con mi información (un perfil a cargo no usa la app) */}
-        {!isDependent ? (
-          <View style={styles.section}>
-            <SectionTitle
+            <RelationPicker
               theme={theme}
-              title={`Lo que ${first} puede hacer con ${managing ? `la información de ${subject}` : 'tu información'}`}
-              hint={managing ? `Estás administrando el Círculo de ${subject}.` : 'Solo tú decides. Los cambios se aplican al guardar.'}
+              value={relation}
+              customLabel={relationText}
+              onChange={setRelation}
+              onCustomLabelChange={setRelationText}
+              suggested={COMMON_RELATIONS}
             />
+            <SectionTitle theme={theme} title="¿Quién cuida a quién?" />
+            {careOpen ? (
+              <CarePicker theme={theme} value={care} name={first} onChange={setCare} />
+            ) : (
+              <RowGroup theme={theme}>
+                <SettingsRow
+                  theme={theme}
+                  label={CARE_OPTIONS.find((option) => option.value === care)?.title(first) ?? ''}
+                  value="Toca para cambiar"
+                  onPress={() => {
+                    animate();
+                    setCareOpen(true);
+                  }}
+                />
+              </RowGroup>
+            )}
+          </View>
+        ) : null}
+
+        {view === 'theyCan' ? (
+          <View style={styles.section}>
+            <Text style={[styles.subHint, { color: theme.colors.textMuted }]}>
+              {managing ? `Estás administrando el Círculo de ${subject}.` : 'Solo tú decides. Los cambios se aplican al guardar.'}
+            </Text>
             {draft ? <PermissionEditor theme={theme} value={draft} onChange={setDraft} disabled={busy === 'permissions'} /> : null}
           </View>
         ) : null}
 
-        {/* Quitar */}
-        <View style={[styles.danger, { borderColor: `${theme.colors.accentTertiary}40` }]}>
-          <InfoNote theme={theme} icon="link-variant-off" color={theme.colors.accentTertiary}>
-            {isDependent
-              ? `Si dejas de cuidar a ${first}, perderás el acceso a su información. Solo es posible si otra persona también lo administra.`
-              : `Al quitar a ${first}, se eliminan todos los permisos entre ${managing ? `${first} y ${subject}` : 'ustedes'} de inmediato.`}
-          </InfoNote>
-          {isDependent && iCan.manageCircle ? (
-            <AppButton
+        {view === 'iCan' ? (
+          <View style={styles.section}>
+            <Text style={[styles.subHint, { color: theme.colors.textMuted }]}>
+              {isDependent ? `Estás a cargo de ${first}.` : `Lo decide ${first}.`}
+            </Text>
+            <PermissionList theme={theme} value={iCan} perspective="iCan" emptyText={`${first} no comparte su información contigo`} />
+          </View>
+        ) : null}
+
+        {view === 'reminders' ? (
+          <ReminderModePicker theme={theme} value={reminders} name={first} onChange={(mode) => void changeReminders(mode)} disabled={busy !== null} />
+        ) : null}
+
+        {view === 'groups' ? (
+          <View style={styles.section}>
+            <Text style={[styles.subHint, { color: theme.colors.textMuted }]}>Solo tú los ves. No cambian los permisos.</Text>
+            <GroupPicker
               theme={theme}
-              label={`Eliminar el perfil de ${first}`}
-              icon="trash-outline"
-              iconPosition="left"
-              variant="ghost"
-              onPress={deleteDependent}
-              disabled={busy !== null}
+              groups={groups}
+              value={memberGroupIds}
+              onChange={(ids) => void changeGroups(ids)}
+              onCreate={(group, next) => {
+                // El grupo nuevo se crea y se le añade a esta persona.
+                void changeGroups(next, [...groups, group]);
+              }}
             />
-          ) : null}
-          <AppButton
-            theme={theme}
-            label={isDependent ? `Dejar de cuidar a ${first}` : `Quitar a ${first} del Círculo`}
-            icon="person-remove-outline"
-            iconPosition="left"
-            variant="ghost"
-            onPress={remove}
-            loading={busy === 'remove'}
-            disabled={busy !== null && busy !== 'remove'}
-          />
-        </View>
+          </View>
+        ) : null}
       </FormSheet>
 
       <DependentSheet
@@ -444,7 +490,60 @@ export function MemberDetailSheet({
   );
 }
 
+/** Grupo de filas de ajustes (una tarjeta con separadores). */
+function RowGroup({ theme, children }: Readonly<{ theme: AppTheme; children: React.ReactNode }>) {
+  const items = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  if (!items.length) return null;
+  return (
+    <View style={[styles.rowGroup, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+      {items.map((child, index) => (
+        <View key={index} style={index > 0 ? [styles.rowDivider, { borderTopColor: theme.colors.surfaceBorder }] : null}>
+          {child}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Una fila: qué es, cómo está ahora y «›» para cambiarlo. */
+function SettingsRow({
+  theme,
+  label,
+  value,
+  onPress,
+  destructive = false,
+  disabled = false,
+}: Readonly<{ theme: AppTheme; label: string; value?: string; onPress: () => void; destructive?: boolean; disabled?: boolean }>) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}. ${value}` : label}
+      style={({ pressed }) => [styles.row, (pressed || disabled) && styles.pressed]}
+    >
+      <View style={styles.flex}>
+        <Text style={[styles.rowLabel, { color: destructive ? ERROR_COLOR : theme.colors.textPrimary }]}>{label}</Text>
+        {value ? (
+          <Text style={[styles.rowValue, { color: theme.colors.textMuted }]} numberOfLines={2}>
+            {value}
+          </Text>
+        ) : null}
+      </View>
+      {destructive ? null : <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textMuted} />}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  rowGroup: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
+  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 56 },
+  rowLabel: { fontSize: 15, fontWeight: '700' },
+  rowValue: { fontSize: 13, marginTop: 2 },
+  backLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', minHeight: 36, marginLeft: -6 },
+  backText: { fontSize: 15, fontWeight: '700' },
+  subHint: { fontSize: 13.5, lineHeight: 19 },
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   pressed: { opacity: 0.7 },
@@ -457,9 +556,6 @@ const styles = StyleSheet.create({
   linkButtonText: { fontSize: 14, fontWeight: '700' },
   section: { gap: 12 },
   inlineActions: { flexDirection: 'row', gap: 10 },
-  careActions: { flexDirection: 'row', gap: 8 },
-  careAction: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
-  careActionText: { fontSize: 13, fontWeight: '600' },
   danger: { borderTopWidth: 1, paddingTop: 16, gap: 8 },
   dependentActions: { gap: 8 },
 });

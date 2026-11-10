@@ -192,6 +192,9 @@ export function RelationPicker({
   suggested?: RelationCode[];
   error?: string | null;
 }>) {
+  // Con sugerencias, el resto se pliega en «Más relaciones» (abierto si ya
+  // se eligió una de ellas): menos opciones a la vista.
+  const [showAll, setShowAll] = useState(() => !suggested.length || (value !== null && !suggested.includes(value)));
   const chip = (code: RelationCode) => (
     <SelectableChip
       key={code}
@@ -210,7 +213,17 @@ export function RelationPicker({
           <View style={styles.chips}>{suggested.map(chip)}</View>
         </View>
       ) : null}
-      {RELATION_GROUPS.map((group) => {
+      {suggested.length && !showAll ? (
+        <Pressable
+          onPress={() => setShowAll(true)}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.moreRelations, pressed && styles.pressed]}
+        >
+          <Text style={[styles.moreRelationsText, { color: theme.colors.accentPrimaryText }]}>Más relaciones</Text>
+          <MaterialCommunityIcons name="chevron-down" size={18} color={theme.colors.accentPrimaryText} />
+        </Pressable>
+      ) : null}
+      {(showAll ? RELATION_GROUPS : []).map((group) => {
         const codes = group.codes.filter((code) => !suggested.includes(code));
         if (!codes.length) return null;
         return (
@@ -358,16 +371,21 @@ export function PermissionEditor({
         >
           <MaterialCommunityIcons name="tune-variant" size={18} color={theme.colors.accentSecondary} />
           <Text style={[styles.customToggleText, { color: theme.colors.accentSecondaryText }]}>
-            {customOpen ? 'Ocultar detalle' : preset === null ? 'Personalizado · ver detalle' : 'Personalizar'}
+            {customOpen
+              ? 'Ocultar detalle'
+              : preset === null
+                ? 'Personalizado · ver detalle'
+                : value.manageCircle
+                  ? 'Personalizar · puede invitar personas'
+                  : 'Personalizar'}
           </Text>
           <MaterialCommunityIcons name={customOpen ? 'chevron-up' : 'chevron-down'} size={18} color={theme.colors.accentSecondary} />
         </Pressable>
       </View>
 
-      {customOpen || allowCircleAdmin ? (
+      {customOpen ? (
         <View style={[styles.groups, { borderColor: theme.colors.surfaceBorder }]}>
           {groups
-            .filter((group) => customOpen || group.id === 'circle')
             .map((group, index) => {
               const open = openGroup === group.id || group.keys.length === 1;
               return (
@@ -460,6 +478,8 @@ export function PermissionList({
 }
 
 const styles = StyleSheet.create({
+  moreRelations: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4, minHeight: 40 },
+  moreRelationsText: { fontSize: 14, fontWeight: '700' },
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
   avatar: { alignItems: 'center', justifyContent: 'center' },

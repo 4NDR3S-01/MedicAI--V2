@@ -25,6 +25,9 @@ export type Relation = { code: RelationCode | string; label: string | null };
 /** Quién cuida a quién, siempre desde el punto de vista de quien mira. */
 export type CareValue = 'I_CARE' | 'CARES_FOR_ME' | 'MUTUAL' | 'NONE';
 
+/** Las relaciones más comunes: a la vista; el resto en «Más relaciones». */
+export const COMMON_RELATIONS: RelationCode[] = ['FATHER', 'MOTHER', 'SON', 'DAUGHTER', 'PARTNER', 'CAREGIVER'];
+
 export const RELATION_META: Record<RelationCode, { label: string; icon: IconName }> = {
   FATHER: { label: 'Padre', icon: 'human-male-boy' },
   MOTHER: { label: 'Madre', icon: 'human-female-girl' },
