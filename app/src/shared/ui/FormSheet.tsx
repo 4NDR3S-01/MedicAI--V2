@@ -30,7 +30,11 @@ type FormSheetProps = {
   footer?: ReactNode;
   /** Al cambiar (p. ej. el paso de un asistente), el contenido vuelve arriba. */
   scrollToTopKey?: string | number;
-  /** Panel del alto de su contenido (formularios cortos), en vez de casi toda la pantalla. */
+  /**
+   * Por defecto el panel mide lo que su contenido (hasta casi toda la pantalla,
+   * luego se desplaza). `false` para formularios largos o con pasos/pestañas,
+   * donde un alto fijo evita saltos al cambiar de contenido.
+   */
   fitContent?: boolean;
   children: ReactNode;
 };
@@ -49,7 +53,7 @@ export function FormSheet({
   dismissDisabled = false,
   footer,
   scrollToTopKey,
-  fitContent = false,
+  fitContent = true,
   children,
 }: Readonly<FormSheetProps>) {
   const insets = useSafeAreaInsets();

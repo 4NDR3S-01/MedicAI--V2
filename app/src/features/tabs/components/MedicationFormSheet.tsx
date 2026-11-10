@@ -568,6 +568,7 @@ export function MedicationFormSheet({
       theme={theme}
       visible={visible}
       title={isEditing ? 'Editar medicamento' : 'Nuevo medicamento'}
+      fitContent={false}
       subtitle={isEditing ? undefined : 'Te avisaremos a la hora de cada toma.'}
       onClose={onClose}
       dismissDisabled={isSaving}

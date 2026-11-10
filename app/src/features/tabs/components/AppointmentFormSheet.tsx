@@ -387,6 +387,7 @@ export function AppointmentFormSheet({
         theme={theme}
         visible={visible}
         title={isEditing ? 'Editar cita' : 'Nueva cita'}
+        fitContent={false}
         subtitle={isEditing ? undefined : 'Te recordaremos antes de la consulta.'}
         onClose={onClose}
         dismissDisabled={isSaving}

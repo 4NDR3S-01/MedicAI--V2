@@ -224,6 +224,7 @@ export function InviteSheet({
       visible={visible}
       title={ownerId ? `Invitar al Círculo de ${ownerName ?? 'esta persona'}` : 'Invitar a tu Círculo'}
       subtitle={`Paso ${step + 1} de 4 · ${STEP_TITLES[step]}`}
+      fitContent={false}
       scrollToTopKey={step}
       onClose={onClose}
       dismissDisabled={saving}

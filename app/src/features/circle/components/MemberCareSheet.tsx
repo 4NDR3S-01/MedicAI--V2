@@ -408,6 +408,7 @@ export function MemberCareSheet({ theme, member, initialTab, onClose, onOpenDeta
         theme={theme}
         visible={Boolean(member)}
         title={first}
+        fitContent={false}
         subtitle={`${relationToMe(shown.relation)} · Lo que comparte contigo`}
         scrollToTopKey={tab}
         onClose={onClose}
