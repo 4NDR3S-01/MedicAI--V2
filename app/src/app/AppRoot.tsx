@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
 import { Asset } from 'expo-asset';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as SystemUI from 'expo-system-ui';
 import { Alert, Animated, AppState, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -265,6 +266,12 @@ export function AppRoot() {
   const alarmPulseAnim = useRef(new Animated.Value(0)).current;
 
   const theme = useAppTheme();
+
+  // El fondo nativo de la ventana (detrás de la app, en transiciones y del
+  // teclado) sigue el tema: sin destellos blancos en modo oscuro.
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(theme.colors.background).catch(() => undefined);
+  }, [theme.colors.background]);
 
   const clearResetPasswordState = () => {
     setPasswordResetToken(null);
