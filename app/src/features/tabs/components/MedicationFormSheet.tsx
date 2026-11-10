@@ -4,7 +4,7 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Switch, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
 import {
@@ -40,6 +40,7 @@ import {
   DAY_INTERVAL_MIN,
   DOSAGE_UNITS,
   FREQUENCY_OPTIONS,
+  PER_DAY_OPTIONS,
   WEEK_DAYS,
   calculateDailyTimes,
   defaultStockAlert,
@@ -116,7 +117,8 @@ const emptyForm = (): FormState => ({
   weekDays: [],
   dayInterval: 2,
   startDate: today(),
-  frequency: '',
+  // La más común; se cambia con el contador.
+  frequency: 'Una vez al dia',
   customInterval: 6,
   firstDoseTime: '',
   maxDailyDoses: 0,
@@ -348,6 +350,21 @@ export function MedicationFormSheet({
   const errors = showErrors ? validate(form) : {};
   const asNeeded = form.scheduleType === 'AS_NEEDED';
   const tapering = form.tapering && !asNeeded;
+  // Frecuencia: «Veces al día» (contador 1–6) o «Cada X horas» (1–23 h).
+  const perDayIndex = PER_DAY_OPTIONS.findIndex((option) => option.value === form.frequency);
+  const frequencyMode: 'perDay' | 'hours' = perDayIndex >= 0 || !form.frequency ? 'perDay' : 'hours';
+  const currentHours = intervalFor(form);
+  const everyHours = Math.min(CUSTOM_INTERVAL_MAX, Math.max(CUSTOM_INTERVAL_MIN, currentHours || 8));
+  const setFrequencyMode = (mode: 'perDay' | 'hours') => {
+    if (mode === frequencyMode) return;
+    if (mode === 'hours') {
+      update({ frequency: CUSTOM, customInterval: everyHours });
+    } else {
+      // Mismo intervalo si existe como «veces al día» (cada 8 h → 3 veces).
+      const same = PER_DAY_OPTIONS.find((option) => option.hours === currentHours);
+      update({ frequency: (same ?? PER_DAY_OPTIONS[0]).value });
+    }
+  };
   const interval = intervalFor(form);
   const previewTimes = useMemo(
     () => (!asNeeded && form.firstDoseTime && interval ? calculateDailyTimes(form.firstDoseTime, interval) : []),
@@ -742,39 +759,51 @@ export function MedicationFormSheet({
           <>
             <FieldShell
               theme={theme}
-              label="Veces al día"
+              label="¿Cada cuánto?"
               error={frequencyError && !form.frequency ? 'Elige cada cuánto se toma.' : null}
             >
-              <View style={styles.chipsWrap}>
-                {FREQUENCY_OPTIONS.map((option) => (
-                  <SelectableChip
-                    key={option.value}
-                    theme={theme}
-                    label={option.label}
-                    selected={form.frequency === option.value}
-                    onPress={() => update({ frequency: option.value })}
-                  />
-                ))}
-                <SelectableChip
-                  theme={theme}
-                  label="Personalizada"
-                  selected={form.frequency === CUSTOM}
-                  onPress={() => update({ frequency: CUSTOM })}
-                />
+              <View style={[styles.segment, { backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder }]} accessibilityRole="radiogroup">
+                {([['perDay', 'Veces al día'], ['hours', 'Cada X horas']] as const).map(([mode, label]) => {
+                  const selected = frequencyMode === mode;
+                  return (
+                    <PressableScale
+                      key={mode}
+                      pressedScale={0.97}
+                      onPress={() => setFrequencyMode(mode)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      style={[styles.segmentItem, selected && { backgroundColor: theme.colors.accentPrimary }]}
+                    >
+                      <Text style={[styles.segmentText, { color: selected ? theme.colors.buttonText : theme.colors.textSecondary }]}>{label}</Text>
+                    </PressableScale>
+                  );
+                })}
               </View>
-              {form.frequency === CUSTOM ? (
+              {frequencyMode === 'perDay' ? (
                 <Stepper
                   theme={theme}
-                  label="Cada"
-                  value={`${form.customInterval} h`}
-                  canDecrease={form.customInterval > CUSTOM_INTERVAL_MIN}
-                  canIncrease={form.customInterval < CUSTOM_INTERVAL_MAX}
-                  onDecrease={() => update({ customInterval: Math.max(CUSTOM_INTERVAL_MIN, form.customInterval - 1) })}
-                  onIncrease={() => update({ customInterval: Math.min(CUSTOM_INTERVAL_MAX, form.customInterval + 1) })}
+                  label=""
+                  value={perDayIndex >= 0 ? PER_DAY_OPTIONS[perDayIndex].label : 'Elegir'}
+                  canDecrease={perDayIndex > 0}
+                  canIncrease={perDayIndex < PER_DAY_OPTIONS.length - 1}
+                  onDecrease={() => update({ frequency: PER_DAY_OPTIONS[Math.max(0, perDayIndex - 1)].value })}
+                  onIncrease={() => update({ frequency: PER_DAY_OPTIONS[Math.min(PER_DAY_OPTIONS.length - 1, perDayIndex + 1)].value })}
+                  decreaseLabel="Menos veces"
+                  increaseLabel="Más veces"
+                />
+              ) : (
+                <Stepper
+                  theme={theme}
+                  label=""
+                  value={`Cada ${everyHours} ${everyHours === 1 ? 'hora' : 'horas'}`}
+                  canDecrease={everyHours > CUSTOM_INTERVAL_MIN}
+                  canIncrease={everyHours < CUSTOM_INTERVAL_MAX}
+                  onDecrease={() => update({ frequency: CUSTOM, customInterval: Math.max(CUSTOM_INTERVAL_MIN, everyHours - 1) })}
+                  onIncrease={() => update({ frequency: CUSTOM, customInterval: Math.min(CUSTOM_INTERVAL_MAX, everyHours + 1) })}
                   decreaseLabel="Menos horas"
                   increaseLabel="Más horas"
                 />
-              ) : null}
+              )}
             </FieldShell>
 
             <FieldShell theme={theme} label="Primera toma" error={errors.firstDoseTime}>
@@ -812,11 +841,14 @@ export function MedicationFormSheet({
               ) : null}
             </FieldShell>
 
-            <FieldShell theme={theme} label="Dosis" error={errors.steps}>
-              <View style={styles.chipsWrap}>
-                <SelectableChip theme={theme} label="Siempre la misma" selected={!form.tapering} onPress={() => setTapering(false)} />
-                <SelectableChip theme={theme} label="La dosis va cambiando" selected={form.tapering} onPress={() => setTapering(true)} />
-              </View>
+            <FieldShell theme={theme} label="" error={errors.steps}>
+              <ToggleRow
+                theme={theme}
+                label="La dosis va cambiando"
+                hint={form.tapering ? 'Por etapas: cada una con su dosis y sus días' : 'Siempre la misma dosis'}
+                value={form.tapering}
+                onChange={setTapering}
+              />
               {tapering ? (
                 <View style={styles.steps}>
                   {form.steps.map((step, index) => (
@@ -917,7 +949,7 @@ export function MedicationFormSheet({
           </>
         )}
 
-        <FieldShell theme={theme} label="Duración" error={tapering ? null : errors.endDate}>
+        <FieldShell theme={theme} label="" error={tapering ? null : errors.endDate}>
           {taperEnd ? (
             <Note theme={theme} icon="flag-outline" color={theme.colors.accentPrimary}>
               Termina el <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>{shortDate(taperEnd)}</Text>, al
@@ -925,10 +957,17 @@ export function MedicationFormSheet({
             </Note>
           ) : (
             <>
-              <View style={styles.chipsWrap}>
-                <SelectableChip theme={theme} label="Sin fecha de fin" selected={!form.hasEndDate} onPress={() => { update({ hasEndDate: false }); setIosPicker(null); }} />
-                <SelectableChip theme={theme} label="Hasta una fecha" selected={form.hasEndDate} onPress={() => { update({ hasEndDate: true }); if (!form.endDate) openDatePicker('date'); }} />
-              </View>
+              <ToggleRow
+                theme={theme}
+                label="Tiene fecha de fin"
+                hint={form.hasEndDate ? 'El tratamiento termina en la fecha que elijas' : 'Sin fecha de fin'}
+                value={form.hasEndDate}
+                onChange={(value) => {
+                  update({ hasEndDate: value });
+                  if (!value) setIosPicker(null);
+                  else if (!form.endDate) openDatePicker('date');
+                }}
+              />
               {form.hasEndDate ? (
                 <PressableScale
                   pressedScale={0.98}
@@ -963,12 +1002,13 @@ export function MedicationFormSheet({
       </View>
 
       <View pointerEvents={detailsLocked ? 'none' : 'auto'} style={[styles.group, detailsLocked && styles.locked]}>
-        <FieldShell theme={theme} label="Existencias" optional>
-          <View style={styles.chipsWrap}>
-            <SelectableChip theme={theme} label="No llevar la cuenta" selected={!form.trackStock} onPress={() => setTrackStock(false)} />
-            <SelectableChip theme={theme} label="Avisarme cuando queden pocas" selected={form.trackStock} onPress={() => setTrackStock(true)} />
-          </View>
-        </FieldShell>
+        <ToggleRow
+          theme={theme}
+          label="Avisarme cuando queden pocas"
+          hint={form.trackStock ? 'Se descuenta cada toma registrada' : 'Existencias · opcional'}
+          value={form.trackStock}
+          onChange={setTrackStock}
+        />
         {form.trackStock ? (
           <>
             <View style={styles.stockRow}>
@@ -1050,6 +1090,39 @@ function Note({
   );
 }
 
+/** Pregunta de sí/no del formulario: una fila con interruptor (en vez de dos chips). */
+function ToggleRow({
+  theme,
+  label,
+  hint,
+  value,
+  onChange,
+}: Readonly<{ theme: AppTheme; label: string; hint: string; value: boolean; onChange: (value: boolean) => void }>) {
+  return (
+    <PressableScale
+      pressedScale={0.99}
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      accessibilityLabel={label}
+      style={[styles.toggleRow, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}
+    >
+      <View style={styles.flex}>
+        <Text style={[styles.toggleLabel, { color: theme.colors.textPrimary }]}>{label}</Text>
+        <Text style={[styles.toggleHint, { color: theme.colors.textMuted }]}>{hint}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: theme.colors.surfaceBorder, true: `${theme.colors.accentPrimary}60` }}
+        thumbColor={value ? theme.colors.accentPrimary : theme.colors.textMuted}
+        ios_backgroundColor={theme.colors.surfaceBorder}
+        importantForAccessibility="no-hide-descendants"
+      />
+    </PressableScale>
+  );
+}
+
 function Stepper({
   theme,
   label,
@@ -1073,7 +1146,7 @@ function Stepper({
 }>) {
   return (
     <View style={[styles.stepper, { borderColor: theme.colors.inputBorder, backgroundColor: theme.colors.inputBackground }]}>
-      <Text style={[styles.stepperLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
+      {label ? <Text style={[styles.stepperLabel, { color: theme.colors.textSecondary }]}>{label}</Text> : null}
       <StepperButton theme={theme} icon="remove" label={decreaseLabel} disabled={!canDecrease} onPress={onDecrease} />
       <Text style={[styles.stepperValue, { color: theme.colors.textPrimary }]} accessibilityLiveRegion="polite">
         {value}
@@ -1106,6 +1179,12 @@ function StepperButton({
 }
 
 const styles = StyleSheet.create({
+  segment: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, gap: 3 },
+  segmentItem: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 40, borderRadius: 11 },
+  segmentText: { fontSize: 14, fontWeight: '800' },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, minHeight: 60 },
+  toggleLabel: { fontSize: 15, fontWeight: '700' },
+  toggleHint: { fontSize: 12.5, fontWeight: '500', marginTop: 2 },
   flex: { flex: 1 },
   flexWide: { flex: 1.4 },
   dosageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },

@@ -9,9 +9,17 @@ import {
  * Valores de frecuencia tal como se guardan en el backend (se mantienen sin
  * cambios por compatibilidad con medicamentos existentes) y su intervalo.
  */
+/** «Veces al día» del contador: solo las que reparten el día en horas exactas. */
+export const PER_DAY_OPTIONS = [
+  { count: 1, value: 'Una vez al dia', label: 'Una vez al día', hours: 24 },
+  { count: 2, value: 'Dos veces al dia', label: 'Dos veces al día', hours: 12 },
+  { count: 3, value: 'Tres veces al dia', label: 'Tres veces al día', hours: 8 },
+  { count: 4, value: 'Cuatro veces al dia', label: 'Cuatro veces al día', hours: 6 },
+  { count: 6, value: 'Seis veces al dia', label: 'Seis veces al día', hours: 4 },
+] as const;
+
 export const FREQUENCY_OPTIONS = [
-  { value: 'Una vez al dia', label: 'Una vez al día', hours: 24 },
-  { value: 'Dos veces al dia', label: 'Dos veces al día', hours: 12 },
+  ...PER_DAY_OPTIONS.map(({ value, label, hours }) => ({ value, label, hours })),
   { value: 'Cada 8 horas', label: 'Cada 8 horas', hours: 8 },
   { value: 'Cada 6 horas', label: 'Cada 6 horas', hours: 6 },
   { value: 'Cada 4 horas', label: 'Cada 4 horas', hours: 4 },
