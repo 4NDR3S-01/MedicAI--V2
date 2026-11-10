@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, type ReactNode } from 'react';
-import { AppState, View } from 'react-native';
+import { Alert, AppState, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
@@ -9,6 +9,8 @@ import {
 } from '../features/tabs';
 import { syncOwnReminders } from '../features/tabs/services/reminders-sync';
 import { startDoseQueueSync } from '../features/tabs/services/dose-queue';
+import { onOwnDataError, startOwnDataSync } from '../features/tabs/data/own-data-store';
+import { warmScreenCaches } from '../shared/services/screen-cache';
 import { reportTimeZoneIfChanged } from '../features/tabs/services/timezone-sync';
 import { CircleScreen, hasPendingCircleInvite, isCirclePushType, onCircleInvite, onOpenCircle } from '../features/circle';
 import { registerPushToken } from '../features/tabs/services/push-registration';
@@ -18,6 +20,7 @@ import type { AppTheme } from '../shared/theme';
 import { AssistantChat } from '../features/assistant/AssistantChat';
 import { onOpenAssistant, type AssistantRequest } from '../features/assistant/services/assistant-launcher';
 import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBottomBar';
+import { SyncStatusPill } from './SyncStatusPill';
 import type { ProfileUser } from '../features/auth/services/auth.service';
 
 export type MainAppShellProps = {
@@ -82,6 +85,20 @@ export function MainAppShell({
 
   // Tomas registradas sin conexión: se envían al recuperar la red.
   useEffect(() => startDoseQueueSync(), []);
+
+  // Medicamentos y citas: guardados en el teléfono, cambios sin conexión en cola.
+  useEffect(() => {
+    warmScreenCaches();
+    return startOwnDataSync();
+  }, []);
+  // Un cambio hecho sin red que el servidor rechazó al enviarlo (p. ej. ya se había borrado).
+  useEffect(
+    () =>
+      onOwnDataError((message) =>
+        Alert.alert('No se pudo guardar un cambio', `${message}\n\nSe muestra la información actual.`),
+      ),
+    [],
+  );
 
   // Una invitación abierta desde un enlace lleva directamente a Círculo.
   useEffect(() => {
@@ -151,6 +168,7 @@ export function MainAppShell({
     <View style={{ flex: 1 }}>
       {body}
       <AssistantChat theme={theme} visible={chatVisible} onClose={closeChat} request={chatRequest} />
+      <SyncStatusPill theme={theme} />
       <AppBottomBar theme={theme} activeTab={tab} onSelect={setTab} />
     </View>
   );

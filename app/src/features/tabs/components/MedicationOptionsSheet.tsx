@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
@@ -46,6 +46,15 @@ export function MedicationOptionsSheet({
   const last = useRef(medication);
   if (medication) last.current = medication;
   const med = medication ?? last.current;
+  // El interruptor cambia en el mismo toque, sin esperar a que se guarde
+  // (si no, el control vuelve atrás un instante y luego salta).
+  const [shown, setShown] = useState<{ id: string; active: boolean } | null>(null);
+  const active = shown && med && shown.id === med.id && isToggling ? shown.active : med?.active ?? false;
+  const toggle = () => {
+    if (!med || isToggling) return;
+    setShown({ id: med.id, active: !med.active });
+    onToggleActive(med);
+  };
 
   if (!med) return null;
 
@@ -115,19 +124,16 @@ export function MedicationOptionsSheet({
         {canToggle ? (
           <SheetOptionRow
             theme={theme}
-            icon={med.active ? 'bell-ring-outline' : 'bell-sleep-outline'}
+            icon={active ? 'bell-ring-outline' : 'bell-sleep-outline'}
             label="Recordatorios"
-            hint={med.active ? 'Activo: suenan las alarmas' : 'Pausado: no sonará ninguna alarma'}
-            onPress={() => {
-              if (!isToggling) onToggleActive(med);
-            }}
+            hint={active ? 'Activo: suenan las alarmas' : 'Pausado: no sonará ninguna alarma'}
+            onPress={toggle}
             right={
               <Switch
-                value={med.active}
-                disabled={isToggling}
-                onValueChange={() => onToggleActive(med)}
+                value={active}
+                onValueChange={toggle}
                 trackColor={{ false: theme.colors.surfaceBorder, true: `${theme.colors.accentPrimary}60` }}
-                thumbColor={med.active ? theme.colors.accentPrimary : theme.colors.textMuted}
+                thumbColor={active ? theme.colors.accentPrimary : theme.colors.textMuted}
                 ios_backgroundColor={theme.colors.surfaceBorder}
                 importantForAccessibility="no-hide-descendants"
               />

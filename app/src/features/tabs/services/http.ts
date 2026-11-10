@@ -26,6 +26,20 @@ export const readResponseBody = async <T>(response: Response): Promise<T> => {
   }
 };
 
+const REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * Justo después de recuperar (o cambiar) la red, la primera petición suele
+ * quedarse colgada en la conexión de la red anterior: se corta pronto y se
+ * reintenta, en vez de esperar los 15 s.
+ */
+const RECONNECT_TIMEOUT_MS = 4_000;
+let fastTimeoutUntil = 0;
+export function preferShortTimeouts(ms: number): void {
+  fastTimeoutUntil = Date.now() + ms;
+}
+/** El asistente (respuestas de la IA, audios y fotos) tarda más. */
+const UPLOAD_TIMEOUT_MS = 45_000;
+
 const SERVER_DOWN_MESSAGE = 'El servidor de MedicAI no está disponible en este momento. Inténtalo en unos minutos.';
 
 export const parseApiErrorMessage = async (response: Response, fallback: string) => {
@@ -71,8 +85,17 @@ const executeAuthorizedRequest = async (
 ) => {
   // FormData (p. ej. un audio): fetch pone el Content-Type multipart con su boundary.
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+  // Con señal muy débil una petición puede quedarse colgada: pasado un tiempo
+  // se trata como "sin conexión" (los cambios quedan en cola y se reintentan).
+  const controller = new AbortController();
+  const entry = { controller, startedAt: Date.now() };
+  inFlight.add(entry);
+  const slow = isForm || path.startsWith('/ai/');
+  const normal = slow ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), Date.now() < fastTimeoutUntil && !slow ? RECONNECT_TIMEOUT_MS : normal);
   try {
     return await fetch(`${API_BASE_URL}${path}`, {
+      signal: controller.signal,
       method,
       headers: isForm
         ? { Authorization: `Bearer ${accessToken}` }
@@ -81,8 +104,26 @@ const executeAuthorizedRequest = async (
     });
   } catch {
     throw new NetworkError();
+  } finally {
+    clearTimeout(timer);
+    inFlight.delete(entry);
   }
 };
+
+/** Peticiones en curso, para poder cortar las que quedaron colgadas. */
+const inFlight = new Set<{ controller: AbortController; startedAt: number }>();
+
+/**
+ * Al confirmarse que volvió internet, las peticiones que salieron mientras la
+ * red cambiaba suelen quedar colgadas hasta su tiempo límite: se cortan (fallan
+ * como "sin conexión") para reintentar enseguida por la red buena.
+ */
+export function abortStalledRequests(olderThanMs = 1500): void {
+  const now = Date.now();
+  inFlight.forEach((entry) => {
+    if (now - entry.startedAt >= olderThanMs) entry.controller.abort();
+  });
+}
 
 export const requestWithAutoRefresh = async (
   path: string,

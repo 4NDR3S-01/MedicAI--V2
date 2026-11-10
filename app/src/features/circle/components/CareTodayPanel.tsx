@@ -8,6 +8,7 @@ import { bucketAppointments, formatClock, relativeDayLabel } from '../../tabs/ut
 import { getTodayDoseSlots } from '../../tabs/utils/dose-status';
 import { formatClockIn, isForeignTimeZone } from '../../../shared/services/dose-schedule';
 import { withToken } from '../hooks/useCircle';
+import { peekCache, readCache, SCREEN_CACHE_KEYS, writeCache } from '../../../shared/services/screen-cache';
 import * as circleAPI from '../services/circle.service';
 import type { CareData, CircleMember } from '../services/circle.service';
 import { displayName } from '../utils/relations';
@@ -30,12 +31,15 @@ export type CareRowData = {
 
 /** Datos de seguimiento de todas las personas que comparten conmigo. */
 export function useCareData(enabled: boolean) {
-  const [data, setData] = useState<CareData[] | null>(null);
+  // Última copia conocida al instante; el servidor la pone al día detrás.
+  const [data, setData] = useState<CareData[] | null>(() => peekCache<CareData[]>(SCREEN_CACHE_KEYS.careData));
   const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setData(await circleAPI.fetchCareData(await withToken()));
+      const fresh = await circleAPI.fetchCareData(await withToken());
+      writeCache(SCREEN_CACHE_KEYS.careData, fresh);
+      setData(fresh);
       setError(false);
     } catch {
       setError(true);
@@ -44,6 +48,9 @@ export function useCareData(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return undefined;
+    void readCache<CareData[]>(SCREEN_CACHE_KEYS.careData).then((cached) => {
+      if (cached) setData((current) => current ?? cached);
+    });
     void load();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void load();

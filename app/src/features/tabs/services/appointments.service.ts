@@ -26,6 +26,8 @@ type AppointmentData = {
   seriesCount?: number;
   /** Solo en la respuesta de editar "esta y las siguientes". */
   seriesUpdated?: number;
+  /** Solo en la app: cambio hecho sin conexión que aún no confirmó el servidor. */
+  pendingSync?: boolean;
   createdAt: string;
   updatedAt: string;
 };

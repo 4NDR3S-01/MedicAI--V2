@@ -30,6 +30,7 @@ import {
 } from '../../../shared/services/dose-schedule';
 import { getStoredSession } from '../../auth';
 import * as medicationsAPI from '../services/medications.service';
+import { createMedication as createOwnMedication, updateMedication as updateOwnMedication } from '../data/own-data-store';
 import type { MedicationData } from '../services/medications.service';
 import {
   AS_NEEDED_FREQUENCY,
@@ -541,9 +542,19 @@ export function MedicationFormSheet({
           onClose();
           return;
         }
-        saved = await medicationsAPI.updateMedication(medication.id, session.accessToken, changes, ownerId);
-      } else {
+        if (ownerId) {
+          saved = await medicationsAPI.updateMedication(medication.id, session.accessToken, changes, ownerId);
+        } else {
+          // Propio: se guarda al instante en el teléfono y se envía (o queda en cola sin red).
+          const result = await updateOwnMedication(medication.id, changes);
+          saved = result.item ?? { ...medication, ...changes, notes: changes.notes ?? medication.notes };
+        }
+      } else if (ownerId) {
         saved = await medicationsAPI.createMedication(session.accessToken, payload, ownerId);
+      } else {
+        const result = await createOwnMedication(payload);
+        if (!result.item) throw new Error('No se pudo guardar el medicamento.');
+        saved = result.item;
       }
       onSaved(saved, !medication);
       onClose();

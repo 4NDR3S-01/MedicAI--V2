@@ -22,10 +22,10 @@ import { LeafletMapModal } from '../../../shared/components/LeafletMapModal';
 import {
   formatLeadMinutes,
   getAppointmentReminderLeadMinutes,
-  scheduleAppointmentReminder,
 } from '../../../shared/services/notifications.service';
 import { getStoredSession } from '../../auth';
 import * as appointmentsAPI from '../services/appointments.service';
+import { createAppointment as createOwnAppointment, updateAppointment as updateOwnAppointment } from '../data/own-data-store';
 import type { AppointmentData, RepeatFrequency } from '../services/appointments.service';
 import { askSeriesScope, repeatLabel } from '../utils/appointment-series';
 import { formatClock } from '../utils/appointment-status';
@@ -353,21 +353,23 @@ export function AppointmentFormSheet({
           until: toDayKey(form.repeatUntil),
         }
         : undefined;
-      const saved = appointment
-        ? await appointmentsAPI.updateAppointment(
-          appointment.id,
-          session.accessToken,
-          { ...payload, scheduledAt: rescheduled ? payload.scheduledAt : undefined },
-          ownerId,
-          scope,
-        )
-        : await appointmentsAPI.createAppointment(
-          session.accessToken,
-          { ...payload, location: payload.location || undefined, notes: payload.notes || undefined, repeat },
-          ownerId,
-        );
-      // Los recordatorios no deben impedir guardar la cita.
-      if (!ownerId) void scheduleAppointmentReminder(saved).catch(() => undefined);
+      const patch = { ...payload, scheduledAt: rescheduled ? payload.scheduledAt : undefined };
+      const createPayload = { ...payload, location: payload.location || undefined, notes: payload.notes || undefined, repeat };
+      let saved: AppointmentData;
+      if (ownerId) {
+        // Círculo: los datos de otra persona necesitan conexión.
+        saved = appointment
+          ? await appointmentsAPI.updateAppointment(appointment.id, session.accessToken, patch, ownerId, scope)
+          : await appointmentsAPI.createAppointment(session.accessToken, createPayload, ownerId);
+      } else {
+        // Propia: se ve al instante y se envía (o queda en cola sin red). Los
+        // recordatorios se programan solos con la lista.
+        const result = appointment
+          ? await updateOwnAppointment(appointment.id, patch, scope)
+          : await createOwnAppointment(createPayload);
+        if (!result.item && !appointment) throw new Error('No se pudo guardar la cita.');
+        saved = result.item ?? { ...appointment!, ...payload, location: payload.location || null, notes: payload.notes || null };
+      }
       const severalChanged = (saved.seriesCount ?? 1) > 1 || (saved.seriesUpdated ?? 1) > 1;
       onSaved(saved, !appointment, severalChanged);
       if ((saved.seriesCount ?? 1) > 1) {

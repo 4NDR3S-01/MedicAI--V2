@@ -3,7 +3,6 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   Alert,
   Animated,
-  AppState,
   FlatList,
   LayoutAnimation,
   Pressable,
@@ -15,19 +14,14 @@ import {
 
 import type { AppTheme } from '../../../shared/theme';
 import { FloatingActionButton, useEnterAnimation, useReducedMotion, useSwapAnimation } from '../../../shared/ui';
-import { appStorage } from '../../../shared/storage';
-import { onDoseAction } from '../../../shared/services/dose-refresh-bus';
 import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
-import { reportError } from '../../../shared/services/error-reporting';
 import {
   cancelDoseAlarm,
   cancelNotificationsByDataId,
-  syncMedicationAlarms,
 } from '../../../shared/services/notifications.service';
-import { getStoredSession } from '../../auth';
-import * as medicationsAPI from '../services/medications.service';
-import { logDose, pendingDoseLogs, removeQueuedDose } from '../services/dose-queue';
-import type { MedicationData, MedicationLog } from '../services/medications.service';
+import { logDose, undoDoseLog } from '../services/dose-queue';
+import { applyDoseLog, deleteMedication, refreshOwnData, syncOwnDataReminders, updateMedication, useOwnData } from '../data/own-data-store';
+import type { MedicationData } from '../services/medications.service';
 import { DoseActionSheet } from '../components/DoseActionSheet';
 import { MedicationCard, doseStateColor } from '../components/MedicationCard';
 import { MedicationFormSheet } from '../components/MedicationFormSheet';
@@ -36,18 +30,13 @@ import { isAsNeeded } from '../../../shared/services/dose-schedule';
 import {
   asNeededWarning,
   getDaySlots,
-  getHandledDoseKeys,
-  getTodayDoseSlots,
-  withStockChange,
   type DoseSlot,
   type DoseState,
 } from '../utils/dose-status';
 
-const CACHE_KEY = 'medicai_medications_cache_v2';
 const CLOCK_TICK_MS = 30_000;
 
 type Segment = 'active' | 'paused';
-type ScreenCache = { day: string; medications: MedicationData[]; logs: MedicationLog[] };
 type DoseTarget = { medication: MedicationData; slot: DoseSlot };
 
 const dayKey = (date: Date) =>
@@ -64,10 +53,11 @@ export type MedicationsScreenProps = {
 
 export function MedicationsScreen({ theme, contentBottomInset }: Readonly<MedicationsScreenProps>) {
   const reducedMotion = useReducedMotion();
-  const [medications, setMedications] = useState<MedicationData[]>([]);
-  const [logs, setLogs] = useState<MedicationLog[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Datos compartidos con Inicio y guardados en el teléfono: se ven al instante, también sin red.
+  const own = useOwnData();
+  const { medications, logs } = own;
+  const status: 'loading' | 'ready' | 'error' = own.hasData ? 'ready' : own.loadError ? 'error' : 'loading';
+  const errorMessage = own.loadError;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [segment, setSegment] = useState<Segment>('active');
   const [now, setNow] = useState(() => new Date());
@@ -78,99 +68,20 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [doseTarget, setDoseTarget] = useState<DoseTarget | null>(null);
   const [doseBusy, setDoseBusy] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
-  const [alarmIssue, setAlarmIssue] = useState<string | null>(null);
+  let alarmIssue: string | null = null;
+  if (own.alarmStatus === 'no-permission') alarmIssue = 'Las notificaciones están desactivadas: no sonarán las alarmas.';
+  else if (own.alarmStatus === 'error') alarmIssue = 'No pudimos programar algunas alarmas.';
 
   // Referencias a los últimos datos para callbacks estables (tarjetas memoizadas).
-  const medicationsRef = useRef(medications);
   const logsRef = useRef(logs);
-  medicationsRef.current = medications;
   logsRef.current = logs;
 
   const enter = useEnterAnimation(status !== 'loading');
   const swap = useSwapAnimation(segment);
 
-  // ── Alarmas ───────────────────────────────────────────────────────────────
-  const syncAlarms = useCallback(async (meds: MedicationData[], dayLogs: MedicationLog[], force: boolean) => {
-    const current = new Date();
-    const handled = new Set<string>();
-    for (const med of meds) {
-      getHandledDoseKeys(getTodayDoseSlots(med, dayLogs, current), current).forEach((key) => handled.add(key));
-    }
-    try {
-      const result = await syncMedicationAlarms(meds, { force, handledDoseKeys: handled });
-      setAlarmIssue(
-        result.status === 'no-permission' && meds.some((med) => med.active)
-          ? 'Las notificaciones están desactivadas: no sonarán las alarmas.'
-          : null,
-      );
-    } catch (error) {
-      // Una alarma que no suena es el fallo más grave de la app: conviene saberlo.
-      reportError(error, 'alarm-sync');
-      setAlarmIssue('No pudimos programar algunas alarmas.');
-    }
-  }, []);
-
-  // ── Carga de datos ────────────────────────────────────────────────────────
-  const load = useCallback(async () => {
-    const session = await getStoredSession();
-    if (!session?.accessToken) {
-      setErrorMessage('Tu sesión expiró. Vuelve a iniciar sesión.');
-      setStatus((current) => (current === 'ready' ? current : 'error'));
-      return;
-    }
-
-    const [medsResult, logsResult, pendingResult] = await Promise.allSettled([
-      medicationsAPI.fetchMedications(session.accessToken),
-      medicationsAPI.fetchTodayMedicationLogs(session.accessToken),
-      pendingDoseLogs(),
-    ]);
-
-    if (medsResult.status === 'rejected') {
-      const message = medsResult.reason instanceof Error ? medsResult.reason.message : 'No se pudieron cargar tus medicamentos.';
-      setErrorMessage(message);
-      // Con datos en pantalla (caché) no se sustituye la lista por el error.
-      setStatus((current) => (current === 'ready' ? current : 'error'));
-      return;
-    }
-
-    const meds = medsResult.value ?? [];
-    // Tomas registradas sin conexión que aún no llegaron al servidor.
-    const pending = pendingResult.status === 'fulfilled' ? pendingResult.value : [];
-    const dayLogs = logsResult.status === 'fulfilled'
-      ? [...pending, ...(logsResult.value ?? [])]
-      : logsRef.current;
-    setMedications(meds);
-    setLogs(dayLogs);
-    setErrorMessage(null);
-    setStatus('ready');
-    setNow(new Date());
-    void appStorage
-      .setItem(CACHE_KEY, JSON.stringify({ day: dayKey(new Date()), medications: meds, logs: dayLogs } satisfies ScreenCache))
-      .catch(() => undefined);
-    void syncAlarms(meds, dayLogs, false);
-  }, [syncAlarms]);
-
-  // Primer render: caché del día (sin esqueleto) y luego datos frescos.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const raw = await appStorage.getItem(CACHE_KEY);
-        const cache = raw ? (JSON.parse(raw) as ScreenCache) : null;
-        if (!cancelled && cache?.medications) {
-          setMedications(cache.medications);
-          setLogs(cache.day === dayKey(new Date()) ? cache.logs ?? [] : []);
-          setStatus('ready');
-        }
-      } catch {
-        // caché corrupta: se ignora
-      }
-      if (!cancelled) await load();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [load]);
+  // ── Datos y alarmas (los gestiona el almacén compartido) ──────────────────
+  const syncAlarms = useCallback(() => syncOwnDataReminders({ force: true }), []);
+  const load = useCallback(() => refreshOwnData({ force: true }), []);
 
   // Reloj: estados de las tomas ("es la hora", "sin registrar") y cambio de día.
   useEffect(() => {
@@ -180,24 +91,11 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
       setNow(current);
       if (dayKey(current) !== lastDay) {
         lastDay = dayKey(current);
-        setLogs([]);
-        void load();
+        void refreshOwnData({ force: true });
       }
     }, CLOCK_TICK_MS);
     return () => clearInterval(timer);
-  }, [load]);
-
-  // Al volver a la app (p. ej. tras responder una alarma) y tras acciones de alarmas.
-  useEffect(() => {
-    const appStateSub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void load();
-    });
-    const unsubscribe = onDoseAction(() => void load());
-    return () => {
-      appStateSub.remove();
-      unsubscribe();
-    };
-  }, [load]);
+  }, []);
 
   // ── Datos derivados ───────────────────────────────────────────────────────
   const slotsById = useMemo(() => {
@@ -226,34 +124,25 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   }, [activeMeds, slotsById]);
 
   // ── Acciones ──────────────────────────────────────────────────────────────
-  const withToken = async () => {
-    const session = await getStoredSession();
-    if (!session?.accessToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
-    return session.accessToken;
-  };
 
   const handleToggle = useCallback(async (medication: MedicationData) => {
     const nextActive = !medication.active;
-    if (nextActive) {
-      const { ready } = await ensureAlarmPermissions();
-      if (!ready) {
-        Alert.alert('Permisos incompletos', 'Concede los permisos de notificaciones y alarmas para poder avisarte.');
-        return;
-      }
-    }
-
+    // Desde el mismo toque: el interruptor ya muestra el valor nuevo.
     setTogglingIds((current) => new Set(current).add(medication.id));
-    animateLayout(reducedMotion);
-    setMedications((current) => current.map((med) => (med.id === medication.id ? { ...med, active: nextActive } : med)));
-
     try {
-      const updated = await medicationsAPI.updateMedication(medication.id, await withToken(), { active: nextActive });
-      const nextList = medicationsRef.current.map((med) => (med.id === updated.id ? updated : med));
-      setMedications(nextList);
-      void syncAlarms(nextList, logsRef.current, true);
-    } catch (error) {
+      if (nextActive) {
+        const { ready } = await ensureAlarmPermissions();
+        if (!ready) {
+          Alert.alert('Permisos incompletos', 'Concede los permisos de notificaciones y alarmas para poder avisarte.');
+          return;
+        }
+      }
       animateLayout(reducedMotion);
-      setMedications((current) => current.map((med) => (med.id === medication.id ? { ...med, active: medication.active } : med)));
+      // Se ve al instante y queda guardado; sin red, se envía al volver la conexión.
+      await updateMedication(medication.id, { active: nextActive });
+    } catch (error) {
+      // El servidor lo rechazó: la lista ya volvió a su estado real.
+      animateLayout(reducedMotion);
       Alert.alert('No se pudo actualizar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {
       setTogglingIds((current) => {
@@ -262,7 +151,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         return next;
       });
     }
-  }, [reducedMotion, syncAlarms]);
+  }, [reducedMotion]);
 
   const handleEdit = useCallback((medication: MedicationData) => {
     setForm({ visible: true, medication });
@@ -280,12 +169,9 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
           onPress: () => {
             void (async () => {
               try {
-                await medicationsAPI.deleteMedication(medication.id, await withToken());
-                await cancelNotificationsByDataId(medication.id);
                 animateLayout(reducedMotion);
-                const nextList = medicationsRef.current.filter((med) => med.id !== medication.id);
-                setMedications(nextList);
-                void syncAlarms(nextList, logsRef.current, true);
+                void cancelNotificationsByDataId(medication.id).catch(() => undefined);
+                await deleteMedication(medication.id);
               } catch (error) {
                 Alert.alert('No se pudo eliminar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
               }
@@ -294,7 +180,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         },
       ],
     );
-  }, [reducedMotion, syncAlarms]);
+  }, [reducedMotion]);
 
   const handleDosePress = useCallback((medication: MedicationData, slot: DoseSlot) => {
     setDoseTarget({ medication, slot });
@@ -306,8 +192,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     setDoseBusy(true);
     try {
       const log = await logDose(medication.id, action, slot.at.toISOString());
-      setLogs((current) => [log, ...current]);
-      setMedications((current) => withStockChange(current, log, 1));
+      applyDoseLog(log, 1);
       // Si se registra antes de la hora, esa alarma ya no debe sonar.
       if (slot.at.getTime() > Date.now()) void cancelDoseAlarm(medication.id, slot.at);
       setDoseTarget(null);
@@ -324,14 +209,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     const { medication, slot } = doseTarget;
     setDoseBusy(true);
     try {
-      if (!(await removeQueuedDose(log.id))) {
-        await medicationsAPI.deleteMedicationLog(medication.id, log.id, await withToken());
-      }
-      const nextLogs = logsRef.current.filter((item) => item.id !== log.id);
-      setLogs(nextLogs);
-      setMedications((current) => withStockChange(current, log, -1));
+      await undoDoseLog(medication.id, log.id);
+      applyDoseLog(log, -1);
       // Una toma futura vuelve a necesitar su alarma.
-      if (slot.at.getTime() > Date.now()) void syncAlarms(medicationsRef.current, nextLogs, true);
+      if (slot.at.getTime() > Date.now()) void syncAlarms();
       setDoseTarget(null);
     } catch (error) {
       Alert.alert('No se pudo deshacer', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
@@ -348,8 +229,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     const register = async () => {
       try {
         const log = await logDose(medication.id, 'TAKEN');
-        setLogs((list) => [log, ...list]);
-        setMedications((list) => withStockChange(list, log, 1));
+        applyDoseLog(log, 1);
       } catch (error) {
         Alert.alert('No se pudo registrar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
       }
@@ -364,20 +244,16 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     );
   }, []);
 
-  const handleSaved = (saved: MedicationData, isNew: boolean) => {
+  // El formulario ya guardó en el almacén compartido (y programa las alarmas).
+  const handleSaved = (_saved: MedicationData, isNew: boolean) => {
     // Si cambia de pestaña, la transición la hace useSwapAnimation.
     if (!isNew || segment === 'active') animateLayout(reducedMotion);
-    const nextList = isNew
-      ? [saved, ...medicationsRef.current]
-      : medicationsRef.current.map((med) => (med.id === saved.id ? saved : med));
-    setMedications(nextList);
     if (isNew) setSegment('active');
-    void syncAlarms(nextList, logsRef.current, true);
   };
 
   const fixAlarms = async () => {
     const { ready } = await ensureAlarmPermissions({ force: true });
-    if (ready) void syncAlarms(medicationsRef.current, logsRef.current, true);
+    if (ready) void syncAlarms();
   };
 
   const openNewForm = () => setForm({ visible: true, medication: null });
@@ -461,7 +337,6 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
         actionIcon="refresh"
         actionLabel="Reintentar"
         onAction={() => {
-          setStatus('loading');
           void load();
         }}
       />

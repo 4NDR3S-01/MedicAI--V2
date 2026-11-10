@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   Alert,
   Animated,
-  AppState,
   FlatList,
   LayoutAnimation,
   Linking,
@@ -17,14 +16,7 @@ import {
 
 import type { AppTheme } from '../../../shared/theme';
 import { FloatingActionButton, SelectField, useEnterAnimation, useReducedMotion, useSwapAnimation } from '../../../shared/ui';
-import { appStorage } from '../../../shared/storage';
-import {
-  cancelNotificationsByDataId,
-  rescheduleAppointmentsAfterLaunch,
-  scheduleAppointmentReminder,
-} from '../../../shared/services/notifications.service';
-import { getStoredSession } from '../../auth';
-import * as appointmentsAPI from '../services/appointments.service';
+import { deleteAppointment, refreshOwnData, updateAppointment, useOwnData } from '../data/own-data-store';
 import type { AppointmentAttendanceStatus, AppointmentData, SeriesScope } from '../services/appointments.service';
 import { askSeriesScope } from '../utils/appointment-series';
 import { AppointmentCard } from '../components/AppointmentCard';
@@ -41,7 +33,6 @@ import {
   type AppointmentState,
 } from '../utils/appointment-status';
 
-const CACHE_KEY = 'medicai_appointments_cache_v1';
 const CLOCK_TICK_MS = 60_000;
 
 type Segment = 'upcoming' | 'history';
@@ -75,9 +66,11 @@ export type AppointmentsScreenProps = {
 
 export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<AppointmentsScreenProps>) {
   const reducedMotion = useReducedMotion();
-  const [appointments, setAppointments] = useState<AppointmentData[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Datos compartidos con Inicio y guardados en el teléfono: se ven al instante, también sin red.
+  const own = useOwnData();
+  const { appointments } = own;
+  const status: 'loading' | 'ready' | 'error' = own.hasData ? 'ready' : own.loadError ? 'error' : 'loading';
+  const errorMessage = own.loadError;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [segment, setSegment] = useState<Segment>('upcoming');
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
@@ -89,72 +82,17 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   const [attendanceTarget, setAttendanceTarget] = useState<AppointmentData | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
-  const appointmentsRef = useRef(appointments);
-  appointmentsRef.current = appointments;
-
   const enter = useEnterAnimation(status !== 'loading');
   const swap = useSwapAnimation(`${segment}:${historyFilter}`);
 
-  // ── Carga de datos ────────────────────────────────────────────────────────
-  const persist = useCallback((list: AppointmentData[]) => {
-    void appStorage.setItem(CACHE_KEY, JSON.stringify(list)).catch(() => undefined);
-  }, []);
-
-  const load = useCallback(async () => {
-    const session = await getStoredSession();
-    if (!session?.accessToken) {
-      setErrorMessage('Tu sesión expiró. Vuelve a iniciar sesión.');
-      setStatus((current) => (current === 'ready' ? current : 'error'));
-      return;
-    }
-    try {
-      const data = (await appointmentsAPI.fetchAppointments(session.accessToken)) ?? [];
-      setAppointments(data);
-      setErrorMessage(null);
-      setStatus('ready');
-      setNow(new Date());
-      persist(data);
-      void rescheduleAppointmentsAfterLaunch(data).catch(() => undefined);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'No se pudieron cargar tus citas.');
-      // Con datos en pantalla (caché) no se sustituye la lista por el error.
-      setStatus((current) => (current === 'ready' ? current : 'error'));
-    }
-  }, [persist]);
-
-  // Primer render: caché (sin esqueleto) y luego datos frescos.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const raw = await appStorage.getItem(CACHE_KEY);
-        const cached = raw ? (JSON.parse(raw) as AppointmentData[]) : null;
-        if (!cancelled && Array.isArray(cached)) {
-          setAppointments(cached);
-          setStatus('ready');
-        }
-      } catch {
-        // caché corrupta: se ignora
-      }
-      if (!cancelled) await load();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [load]);
+  // ── Carga de datos (la hace el almacén compartido) ──────────────────────
+  const load = useCallback(() => refreshOwnData({ force: true }), []);
 
   // Reloj: las citas pasan de "Próximas" a "Por confirmar" sin recargar.
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void load();
-    });
-    return () => subscription.remove();
-  }, [load]);
 
   // ── Datos derivados ───────────────────────────────────────────────────────
   const buckets = useMemo(() => bucketAppointments(appointments, now), [appointments, now]);
@@ -167,11 +105,6 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   }, [segment, historyFilter, buckets, now]);
 
   // ── Acciones ──────────────────────────────────────────────────────────────
-  const withToken = async () => {
-    const session = await getStoredSession();
-    if (!session?.accessToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
-    return session.accessToken;
-  };
 
   const setBusy = (id: string, value: boolean) =>
     setBusyIds((current) => {
@@ -184,26 +117,18 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
   const markAttendance = useCallback(async (appointment: AppointmentData, attendanceStatus: AppointmentAttendanceStatus) => {
     setBusy(appointment.id, true);
     animateLayout(reducedMotion);
-    // Actualización optimista: la tarjeta cambia al instante.
-    setAppointments((current) =>
-      current.map((item) => (item.id === appointment.id ? { ...item, attendanceStatus } : item)),
-    );
+    setAttendanceTarget(null);
     try {
-      const updated = await appointmentsAPI.updateAppointment(appointment.id, await withToken(), { attendanceStatus });
-      const nextList = appointmentsRef.current.map((item) => (item.id === updated.id ? updated : item));
-      setAppointments(nextList);
-      persist(nextList);
-      setAttendanceTarget(null);
-      if (updated.attendanceStatus === 'PENDING') void scheduleAppointmentReminder(updated).catch(() => undefined);
-      else void cancelNotificationsByDataId(updated.id).catch(() => undefined);
+      // La tarjeta cambia al instante; sin red se envía al volver la conexión.
+      // Los recordatorios se ajustan solos con la lista.
+      await updateAppointment(appointment.id, { attendanceStatus });
     } catch (error) {
       animateLayout(reducedMotion);
-      setAppointments((current) => current.map((item) => (item.id === appointment.id ? appointment : item)));
       Alert.alert('No se pudo guardar la asistencia', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {
       setBusy(appointment.id, false);
     }
-  }, [persist, reducedMotion]);
+  }, [reducedMotion]);
 
   const handleEdit = useCallback((appointment: AppointmentData) => {
     setForm({ visible: true, appointment });
@@ -211,22 +136,14 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
 
   const removeAppointment = useCallback(async (appointment: AppointmentData, scope: SeriesScope) => {
     try {
-      await appointmentsAPI.deleteAppointment(appointment.id, await withToken(), undefined, scope);
       animateLayout(reducedMotion);
-      // "Esta y las siguientes": las de la misma serie desde esta fecha.
-      const from = new Date(appointment.scheduledAt).getTime();
-      const removed = (item: AppointmentData) =>
-        item.id === appointment.id
-        || (scope === 'FOLLOWING' && !!appointment.seriesId && item.seriesId === appointment.seriesId && new Date(item.scheduledAt).getTime() >= from);
-      appointmentsRef.current.filter(removed).forEach((item) => void cancelNotificationsByDataId(item.id).catch(() => undefined));
-      const nextList = appointmentsRef.current.filter((item) => !removed(item));
-      setAppointments(nextList);
-      persist(nextList);
-      void rescheduleAppointmentsAfterLaunch(nextList).catch(() => undefined);
+      // Desaparece al instante (con "esta y las siguientes", toda la serie desde aquí);
+      // los recordatorios se ajustan solos con la lista.
+      await deleteAppointment(appointment.id, scope);
     } catch (error) {
       Alert.alert('No se pudo eliminar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     }
-  }, [persist, reducedMotion]);
+  }, [reducedMotion]);
 
   const handleDelete = useCallback((appointment: AppointmentData) => {
     if (appointment.seriesId) {
@@ -253,17 +170,11 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
     if (appointment.location) openDirections(appointment.location);
   }, []);
 
-  const handleSaved = (saved: AppointmentData, isNew: boolean, reload = false) => {
-    // Serie creada o "esta y las siguientes": cambiaron varias citas.
-    if (reload) void load();
+  // El formulario ya guardó en el almacén compartido (también sin conexión).
+  const handleSaved = (saved: AppointmentData) => {
     const targetSegment: Segment = getAppointmentState(saved, new Date()) === 'upcoming' ? 'upcoming' : 'history';
     // Si cambia de pestaña, la transición la hace useSwapAnimation.
     if (targetSegment === segment) animateLayout(reducedMotion);
-    const nextList = isNew
-      ? [...appointmentsRef.current, saved]
-      : appointmentsRef.current.map((item) => (item.id === saved.id ? saved : item));
-    setAppointments(nextList);
-    persist(nextList);
     setNow(new Date());
     // Muestra la cita donde quedó tras guardarla.
     setSegment(targetSegment);
@@ -380,7 +291,6 @@ export function AppointmentsScreen({ theme, contentBottomInset }: Readonly<Appoi
         actionLabel="Reintentar"
         actionColor={theme.colors.accentSecondary}
         onAction={() => {
-          setStatus('loading');
           void load();
         }}
       />

@@ -1,25 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { appStorage } from '../../../shared/storage';
-import { onDoseAction } from '../../../shared/services/dose-refresh-bus';
-import { getStoredSession } from '../../auth';
-import { fetchAppointments, type AppointmentData } from '../../tabs/services/appointments.service';
-import { pendingDoseLogs } from '../../tabs/services/dose-queue';
-import {
-  fetchMedications,
-  fetchTodayMedicationLogs,
-  type MedicationData,
-  type MedicationLog,
-} from '../../tabs/services/medications.service';
+import { refreshOwnData, useOwnData } from '../../tabs/data/own-data-store';
+import type { MedicationData } from '../../tabs/services/medications.service';
 import { bucketAppointments, getAppointmentState } from '../../tabs/utils/appointment-status';
 import { getTodayDoseSlots, type DoseSlot } from '../../tabs/utils/dose-status';
 import { isLowStock } from '../../tabs/utils/medication-form';
 import { isAsNeeded } from '../../../shared/services/dose-schedule';
 
-// Mismas cachés que Medicamentos y Citas: el inicio se ve al instante.
-const MEDICATIONS_CACHE = 'medicai_medications_cache_v2';
-const APPOINTMENTS_CACHE = 'medicai_appointments_cache_v1';
 const CLOCK_TICK_MS = 30_000;
 
 const dayKey = (date: Date) =>
@@ -32,64 +19,15 @@ export type TodayDose = { medication: MedicationData; slot: DoseSlot };
  * la toma más relevante ahora, próximas citas y lo que requiere atención.
  */
 export function useHomeData() {
-  const [medications, setMedications] = useState<MedicationData[]>([]);
-  const [logs, setLogs] = useState<MedicationLog[]>([]);
-  const [appointments, setAppointments] = useState<AppointmentData[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  // Los mismos datos que Medicinas y Citas (guardados en el teléfono): se ven al instante.
+  const own = useOwnData();
+  const { medications, logs, appointments } = own;
+  const status: 'loading' | 'ready' | 'error' = own.hasData ? 'ready' : own.loadError ? 'error' : 'loading';
   const [now, setNow] = useState(() => new Date());
-  const loaded = useRef(false);
 
-  const load = useCallback(async () => {
-    const session = await getStoredSession();
-    if (!session?.accessToken) return;
-    const [meds, dayLogs, pending, appts] = await Promise.allSettled([
-      fetchMedications(session.accessToken),
-      fetchTodayMedicationLogs(session.accessToken),
-      pendingDoseLogs(),
-      fetchAppointments(session.accessToken),
-    ]);
-    if (meds.status === 'fulfilled') setMedications(meds.value ?? []);
-    if (dayLogs.status === 'fulfilled') {
-      setLogs([...(pending.status === 'fulfilled' ? pending.value : []), ...(dayLogs.value ?? [])]);
-    }
-    if (appts.status === 'fulfilled') setAppointments(appts.value ?? []);
-    setNow(new Date());
-    if (meds.status === 'fulfilled' || appts.status === 'fulfilled') {
-      loaded.current = true;
-      setStatus('ready');
-    } else if (!loaded.current) {
-      setStatus('error');
-    }
-  }, []);
+  const load = useCallback(() => refreshOwnData({ force: true }), []);
 
-  // Primero la caché (sin esqueleto si ya se abrió la app antes), luego el servidor.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [rawMeds, rawAppts] = await Promise.all([appStorage.getItem(MEDICATIONS_CACHE), appStorage.getItem(APPOINTMENTS_CACHE)]);
-        const medsCache = rawMeds ? (JSON.parse(rawMeds) as { day: string; medications: MedicationData[]; logs: MedicationLog[] }) : null;
-        const apptsCache = rawAppts ? (JSON.parse(rawAppts) as AppointmentData[]) : null;
-        if (!cancelled && (medsCache?.medications || Array.isArray(apptsCache))) {
-          if (medsCache?.medications) {
-            setMedications(medsCache.medications);
-            setLogs(medsCache.day === dayKey(new Date()) ? medsCache.logs ?? [] : []);
-          }
-          if (Array.isArray(apptsCache)) setAppointments(apptsCache);
-          loaded.current = true;
-          setStatus('ready');
-        }
-      } catch {
-        // caché dañada: se ignora
-      }
-      if (!cancelled) await load();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [load]);
-
-  // Reloj (estados "es la hora" / "sin registrar"), volver a la app y acciones desde alarmas.
+  // Reloj: estados "es la hora" / "sin registrar" y cambio de día.
   useEffect(() => {
     let lastDay = dayKey(new Date());
     const timer = setInterval(() => {
@@ -97,20 +35,11 @@ export function useHomeData() {
       setNow(current);
       if (dayKey(current) !== lastDay) {
         lastDay = dayKey(current);
-        setLogs([]);
-        void load();
+        void refreshOwnData({ force: true });
       }
     }, CLOCK_TICK_MS);
-    const appState = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void load();
-    });
-    const unsubscribe = onDoseAction(() => void load());
-    return () => {
-      clearInterval(timer);
-      appState.remove();
-      unsubscribe();
-    };
-  }, [load]);
+    return () => clearInterval(timer);
+  }, []);
 
   const summary = useMemo(() => {
     const active = medications.filter((medication) => medication.active);
@@ -143,5 +72,5 @@ export function useHomeData() {
     };
   }, [medications, logs, appointments, now]);
 
-  return { status, now, medications, setMedications, logs, setLogs, appointments, summary, load };
+  return { status, now, medications, logs, appointments, summary, load };
 }

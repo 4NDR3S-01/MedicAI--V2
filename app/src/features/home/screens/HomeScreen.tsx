@@ -9,14 +9,12 @@ import {
   ensureAlarmPermissions,
   getAlarmPermissionsStatus,
 } from '../../../shared/services/alarm-permissions.service';
-import { getStoredSession } from '../../auth';
 import { CareTodayPanel, useCareData } from '../../circle/components/CareTodayPanel';
 import { useCircle } from '../../circle/hooks/useCircle';
 import { DoseActionSheet } from '../../tabs/components/DoseActionSheet';
-import { initialsOf, parseAvatar } from '../../tabs/components/profile/avatar';
-import { logDose, removeQueuedDose } from '../../tabs/services/dose-queue';
-import { deleteMedicationLog } from '../../tabs/services/medications.service';
-import { withStockChange } from '../../tabs/utils/dose-status';
+import { avatarSource, initialsOf, parseAvatar } from '../../tabs/components/profile/avatar';
+import { logDose, undoDoseLog } from '../../tabs/services/dose-queue';
+import { applyDoseLog } from '../../tabs/data/own-data-store';
 import { formatQuantity, stockUnitLabel } from '../../tabs/utils/medication-form';
 import { AttentionList, type AttentionItem } from '../components/AttentionList';
 import { DoseTimeline } from '../components/DoseTimeline';
@@ -107,8 +105,7 @@ export function HomeScreen({
     setBusy(true);
     try {
       const log = await logDose(dose.medication.id, action, dose.slot.at.toISOString());
-      home.setLogs((current) => [log, ...current]);
-      home.setMedications((current) => withStockChange(current, log, 1));
+      applyDoseLog(log, 1);
       // Registrada antes de la hora: esa alarma ya no debe sonar.
       if (dose.slot.at.getTime() > Date.now()) void cancelDoseAlarm(dose.medication.id, dose.slot.at);
       setDoseTarget(null);
@@ -124,13 +121,9 @@ export function HomeScreen({
     if (!doseTarget || !log) return;
     setBusy(true);
     try {
-      if (!(await removeQueuedDose(log.id))) {
-        const session = await getStoredSession();
-        if (!session?.accessToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
-        await deleteMedicationLog(doseTarget.medication.id, log.id, session.accessToken);
-      }
-      home.setLogs((current) => current.filter((item) => item.id !== log.id));
-      home.setMedications((current) => withStockChange(current, log, -1));
+      // Sin conexión, el borrado queda en cola y se envía al volver la red.
+      await undoDoseLog(doseTarget.medication.id, log.id);
+      applyDoseLog(log, -1);
       setDoseTarget(null);
     } catch (error) {
       Alert.alert('No se pudo deshacer', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
@@ -218,7 +211,7 @@ export function HomeScreen({
               style={[styles.avatar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
             >
               {avatar ? (
-                <Image source={{ uri: avatar.url }} style={styles.avatarImage} accessibilityIgnoresInvertColors />
+                <Image source={avatarSource(avatar)} style={styles.avatarImage} accessibilityIgnoresInvertColors />
               ) : (
                 <Text style={[styles.avatarText, { color: theme.colors.accentPrimaryText }]}>{initialsOf(userFullName || firstName || '?')}</Text>
               )}

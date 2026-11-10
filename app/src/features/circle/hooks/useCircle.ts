@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Share } from 'react-native';
 
-import { appStorage } from '../../../shared/storage';
+import { peekCache, readCache, SCREEN_CACHE_KEYS, writeCache } from '../../../shared/services/screen-cache';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
 import type { CircleInvitation, CircleMember, CircleOverview } from '../services/circle.service';
 
-// v2: incluye grupos y recordatorios (una caché v1 no tiene esos campos).
-const cacheKey = (ownerId?: string) => `medicai_circle_cache_v2${ownerId ? `_${ownerId}` : ''}`;
 
 export const withToken = async () => {
   const session = await getStoredSession();
@@ -26,8 +24,13 @@ export function shareInvitation(invitation: CircleInvitation) {
  * mostrar algo al instante, y acciones sobre las invitaciones enviadas.
  */
 export function useCircle(ownerId?: string, enabled = true) {
-  const [overview, setOverview] = useState<CircleOverview | null>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  // El propio Círculo se pinta al instante con la última copia conocida.
+  const cachedOwn = () => {
+    const cached = ownerId ? null : peekCache<CircleOverview>(SCREEN_CACHE_KEYS.circle);
+    return cached?.members ? cached : null;
+  };
+  const [overview, setOverview] = useState<CircleOverview | null>(cachedOwn);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(() => (cachedOwn() ? 'ready' : 'loading'));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyInvitationIds, setBusyInvitationIds] = useState<Set<string>>(new Set());
   const overviewRef = useRef(overview);
@@ -35,7 +38,7 @@ export function useCircle(ownerId?: string, enabled = true) {
 
   const persist = useCallback((data: CircleOverview) => {
     // La caché del Círculo de otra persona no se guarda en disco.
-    if (!ownerId) void appStorage.setItem(cacheKey(), JSON.stringify(data)).catch(() => undefined);
+    if (!ownerId) writeCache(SCREEN_CACHE_KEYS.circle, data);
   }, [ownerId]);
 
   const load = useCallback(async () => {
@@ -54,19 +57,15 @@ export function useCircle(ownerId?: string, enabled = true) {
   useEffect(() => {
     if (!enabled) return undefined;
     let cancelled = false;
-    setStatus('loading');
-    setOverview(null);
+    const instant = cachedOwn();
+    setOverview(instant);
+    setStatus(instant ? 'ready' : 'loading');
     void (async () => {
-      if (!ownerId) {
-        try {
-          const raw = await appStorage.getItem(cacheKey());
-          const cached = raw ? (JSON.parse(raw) as CircleOverview) : null;
-          if (!cancelled && cached?.members) {
-            setOverview(cached);
-            setStatus('ready');
-          }
-        } catch {
-          // caché corrupta: se ignora
+      if (!ownerId && !instant) {
+        const cached = await readCache<CircleOverview>(SCREEN_CACHE_KEYS.circle);
+        if (!cancelled && cached?.members) {
+          setOverview(cached);
+          setStatus('ready');
         }
       }
       if (!cancelled) await load();

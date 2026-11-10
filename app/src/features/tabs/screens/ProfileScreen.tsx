@@ -11,6 +11,7 @@ import {
   getMedicationReminderLeadMinutes,
 } from '../../../shared/services/notifications.service';
 import { fetchProfileFromBackend, requestPasswordReset, type ProfileUser } from '../../auth/services/auth.service';
+import { peekCache, readCache, SCREEN_CACHE_KEYS, writeCache } from '../../../shared/services/screen-cache';
 import { formatPhone, parseMedicalSelection } from '../../auth/utils/register.utils';
 import { SPECIAL_CONDITIONS } from '../../auth/config/register.constants';
 import { PermissionHistorySheet } from '../../circle/components/PermissionHistorySheet';
@@ -18,7 +19,7 @@ import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { SessionsSheet } from '../components/SessionsSheet';
 import { AlarmStatusCard } from '../components/profile/AlarmStatusCard';
 import { AvatarSheet } from '../components/profile/AvatarSheet';
-import { initialsOf, parseAvatar } from '../components/profile/avatar';
+import { avatarSource, initialsOf, parseAvatar } from '../components/profile/avatar';
 import { EditProfileSheet } from '../components/profile/EditProfileSheet';
 import { HelpSheet } from '../components/profile/HelpSheet';
 import { PrivacySheet } from '../components/profile/PrivacySheet';
@@ -77,10 +78,12 @@ export function ProfileScreen({
   onSignOut,
   onAccountDeleted,
 }: Readonly<ProfileScreenProps>) {
-  const [profile, setProfile] = useState<Partial<ProfileUser>>({
-    fullName: userFullName,
-    email: userEmail ?? undefined,
-    avatar: avatarData,
+  // Último perfil conocido al instante (edad, condiciones…); el servidor lo pone al día detrás.
+  const [profile, setProfile] = useState<Partial<ProfileUser>>(() => {
+    const cached = peekCache<ProfileUser>(SCREEN_CACHE_KEYS.profile);
+    return cached && (!userEmail || cached.email === userEmail)
+      ? cached
+      : { fullName: userFullName, email: userEmail ?? undefined, avatar: avatarData };
   });
   const [sheet, setSheet] = useState<Sheet>(null);
   // Mantiene el modo del formulario mientras se cierra (sheet ya es null).
@@ -94,6 +97,7 @@ export function ProfileScreen({
   const enter = useEnterAnimation(true);
 
   const applyUser = useCallback((user: ProfileUser) => {
+    writeCache(SCREEN_CACHE_KEYS.profile, user);
     setProfile(user);
     onProfileUpdated?.(user);
   }, [onProfileUpdated]);
@@ -115,6 +119,12 @@ export function ProfileScreen({
   }, []);
 
   useEffect(() => {
+    void readCache<ProfileUser>(SCREEN_CACHE_KEYS.profile).then((cached) => {
+      // Solo si aún no llegó nada mejor y es de esta misma cuenta.
+      if (cached && (!userEmail || cached.email === userEmail)) {
+        setProfile((current) => (current.id ? current : { ...cached, ...(avatarData ? { avatar: avatarData } : {}) }));
+      }
+    });
     void loadProfile(false);
     void loadLead();
     return onThemePreference(setAppearance);
@@ -208,7 +218,7 @@ export function ProfileScreen({
                 style={[styles.avatar, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}
               >
                 {avatar ? (
-                  <Image source={{ uri: avatar.url }} style={styles.avatarImage} accessibilityIgnoresInvertColors />
+                  <Image source={avatarSource(avatar)} style={styles.avatarImage} accessibilityIgnoresInvertColors />
                 ) : (
                   <Text style={[styles.avatarLetter, { color: theme.colors.accentPrimaryText }]}>{initialsOf(name)}</Text>
                 )}

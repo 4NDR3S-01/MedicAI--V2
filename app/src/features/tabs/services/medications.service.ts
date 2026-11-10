@@ -29,6 +29,8 @@ type MedicationData = {
   updatedBy?: ActorRef;
   /** Solo en la app: zona horaria del dueño (si es otra persona del Círculo). */
   timeZone?: string | null;
+  /** Solo en la app: cambio hecho sin conexión que aún no confirmó el servidor. */
+  pendingSync?: boolean;
   createdAt: string;
   updatedAt: string;
 };
