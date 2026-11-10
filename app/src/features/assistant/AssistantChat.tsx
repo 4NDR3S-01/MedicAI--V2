@@ -61,11 +61,12 @@ type ChatMessage = {
   image?: string;
 };
 
-const SUGGESTIONS: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }[] = [
-  { icon: 'pill', text: '¿Puedo tomar ibuprofeno con mis medicamentos?' },
-  { icon: 'clock-alert-outline', text: '¿Qué hago si olvidé una dosis?' },
-  { icon: 'calendar-check-outline', text: 'Ayúdame a preparar mi próxima cita' },
-  { icon: 'plus-circle-outline', text: 'Quiero agregar un medicamento que me recetaron' },
+/** `label` es lo que se ve en la tarjeta; `text` es la pregunta que se envía. */
+const SUGGESTIONS: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; text: string }[] = [
+  { icon: 'pill', label: '¿Ibuprofeno con mis medicinas?', text: '¿Puedo tomar ibuprofeno con mis medicamentos?' },
+  { icon: 'clock-alert-outline', label: 'Olvidé una dosis', text: '¿Qué hago si olvidé una dosis?' },
+  { icon: 'calendar-check-outline', label: 'Preparar mi próxima cita', text: 'Ayúdame a preparar mi próxima cita' },
+  { icon: 'plus-circle-outline', label: 'Agregar un medicamento', text: 'Quiero agregar un medicamento que me recetaron' },
 ];
 
 const newId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -98,6 +99,10 @@ export function AssistantChat({
   const { height, width } = useWindowDimensions();
   /** Pantallas estrechas: cabecera sin avatar y botón de voz sin texto. */
   const compact = width < 360;
+  /** Teléfonos comunes (~360 dp): sin el robot de la cabecera para que título y estado quepan enteros. */
+  const narrow = width < 400;
+  /** Pantallas bajas (o con letra grande): sin ícono para que la bienvenida quepa sin desplazar. */
+  const shortScreen = height < 680;
   const { keyboardVisible, screenInset } = useKeyboardInset();
   const reducedMotion = useReducedMotion();
   const progress = useRef(new Animated.Value(0)).current;
@@ -557,7 +562,7 @@ export function AssistantChat({
             <PressableScale onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cerrar asistente" style={styles.headerButton}>
               <MaterialCommunityIcons name="chevron-down" size={28} color={theme.colors.textPrimary} />
             </PressableScale>
-            {compact ? null : (
+            {narrow ? null : (
               <View style={[styles.botAvatar, { backgroundColor: `${theme.colors.accentPrimary}18` }]}>
                 <MaterialCommunityIcons name="robot-happy-outline" size={22} color={theme.colors.accentPrimary} />
               </View>
@@ -570,7 +575,7 @@ export function AssistantChat({
                 <View style={styles.statusRow} accessible accessibilityLabel="Conoce tu salud, medicamentos y citas">
                   <View style={[styles.statusDot, { backgroundColor: theme.colors.success }]} />
                   <Text style={[styles.status, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                    Conoce tu información de salud
+                    Conoce tu salud
                   </Text>
                 </View>
               ) : (
@@ -621,28 +626,30 @@ export function AssistantChat({
             {!messages.length && loaded ? (
               <View style={styles.welcome}>
                 <Reveal index={0} delay={WELCOME_DELAY_MS} style={styles.center}>
-                <View style={[styles.welcomeIcon, { backgroundColor: `${theme.colors.accentPrimary}14` }]}>
-                  <MaterialCommunityIcons name="robot-happy-outline" size={38} color={theme.colors.accentPrimary} />
-                </View>
+                {shortScreen ? null : (
+                  <View style={[styles.welcomeIcon, { backgroundColor: `${theme.colors.accentPrimary}14` }]}>
+                    <MaterialCommunityIcons name="robot-happy-outline" size={30} color={theme.colors.accentPrimary} />
+                  </View>
+                )}
                 <Text style={[styles.welcomeTitle, { color: theme.colors.textPrimary }]}>¿En qué te ayudo?</Text>
                 </Reveal>
                 <Reveal index={1} delay={WELCOME_DELAY_MS}>
                 <Text style={[styles.welcomeBody, { color: theme.colors.textSecondary }]}>
-                  Pregúntame sobre tus medicamentos, efectos, interacciones o cómo prepararte para una cita. Puedes mostrarme la foto de una caja o una receta. También puedo
-                  agregar un medicamento o una cita, o registrar una toma: tú confirmas antes de guardar. Toca el ícono de audífonos para conversar por voz.
+                  Pregúntame por tus medicinas y citas, o mándame la foto de una receta. Si agrego algo, tú confirmas antes de guardar.
                 </Text>
                 </Reveal>
                 <View style={styles.suggestions}>
                   {SUGGESTIONS.map((suggestion, index) => (
-                    <Reveal key={suggestion.text} index={index + 2} delay={WELCOME_DELAY_MS}>
+                    <Reveal key={suggestion.text} index={index + 2} delay={WELCOME_DELAY_MS} style={styles.suggestionCell}>
                     <PressableScale
                       onPress={() => void send(suggestion.text)}
                       pressedScale={0.98}
                       accessibilityRole="button"
+                      accessibilityLabel={suggestion.text}
                       style={[styles.suggestion, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
                     >
                       <MaterialCommunityIcons name={suggestion.icon} size={20} color={theme.colors.accentPrimary} />
-                      <Text style={[styles.suggestionText, { color: theme.colors.textPrimary }]}>{suggestion.text}</Text>
+                      <Text style={[styles.suggestionText, { color: theme.colors.textPrimary }]} numberOfLines={2}>{suggestion.label}</Text>
                     </PressableScale>
                     </Reveal>
                   ))}
@@ -890,13 +897,14 @@ const styles = StyleSheet.create({
   voiceLabel: { fontSize: 14, fontWeight: '700' },
   iconButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   messages: { padding: 16, gap: 12, flexGrow: 1 },
-  welcome: { alignItems: 'center', gap: 10, paddingTop: 16 },
-  welcomeIcon: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  welcomeTitle: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
-  welcomeBody: { fontSize: 15, lineHeight: 21, fontWeight: '500', textAlign: 'center', paddingHorizontal: 8 },
-  suggestions: { alignSelf: 'stretch', gap: 8, marginTop: 10 },
-  suggestion: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13 },
-  suggestionText: { flex: 1, fontSize: 15, fontWeight: '700' },
+  welcome: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  welcomeIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  welcomeTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  welcomeBody: { fontSize: 14, lineHeight: 20, fontWeight: '500', textAlign: 'center', paddingHorizontal: 12 },
+  suggestions: { alignSelf: 'stretch', flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  suggestionCell: { flexBasis: '48%', flexGrow: 1 },
+  suggestion: { flex: 1, gap: 8, borderWidth: 1, borderRadius: 16, padding: 12, minHeight: 84 },
+  suggestionText: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
   messageWrap: { maxWidth: '88%', gap: 6 },
   mineWrap: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   theirsWrap: { alignSelf: 'flex-start', alignItems: 'stretch' },
