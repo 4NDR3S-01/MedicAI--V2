@@ -5,7 +5,6 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlarmManager;
-import android.app.KeyguardManager;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -62,19 +61,14 @@ public class AlarmActivity extends Activity {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
         }
+        // Shown OVER the lock screen, like the system clock's alarm: never ask for the
+        // PIN/fingerprint (no requestDismissKeyguard / FLAG_DISMISS_KEYGUARD). The buttons
+        // only store the action and close, so they work while the phone stays locked.
         getWindow().addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
             | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-            | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         );
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-            if (keyguardManager != null) {
-                keyguardManager.requestDismissKeyguard(this, null);
-            }
-        }
 
         Intent intent = getIntent();
         alarmId = intent.getStringExtra("id");
@@ -104,6 +98,8 @@ public class AlarmActivity extends Activity {
     }
 
     private void storePendingAction(String action) {
+        // The test alarm ("Probar alarma") never logs a dose.
+        if (!AlarmActionHandler.isMedicationAlarmId(alarmId)) return;
         try {
             SharedPreferences prefs = getSharedPreferences("MedicAI_alarm_actions", Context.MODE_PRIVATE);
             String key = "pending_" + alarmId + "_" + System.currentTimeMillis();
@@ -158,7 +154,7 @@ public class AlarmActivity extends Activity {
     }
 
     private void scheduleSnooze() {
-        if (alarmId == null) return;
+        if (!AlarmActionHandler.isMedicationAlarmId(alarmId)) return;
         long snoozeTime = System.currentTimeMillis() + SNOOZE_MS;
         String snoozeTitle = "[Pospuesto] " + (alarmTitle != null ? alarmTitle : "Medicamento");
         long originalDose = extractDoseTimestamp(alarmId);

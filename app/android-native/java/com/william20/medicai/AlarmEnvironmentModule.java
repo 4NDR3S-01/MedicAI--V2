@@ -5,7 +5,6 @@ import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
@@ -184,9 +183,15 @@ public class AlarmEnvironmentModule extends ReactContextBaseJavaModule {
                     break;
                 case "huawei":
                 case "honor":
+                    // Honor phones since the 2021 split (MagicOS) use com.hihonor.*; older
+                    // Honor and Huawei (EMUI) keep com.huawei.*. "App launch" manager first.
                     intents = new Intent[]{
+                        componentIntent("com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+                        componentIntent("com.hihonor.systemmanager", "com.hihonor.systemmanager.appcontrol.activity.StartupAppControlActivity"),
                         componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
-                        componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity")
+                        componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+                        componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+                        componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.bootstart.BootStartActivity")
                     };
                     break;
                 case "samsung":
@@ -214,13 +219,19 @@ public class AlarmEnvironmentModule extends ReactContextBaseJavaModule {
                     break;
             }
 
-            PackageManager pm = getReactApplicationContext().getPackageManager();
+            // Don't use resolveActivity(): since Android 11 package visibility makes it
+            // return null for other apps' activities (no <queries> needed this way), so
+            // every phone fell back to the app's settings. Just try each one: a missing or
+            // non-exported activity throws and we move on to the next.
             for (Intent intent : intents) {
-                if (intent != null && intent.resolveActivity(pm) != null) {
+                if (intent == null) continue;
+                try {
                     startIntent(intent);
-                    Log.d(TAG, "Opened OEM settings for " + manufacturer);
+                    Log.d(TAG, "Opened OEM settings for " + manufacturer + ": " + intent.getComponent());
                     promise.resolve(true);
                     return;
+                } catch (Exception ex) {
+                    Log.d(TAG, "OEM settings not available: " + intent.getComponent() + " (" + ex.getClass().getSimpleName() + ")");
                 }
             }
 

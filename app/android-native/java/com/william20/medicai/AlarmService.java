@@ -1,5 +1,6 @@
 package com.william20.medicai;
 
+import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -77,20 +78,25 @@ public class AlarmService extends Service {
         String title = intent.getStringExtra("title");
         String body = intent.getStringExtra("body");
 
-        // ── Step 1: Wake the device screen ──
-        // Use FULL_WAKE_LOCK + ACQUIRE_CAUSES_WAKEUP to physically turn the screen on.
-        // This is essential for the full-screen intent to trigger on the lockscreen.
-        // PARTIAL_WAKE_LOCK alone does NOT turn the screen on.
-        // Assign to field BEFORE acquire so onDestroy can always release it.
+        // ── Step 1: Decide how intrusive the alarm should be ──
+        // Locked or screen off → full-screen alarm (wake the screen, open AlarmActivity).
+        // Unlocked and in use (a game, a video call…) → never take over the screen:
+        // a heads-up notification with sound + "Ya tomé / Posponer / Omitir";
+        // tapping it opens the full alarm. (When MedicAI itself is in the foreground,
+        // AlarmReceiver already opened AlarmActivity directly.)
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        wakeLock = pm.newWakeLock(
-            PowerManager.FULL_WAKE_LOCK
-                | PowerManager.ACQUIRE_CAUSES_WAKEUP
-                | PowerManager.ON_AFTER_RELEASE,
-            "MedicAI:AlarmServiceWakeLock"
-        );
+        boolean takeOverScreen = shouldTakeOverScreen(pm);
+        Log.d(TAG, "Alarm presentation: " + (takeOverScreen ? "full-screen" : "heads-up (device in use)"));
+
+        // FULL_WAKE_LOCK + ACQUIRE_CAUSES_WAKEUP physically turns the screen on (needed
+        // for the full-screen intent on the lockscreen); while the user is using the
+        // phone a PARTIAL lock is enough to keep the sound going.
+        // Assign to field BEFORE acquire so onDestroy can always release it.
+        int wakeFlags = takeOverScreen
+            ? PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE
+            : PowerManager.PARTIAL_WAKE_LOCK;
+        wakeLock = pm.newWakeLock(wakeFlags, "MedicAI:AlarmServiceWakeLock");
         wakeLock.acquire(AUTO_STOP_MS + 5000);
-        Log.d(TAG, "WakeLock acquired (FULL + ACQUIRE_CAUSES_WAKEUP)");
 
         // ── Step 2: Create notification channel ──
         createNotificationChannel();
@@ -126,19 +132,23 @@ public class AlarmService extends Service {
         // The notification's fullScreenIntent is the primary mechanism, but some OEMs
         // (MIUI, ColorOS, One UI) may not honour it. A direct startActivity() from a
         // foreground service with a FULL_WAKE_LOCK works as a reliable fallback.
-        try {
-            Intent directLaunch = new Intent(this, AlarmActivity.class);
-            directLaunch.putExtra("id", id);
-            directLaunch.putExtra("title", title);
-            directLaunch.putExtra("body", body);
-            directLaunch.putExtra("playFeedback", false);
-            directLaunch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            startActivity(directLaunch);
-            Log.d(TAG, "Direct AlarmActivity launch attempted");
-        } catch (Exception e) {
-            Log.w(TAG, "Direct AlarmActivity launch failed (expected on some devices): " + e.getMessage());
+        // Only when locked / screen off: while the phone is in use the system shows
+        // the notification as a heads-up instead, and so do we.
+        if (takeOverScreen) {
+            try {
+                Intent directLaunch = new Intent(this, AlarmActivity.class);
+                directLaunch.putExtra("id", id);
+                directLaunch.putExtra("title", title);
+                directLaunch.putExtra("body", body);
+                directLaunch.putExtra("playFeedback", false);
+                directLaunch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivity(directLaunch);
+                Log.d(TAG, "Direct AlarmActivity launch attempted");
+            } catch (Exception e) {
+                Log.w(TAG, "Direct AlarmActivity launch failed (expected on some devices): " + e.getMessage());
+            }
         }
 
         // ── Step 6: Start alarm feedback (sound + vibration) ──
@@ -395,6 +405,18 @@ public class AlarmService extends Service {
             channel.setSound(null, null);
 
             nm.createNotificationChannel(channel);
+        }
+    }
+
+    /** True when the screen is off or the keyguard is showing (nobody is using the phone). */
+    private boolean shouldTakeOverScreen(PowerManager pm) {
+        try {
+            if (pm != null && !pm.isInteractive()) return true;
+            KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            return km != null && km.isKeyguardLocked();
+        } catch (Exception e) {
+            Log.w(TAG, "Could not read screen/lock state, defaulting to full-screen: " + e.getMessage());
+            return true;
         }
     }
 
