@@ -6,7 +6,7 @@ import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FormSheet, useReducedMotion } from '../../../shared/ui';
 import { ERROR_COLOR } from '../../../shared/ui/FormField';
 import { syncOwnReminders } from '../../tabs/services/reminders-sync';
-import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { promptAlarmSetupIfNeeded } from '../../../shared/services/alarm-setup.service';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
 import type { CircleGroup, CircleMember, ReminderMode } from '../services/circle.service';
@@ -205,19 +205,13 @@ export function MemberDetailSheet({
   };
 
   const changeReminders = async (mode: ReminderMode) => {
-    if (mode !== 'OFF') {
-      const { ready } = await ensureAlarmPermissions();
-      if (!ready) {
-        Alert.alert('Permisos incompletos', 'Concede los permisos de notificaciones y alarmas para recibir sus recordatorios.');
-        return;
-      }
-    }
     try {
       setBusy('reminders');
       const updated = await circleAPI.updateReminders(await withToken(), shown.linkId, mode);
       onChanged(updated);
       // Se aplican ya en este teléfono (sin esperar a reabrir la app).
       void syncOwnReminders({ force: true }).catch(() => undefined);
+      if (mode !== 'OFF') void promptAlarmSetupIfNeeded();
     } catch (error) {
       Alert.alert('No se pudo cambiar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {

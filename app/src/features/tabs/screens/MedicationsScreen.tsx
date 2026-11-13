@@ -14,7 +14,7 @@ import {
 
 import type { AppTheme } from '../../../shared/theme';
 import { FloatingActionButton, useEnterAnimation, useReducedMotion, useSwapAnimation } from '../../../shared/ui';
-import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { openAlarmSetup, promptAlarmSetupIfNeeded } from '../../../shared/services/alarm-setup.service';
 import {
   cancelDoseAlarm,
   cancelNotificationsByDataId,
@@ -130,16 +130,11 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     // Desde el mismo toque: el interruptor ya muestra el valor nuevo.
     setTogglingIds((current) => new Set(current).add(medication.id));
     try {
-      if (nextActive) {
-        const { ready } = await ensureAlarmPermissions();
-        if (!ready) {
-          Alert.alert('Permisos incompletos', 'Concede los permisos de notificaciones y alarmas para poder avisarte.');
-          return;
-        }
-      }
       animateLayout(reducedMotion);
       // Se ve al instante y queda guardado; sin red, se envía al volver la conexión.
       await updateMedication(medication.id, { active: nextActive });
+      // Reactivado: si a este teléfono le falta algo para que suene, "Prepara tus alarmas".
+      if (nextActive && medication.scheduleType !== 'AS_NEEDED') void promptAlarmSetupIfNeeded();
     } catch (error) {
       // El servidor lo rechazó: la lista ya volvió a su estado real.
       animateLayout(reducedMotion);
@@ -251,9 +246,10 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     if (isNew) setSegment('active');
   };
 
-  const fixAlarms = async () => {
-    const { ready } = await ensureAlarmPermissions({ force: true });
-    if (ready) void syncAlarms();
+  // Al volver de los ajustes del sistema, MainAppShell reprograma las alarmas.
+  const fixAlarms = () => {
+    openAlarmSetup();
+    void syncAlarms();
   };
 
   const openNewForm = () => setForm({ visible: true, medication: null });
@@ -266,7 +262,7 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
     <View>
       {alarmIssue ? (
         <Pressable
-          onPress={() => void fixAlarms()}
+          onPress={fixAlarms}
           accessibilityRole="button"
           style={[styles.issue, { backgroundColor: `${theme.colors.accentTertiary}14`, borderColor: `${theme.colors.accentTertiary}40` }]}
         >

@@ -7,7 +7,7 @@ import { AppButton, FormSheet } from '../../../shared/ui';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
 import type { CircleGroup, CircleInvitation, CircleMember, ReminderMode } from '../services/circle.service';
-import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { promptAlarmSetupIfNeeded } from '../../../shared/services/alarm-setup.service';
 import { hasAnyPermission, normalizePermissions, type PermissionSet } from '../utils/permissions';
 import {
   careSummary,
@@ -110,7 +110,6 @@ export function InvitationReviewSheet({
     // Un grupo escrito pero sin confirmar se crea ahora (antes se perdía).
     const finalGroupIds = groupPickerRef.current ? await groupPickerRef.current.commitDraft() : groupIds;
     if (!finalGroupIds) return;
-    if (canAskReminders && reminderMode !== 'OFF') await ensureAlarmPermissions();
     try {
       setBusy('accept');
       const member = await circleAPI.acceptInvitation(await withToken(), shown.id, {
@@ -121,6 +120,8 @@ export function InvitationReviewSheet({
         reminderMode: canAskReminders ? reminderMode : 'OFF',
       });
       onAccepted(member, shown, finalGroupIds);
+      // Sus recordatorios sonarán en este teléfono: si le falta algo, "Prepara tus alarmas".
+      if (canAskReminders && reminderMode !== 'OFF') void promptAlarmSetupIfNeeded();
     } catch (error) {
       Alert.alert('No se pudo aceptar', error instanceof Error ? error.message : 'Inténtalo de nuevo.');
     } finally {

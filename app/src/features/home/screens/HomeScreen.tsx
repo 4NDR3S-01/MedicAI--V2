@@ -6,9 +6,10 @@ import type { AppTheme } from '../../../shared/theme';
 import { PressableScale, Reveal } from '../../../shared/ui';
 import { cancelDoseAlarm } from '../../../shared/services/notifications.service';
 import {
-  ensureAlarmPermissions,
-  getAlarmPermissionsStatus,
-} from '../../../shared/services/alarm-permissions.service';
+  getAlarmSetupSnapshot,
+  onAlarmSetupChanged,
+  openAlarmSetup,
+} from '../../../shared/services/alarm-setup.service';
 import { CareTodayPanel, useCareData } from '../../circle/components/CareTodayPanel';
 import { useCircle } from '../../circle/hooks/useCircle';
 import { DoseActionSheet } from '../../tabs/components/DoseActionSheet';
@@ -71,7 +72,8 @@ export function HomeScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [doseTarget, setDoseTarget] = useState<TodayDose | null>(null);
   const [busy, setBusy] = useState(false);
-  const [alarmIssue, setAlarmIssue] = useState(false);
+  /** Lo que falta para la alarma: permisos, o solo probarla en este teléfono. */
+  const [alarmIssue, setAlarmIssue] = useState<'permissions' | 'test' | null>(null);
 
   // Personas que cuido: el mismo resumen que en Círculo.
   const circle = useCircle();
@@ -80,10 +82,13 @@ export function HomeScreen({
 
   const checkAlarms = useCallback(async () => {
     try {
-      const status = await getAlarmPermissionsStatus();
-      setAlarmIssue(!status.isAlarmReady);
+      const { steps } = await getAlarmSetupSnapshot();
+      const missing = steps.filter((step) => !step.done).map((step) => step.id);
+      if (!missing.length) setAlarmIssue(null);
+      else if (missing.length === 1 && missing[0] === 'test') setAlarmIssue('test');
+      else setAlarmIssue('permissions');
     } catch {
-      setAlarmIssue(false);
+      setAlarmIssue(null);
     }
   }, []);
 
@@ -92,7 +97,11 @@ export function HomeScreen({
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void checkAlarms();
     });
-    return () => subscription.remove();
+    const unsubscribe = onAlarmSetupChanged(() => void checkAlarms());
+    return () => {
+      subscription.remove();
+      unsubscribe();
+    };
   }, [checkAlarms]);
 
   const greeting = greetingFor(now);
@@ -140,10 +149,13 @@ export function HomeScreen({
         key: 'alarms',
         icon: 'alarm-off',
         tone: 'warning',
-        title: 'Tus alarmas podrían no sonar',
-        body: 'Falta un permiso del teléfono para avisarte a tiempo.',
-        action: 'Resolver',
-        onPress: () => void ensureAlarmPermissions({ force: true }).finally(() => void checkAlarms()),
+        title: alarmIssue === 'test' ? 'Prueba tu alarma' : 'Tus alarmas podrían no sonar',
+        body:
+          alarmIssue === 'test'
+            ? 'Comprueba en 10 segundos que se ve con el teléfono bloqueado.'
+            : 'Falta un permiso del teléfono para avisarte a tiempo.',
+        action: alarmIssue === 'test' ? 'Probar' : 'Resolver',
+        onPress: openAlarmSetup,
       });
     }
     for (const appointment of summary.awaiting.slice(0, 2)) {
@@ -170,7 +182,7 @@ export function HomeScreen({
       });
     }
     return items;
-  }, [alarmIssue, summary, onOpenAppointments, onOpenMedications, checkAlarms]);
+  }, [alarmIssue, summary, onOpenAppointments, onOpenMedications]);
 
   const refresh = () => {
     setRefreshing(true);

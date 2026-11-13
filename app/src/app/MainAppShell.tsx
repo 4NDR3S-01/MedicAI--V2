@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useRef, type ReactNode } from 'react';
 import { Alert, AppState, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -9,7 +9,7 @@ import {
 } from '../features/tabs';
 import { syncOwnReminders } from '../features/tabs/services/reminders-sync';
 import { startDoseQueueSync } from '../features/tabs/services/dose-queue';
-import { onOwnDataError, startOwnDataSync } from '../features/tabs/data/own-data-store';
+import { onOwnDataError, startOwnDataSync, useOwnData } from '../features/tabs/data/own-data-store';
 import { warmScreenCaches } from '../shared/services/screen-cache';
 import { reportTimeZoneIfChanged } from '../features/tabs/services/timezone-sync';
 import { CircleScreen, hasPendingCircleInvite, isCirclePushType, onCircleInvite, onOpenCircle } from '../features/circle';
@@ -21,6 +21,8 @@ import { AssistantChat } from '../features/assistant/AssistantChat';
 import { onOpenAssistant, type AssistantRequest } from '../features/assistant/services/assistant-launcher';
 import { AppBottomBar, useMainTabContentInset, type MainTabId } from './AppBottomBar';
 import { SyncStatusPill } from './SyncStatusPill';
+import { AlarmSetupSheet } from '../features/tabs/components/AlarmSetupSheet';
+import { notifyAlarmSetupChanged, onOpenAlarmSetup, promptAlarmSetupOnLaunch } from '../shared/services/alarm-setup.service';
 import type { ProfileUser } from '../features/auth/services/auth.service';
 
 export type MainAppShellProps = {
@@ -46,6 +48,33 @@ export function MainAppShell({
   const [chatVisible, setChatVisible] = useState(false);
   const [chatRequest, setChatRequest] = useState<AssistantRequest | null>(null);
   const closeChat = useCallback(() => setChatVisible(false), []);
+  const [alarmSetupVisible, setAlarmSetupVisible] = useState(false);
+  const closeAlarmSetup = useCallback(() => {
+    setAlarmSetupVisible(false);
+    notifyAlarmSetupChanged();
+    // Con los permisos nuevos, las alarmas se reprograman ya.
+    void syncOwnReminders().catch(() => undefined);
+  }, []);
+
+  // "Prepara tus alarmas": se abre al guardar un medicamento o desde el aviso.
+  useEffect(() => onOpenAlarmSetup(() => setAlarmSetupVisible(true)), []);
+
+  // Al abrir la app o iniciar sesión con medicamentos que ya tienen alarma
+  // (p. ej. creados en otro teléfono): si aquí no sonarían, se dice enseguida.
+  const ownData = useOwnData();
+  const launchChecked = useRef(false);
+  const hasAlarmMedications = ownData.medications.some(
+    (medication) => medication.active && medication.scheduleType !== 'AS_NEEDED',
+  );
+  useEffect(() => {
+    if (launchChecked.current || !ownData.hydrated || !hasAlarmMedications) return;
+    // Deja que Inicio se pinte primero.
+    const timer = setTimeout(() => {
+      launchChecked.current = true;
+      void promptAlarmSetupOnLaunch();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [ownData.hydrated, hasAlarmMedications]);
 
   // Cualquier pantalla puede abrir el asistente (con una pregunta o por voz).
   useEffect(
@@ -168,6 +197,7 @@ export function MainAppShell({
     <View style={{ flex: 1 }}>
       {body}
       <AssistantChat theme={theme} visible={chatVisible} onClose={closeChat} request={chatRequest} />
+      <AlarmSetupSheet theme={theme} visible={alarmSetupVisible} onClose={closeAlarmSetup} />
       <SyncStatusPill theme={theme} />
       <AppBottomBar theme={theme} activeTab={tab} onSelect={setTab} />
     </View>

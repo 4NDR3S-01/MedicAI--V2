@@ -7,7 +7,7 @@ import { AppButton, FormSheet, TextField } from '../../../shared/ui';
 import { getStoredSession } from '../../auth';
 import * as circleAPI from '../services/circle.service';
 import type { CircleGroup, CircleInvitation, ReminderMode } from '../services/circle.service';
-import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { promptAlarmSetupIfNeeded } from '../../../shared/services/alarm-setup.service';
 import {
   NO_PERMISSIONS,
   PERMISSION_PRESETS,
@@ -180,7 +180,6 @@ export function InviteSheet({
       Alert.alert('Sesión expirada', 'Vuelve a iniciar sesión para continuar.');
       return;
     }
-    if (wantsReminders) await ensureAlarmPermissions();
     try {
       setSaving(true);
       const invitation = await circleAPI.createInvitation(session.accessToken, {
@@ -197,6 +196,7 @@ export function InviteSheet({
       });
       setCreated(invitation);
       onCreated(invitation);
+      if (wantsReminders) void promptAlarmSetupIfNeeded();
     } catch (submitError) {
       Alert.alert('No se pudo invitar', submitError instanceof Error ? submitError.message : 'Inténtalo de nuevo.');
     } finally {

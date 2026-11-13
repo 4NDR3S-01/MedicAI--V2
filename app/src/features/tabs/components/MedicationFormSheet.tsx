@@ -18,7 +18,7 @@ import {
   TextField,
   useFieldColors,
 } from '../../../shared/ui';
-import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { promptAlarmSetupIfNeeded } from '../../../shared/services/alarm-setup.service';
 import { describeMedication, findDuplicateMedication } from '../utils/duplicates';
 import {
   fromDayKey,
@@ -492,19 +492,11 @@ export function MedicationFormSheet({
       return;
     }
 
-    // Las alarmas solo funcionan con los permisos concedidos. Si el
-    // medicamento es de otra persona, suenan en su teléfono, no en este.
+    // Se guarda siempre; si a este teléfono le falta algo para que suene la
+    // alarma, después se abre "Prepara tus alarmas". Si el medicamento es de
+    // otra persona, suena en su teléfono, no en este.
     const willBeActive = medication ? medication.active : true;
-    if (willBeActive && !ownerId && !asNeeded) {
-      const { ready } = await ensureAlarmPermissions();
-      if (!ready) {
-        Alert.alert(
-          'Permisos incompletos',
-          'Sin los permisos de notificaciones y alarmas no podremos avisarte a la hora de cada toma.',
-        );
-        return;
-      }
-    }
+    const wantsAlarms = willBeActive && !ownerId && !asNeeded;
 
     const session = await getStoredSession();
     if (!session?.accessToken) {
@@ -575,6 +567,7 @@ export function MedicationFormSheet({
       }
       onSaved(saved, !medication);
       onClose();
+      if (wantsAlarms) void promptAlarmSetupIfNeeded();
     } catch (error) {
       Alert.alert(
         'No se pudo guardar',

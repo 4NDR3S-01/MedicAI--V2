@@ -5,7 +5,7 @@ import { Alert, Platform, StyleSheet, Text } from 'react-native';
 
 import type { AppTheme } from '../../../shared/theme';
 import { AppButton, FieldShell, FormSheet, PressableScale, TextField, useFieldColors } from '../../../shared/ui';
-import { ensureAlarmPermissions } from '../../../shared/services/alarm-permissions.service';
+import { promptAlarmSetupIfNeeded } from '../../../shared/services/alarm-setup.service';
 import { shareInvitation, withToken } from '../hooks/useCircle';
 import * as circleAPI from '../services/circle.service';
 import type { CircleGroup, CircleInvitation, CircleMember, ReminderMode } from '../services/circle.service';
@@ -133,13 +133,6 @@ export function DependentSheet({
     // Un grupo escrito pero sin confirmar se crea ahora (antes se perdía).
     const finalGroupIds = editing || !groupPickerRef.current ? groupIds : await groupPickerRef.current.commitDraft();
     if (!finalGroupIds) return;
-    if (!editing && reminderMode !== 'OFF' && !allowDuplicateName) {
-      // Sus alarmas sonarán en este teléfono.
-      const { ready } = await ensureAlarmPermissions();
-      if (!ready) {
-        Alert.alert('Permisos incompletos', `Sin los permisos de notificaciones y alarmas no podremos avisarte de las tomas de ${name.trim() || 'esta persona'}.`);
-      }
-    }
     try {
       setSaving(true);
       const token = await withToken();
@@ -162,6 +155,8 @@ export function DependentSheet({
         });
       onSaved(saved, !member);
       onClose();
+      // Sus alarmas sonarán en este teléfono: si le falta algo, "Prepara tus alarmas".
+      if (!editing && reminderMode !== 'OFF') void promptAlarmSetupIfNeeded();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Inténtalo de nuevo.';
       // Ya administra un perfil con ese nombre: confirmar antes de duplicarlo.

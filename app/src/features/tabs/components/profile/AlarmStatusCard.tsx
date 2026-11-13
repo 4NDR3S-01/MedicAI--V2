@@ -5,40 +5,24 @@ import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { AppTheme } from '../../../../shared/theme';
 import { AppButton } from '../../../../shared/ui';
 import {
-  ensureAlarmPermissions,
-  getAlarmPermissionsStatus,
-  isOemAutostartRequired,
-  openAutostartSettings,
-  type AlarmPermissionsStatus,
-} from '../../../../shared/services/alarm-permissions.service';
-
-/** Lo que falta para que las alarmas suenen a tiempo, en lenguaje sencillo. */
-function missingItems(status: AlarmPermissionsStatus): string[] {
-  const items: string[] = [];
-  if (status.notifications !== 'granted') items.push('Las notificaciones están desactivadas.');
-  else if (status.alarmChannelBlocked) items.push('Las alarmas de MedicAI están silenciadas en los ajustes del teléfono.');
-  if (status.shouldPromptExactAlarmPermission) items.push('Falta el permiso de alarmas exactas: podrían sonar con minutos de retraso.');
-  if (status.shouldPromptFullScreenIntent) items.push('La alarma no podrá mostrarse con la pantalla bloqueada.');
-  if (status.shouldPromptBatteryOptimization) items.push('El ahorro de batería puede retrasar o silenciar las alarmas.');
-  return items;
-}
+  getAlarmSetupSnapshot,
+  onAlarmSetupChanged,
+  openAlarmSetup,
+  type AlarmSetupSnapshot,
+} from '../../../../shared/services/alarm-setup.service';
 
 /**
  * Estado de las alarmas de este teléfono. Es lo más importante de la app:
- * si falta un permiso, lo dice claro y lleva a resolverlo.
+ * si falta algo, lo dice claro y abre "Prepara tus alarmas".
  */
 export function AlarmStatusCard({ theme, onIssueChange }: Readonly<{ theme: AppTheme; onIssueChange?: (hasIssue: boolean) => void }>) {
-  const [status, setStatus] = useState<AlarmPermissionsStatus | null>(null);
-  const [autostart, setAutostart] = useState(false);
-  const [fixing, setFixing] = useState(false);
+  const [snapshot, setSnapshot] = useState<AlarmSetupSnapshot | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [next, oem] = await Promise.all([getAlarmPermissionsStatus(), isOemAutostartRequired().catch(() => false)]);
-      setStatus(next);
-      setAutostart(oem);
+      setSnapshot(await getAlarmSetupSnapshot());
     } catch {
-      setStatus(null);
+      setSnapshot(null);
     }
   }, []);
 
@@ -48,49 +32,40 @@ export function AlarmStatusCard({ theme, onIssueChange }: Readonly<{ theme: AppT
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refresh();
     });
-    return () => subscription.remove();
+    const unsubscribe = onAlarmSetupChanged(() => void refresh());
+    return () => {
+      subscription.remove();
+      unsubscribe();
+    };
   }, [refresh]);
 
-  const missing = status ? missingItems(status) : [];
-  const ready = Boolean(status) && missing.length === 0;
+  const missing = snapshot ? snapshot.steps.filter((step) => !step.done) : [];
+  const ready = Boolean(snapshot) && missing.length === 0;
+  const onlyTest = missing.length === 1 && missing[0].id === 'test';
 
   useEffect(() => {
-    if (status) onIssueChange?.(!ready);
-  }, [ready, status, onIssueChange]);
+    if (snapshot) onIssueChange?.(!ready);
+  }, [ready, snapshot, onIssueChange]);
 
-  if (!status) return null;
-
-  const fix = async () => {
-    setFixing(true);
-    try {
-      await ensureAlarmPermissions({ force: true });
-    } finally {
-      setFixing(false);
-      void refresh();
-    }
-  };
+  if (!snapshot) return null;
 
   // Todo en orden: una línea discreta. La tarjeta grande solo cuando hay que actuar.
   if (ready) {
     return (
-      <View style={styles.okRow} accessibilityRole="summary">
+      <Pressable
+        onPress={openAlarmSetup}
+        style={styles.okRow}
+        accessibilityRole="button"
+        accessibilityLabel="Alarmas listas en este teléfono"
+        accessibilityHint="Abre Prepara tus alarmas para revisarlas o probarlas de nuevo"
+      >
         <MaterialCommunityIcons name="alarm-check" size={18} color={theme.colors.successText} />
         <Text style={[styles.okText, { color: theme.colors.textSecondary }]}>
           <Text style={{ color: theme.colors.successText, fontWeight: '700' }}>Alarmas listas</Text>
-          {autostart ? '' : ' en este teléfono'}
+          {' en este teléfono'}
         </Text>
-        {autostart ? (
-          <Pressable
-            onPress={() => void openAutostartSettings()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Permitir inicio automático"
-            accessibilityHint="Algunos teléfonos (Xiaomi, Huawei, Oppo…) lo necesitan para que las alarmas suenen tras reiniciar"
-          >
-            <Text style={[styles.okLink, { color: theme.colors.accentSecondaryText }]}>Inicio automático</Text>
-          </Pressable>
-        ) : null}
-      </View>
+        <Text style={[styles.okLink, { color: theme.colors.accentSecondaryText }]}>Revisar</Text>
+      </Pressable>
     );
   }
 
@@ -102,31 +77,26 @@ export function AlarmStatusCard({ theme, onIssueChange }: Readonly<{ theme: AppT
     >
       <View style={styles.header}>
         <View style={[styles.icon, { backgroundColor: `${color}1F` }]}>
-          <MaterialCommunityIcons name={ready ? 'alarm-check' : 'alarm-off'} size={22} color={color} />
+          <MaterialCommunityIcons name={onlyTest ? 'alarm' : 'alarm-off'} size={22} color={color} />
         </View>
         <View style={styles.text}>
           <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
-            {ready ? 'Tus alarmas están listas' : 'Tus alarmas podrían no sonar'}
+            {onlyTest ? 'Prueba tu alarma' : 'Tus alarmas podrían no sonar'}
           </Text>
           <Text style={[styles.body, { color: theme.colors.textSecondary }]}>
-            {ready ? 'Este teléfono tiene todo lo necesario para avisarte a tiempo.' : missing.join(' ')}
+            {onlyTest
+              ? 'Comprueba en 10 segundos que se ve con el teléfono bloqueado.'
+              : `Falta${missing.length === 1 ? '' : 'n'}: ${missing.map((step) => step.title.toLowerCase()).join(', ')}.`}
           </Text>
         </View>
       </View>
-      {!ready ? (
-        <AppButton theme={theme} label="Resolver ahora" icon="construct-outline" iconPosition="left" onPress={() => void fix()} loading={fixing} />
-      ) : null}
-      {autostart ? (
-        <AppButton
-          theme={theme}
-          label="Permitir inicio automático"
-          variant="ghost"
-          icon="open-outline"
-          iconPosition="left"
-          onPress={() => void openAutostartSettings()}
-          accessibilityHint="Algunos teléfonos (Xiaomi, Huawei, Oppo…) lo necesitan para que las alarmas suenen tras reiniciar"
-        />
-      ) : null}
+      <AppButton
+        theme={theme}
+        label={onlyTest ? 'Probar alarma' : 'Resolver ahora'}
+        icon={onlyTest ? 'alarm-outline' : 'construct-outline'}
+        iconPosition="left"
+        onPress={openAlarmSetup}
+      />
     </View>
   );
 }
