@@ -54,6 +54,12 @@ type MedicationCardProps = {
   canLog?: boolean;
   /** Medicamento propio: ofrece preguntar al asistente desde sus opciones. */
   canAsk?: boolean;
+  /**
+   * La alarma de este medicamento no está lista en este teléfono (p. ej. "Sin
+   * alarma en este teléfono"). Sigue activo: es el tratamiento, no la alarma.
+   */
+  alarmWarning?: { text: string; severe: boolean } | null;
+  onAlarmWarningPress?: () => void;
 };
 
 /**
@@ -76,6 +82,8 @@ function MedicationCardBase({
   canDelete = true,
   canLog = true,
   canAsk = false,
+  alarmWarning = null,
+  onAlarmWarningPress,
 }: Readonly<MedicationCardProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -92,6 +100,8 @@ function MedicationCardBase({
   const visibleSlots = isExpanded ? slots : slots.slice(0, VISIBLE_DOSES);
   const hiddenCount = slots.length - visibleSlots.length;
   const hasOptions = canEdit || canToggle || canDelete;
+  // Solo cuando le tocan alarmas: activo, con horario y sin terminar.
+  const showAlarmWarning = Boolean(alarmWarning) && isActive && !asNeeded && !finished;
 
   let accentColor = theme.colors.accentPrimary;
   if (!isActive || finished) accentColor = theme.colors.textMuted;
@@ -209,6 +219,35 @@ function MedicationCardBase({
           </Pressable>
         ) : null}
 
+        {showAlarmWarning && alarmWarning ? (
+          <Pressable
+            onPress={onAlarmWarningPress}
+            accessibilityRole="button"
+            accessibilityLabel={alarmWarning.text}
+            accessibilityHint="Abre Prepara tus alarmas"
+            style={({ pressed }) => [
+              styles.alert,
+              {
+                backgroundColor: `${alarmWarning.severe ? theme.colors.accentTertiary : theme.colors.warningText}18`,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={alarmWarning.severe ? 'bell-off-outline' : 'bell-alert-outline'}
+              size={16}
+              color={alarmWarning.severe ? theme.colors.accentTertiary : theme.colors.warningText}
+            />
+            <Text
+              style={[styles.alertText, { color: alarmWarning.severe ? readableText(theme, theme.colors.accentTertiary) : theme.colors.warningText }]}
+              numberOfLines={1}
+            >
+              {alarmWarning.text}
+            </Text>
+            <Text style={[styles.alertAction, { color: theme.colors.accentSecondaryText }]}>Activar</Text>
+          </Pressable>
+        ) : null}
+
         {/* Solo se avisa cuando hay que actuar; el detalle completo está en opciones. */}
         {lowStock ? (
           <View style={[styles.alert, { backgroundColor: `${theme.colors.accentTertiary}18` }]}>
@@ -277,4 +316,5 @@ const styles = StyleSheet.create({
   logButtonText: { fontSize: 14, fontWeight: '700' },
   alert: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   alertText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  alertAction: { fontSize: 13, fontWeight: '700' },
 });

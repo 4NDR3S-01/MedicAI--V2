@@ -87,3 +87,25 @@ export function buildAlarmSetupSteps(input: AlarmSetupInput): AlarmSetupStep[] {
 export function needsAlarmSetup(steps: AlarmSetupStep[]): boolean {
   return steps.some((step) => !step.done);
 }
+
+/**
+ * Cómo de lista está la alarma en este teléfono (para cada tarjeta):
+ * - off: sin notificaciones, no sonará.
+ * - incomplete: falta otro permiso o el inicio automático; podría no sonar.
+ * - untested: todo concedido, solo falta probarla.
+ */
+export type AlarmReadiness = 'ready' | 'untested' | 'incomplete' | 'off';
+
+export function alarmReadiness(steps: AlarmSetupStep[]): AlarmReadiness {
+  const missing = steps.filter((step) => !step.done).map((step) => step.id);
+  if (!missing.length) return 'ready';
+  if (missing.includes('notifications')) return 'off';
+  if (missing.some((id) => id !== 'test')) return 'incomplete';
+  return 'untested';
+}
+
+export const ALARM_READINESS_LABEL: Record<Exclude<AlarmReadiness, 'ready'>, string> = {
+  off: 'Sin alarma en este teléfono',
+  incomplete: 'La alarma podría no sonar en este teléfono',
+  untested: 'Alarma sin probar en este teléfono',
+};

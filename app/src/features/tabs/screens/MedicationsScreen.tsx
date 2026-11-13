@@ -15,6 +15,8 @@ import {
 import type { AppTheme } from '../../../shared/theme';
 import { FloatingActionButton, useEnterAnimation, useReducedMotion, useSwapAnimation } from '../../../shared/ui';
 import { openAlarmSetup, promptAlarmSetupIfNeeded } from '../../../shared/services/alarm-setup.service';
+import { ALARM_READINESS_LABEL } from '../../../shared/services/alarm-setup-steps';
+import { useAlarmReadiness } from '../../../shared/services/useAlarmReadiness';
 import {
   cancelDoseAlarm,
   cancelNotificationsByDataId,
@@ -68,6 +70,13 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
   const [doseTarget, setDoseTarget] = useState<DoseTarget | null>(null);
   const [doseBusy, setDoseBusy] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+  // Cada tarjeta dice si su alarma sonará en este teléfono (el medicamento sigue activo).
+  const readiness = useAlarmReadiness();
+  const alarmWarning = useMemo(
+    () => (readiness && readiness !== 'ready' ? { text: ALARM_READINESS_LABEL[readiness], severe: readiness !== 'untested' } : null),
+    [readiness],
+  );
+
   let alarmIssue: string | null = null;
   if (own.alarmStatus === 'no-permission') alarmIssue = 'Las notificaciones están desactivadas: no sonarán las alarmas.';
   else if (own.alarmStatus === 'error') alarmIssue = 'No pudimos programar algunas alarmas.';
@@ -389,6 +398,8 @@ export function MedicationsScreen({ theme, contentBottomInset }: Readonly<Medica
                 onDosePress={handleDosePress}
                 onLogAsNeeded={handleLogAsNeeded}
                 canAsk
+                alarmWarning={alarmWarning}
+                onAlarmWarningPress={openAlarmSetup}
               />
             </Animated.View>
           )}

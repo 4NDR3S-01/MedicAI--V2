@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  alarmReadiness,
   buildAlarmSetupSteps,
   needsAlarmSetup,
   type AlarmSetupInput,
@@ -89,4 +90,24 @@ test('guía por marca, con una genérica para las demás', () => {
   assert.equal(oemAlarmGuide('Redmi').brand, 'Xiaomi');
   assert.equal(oemAlarmGuide('nokia').brand, 'tu teléfono');
   assert.ok(oemAlarmGuide(null).steps.length > 0);
+});
+
+test('estado de la alarma para cada tarjeta', () => {
+  assert.equal(alarmReadiness(buildAlarmSetupSteps(input({ testPassed: true }))), 'ready');
+  assert.equal(alarmReadiness(buildAlarmSetupSteps(input())), 'untested');
+  assert.equal(
+    alarmReadiness(buildAlarmSetupSteps(input({ status: { ...ready, shouldPromptBatteryOptimization: true } }))),
+    'incomplete',
+  );
+  assert.equal(
+    alarmReadiness(buildAlarmSetupSteps(input({ autostartNeeded: true, testPassed: true }))),
+    'incomplete',
+  );
+  // Sin notificaciones no suena nada, aunque falten otras cosas.
+  assert.equal(
+    alarmReadiness(
+      buildAlarmSetupSteps(input({ status: { ...ready, notifications: 'denied', shouldPromptFullScreenIntent: true } })),
+    ),
+    'off',
+  );
 });
