@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Download, Mail, Menu, X } from "lucide-react";
 import { AUDIENCES } from "../content/audiences";
-import { PLAY_URL, SUPPORT_EMAIL, TEXT_SIZE_KEY } from "../content/site";
+import { DOWNLOAD_PATH, SUPPORT_EMAIL, TEXT_SIZE_KEY } from "../content/site";
 
 
 const NAV_LINKS = [
@@ -16,19 +15,18 @@ const NAV_LINKS = [
   { hash: "#faq", label: "Preguntas" },
 ];
 
-export function GooglePlayBadge({ className = "" }: { className?: string }) {
+/** Botón de descarga: lleva a /descargar (APK + pasos para instalarlo). */
+export function DownloadButton({ className = "" }: { className?: string }) {
   return (
-    <a
-      href={PLAY_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`play-badge ${className}`}
-      aria-label="Disponible en Google Play"
+    <Link
+      href={DOWNLOAD_PATH}
+      className={`btn btn-primary download-cta ${className}`}
       // Lo cuenta la analítica (Umami) si está configurada; si no, no hace nada.
-      data-umami-event="descargar-google-play"
+      data-umami-event="descargar"
     >
-      <Image src="/images/google-play-badge.png" alt="Disponible en Google Play" width={161} height={48} className="play-badge-img" />
-    </a>
+      <Download size={18} aria-hidden />
+      Descargar para Android
+    </Link>
   );
 }
 
@@ -129,19 +127,15 @@ export function SiteHeader() {
         </nav>
         <div className="header-actions">
           <TextSizeToggle />
-          {/* En la barra redondeada, un botón con su misma forma: el badge
-              rectangular de Google Play se salía por los extremos curvos. */}
-          <a
-            href={PLAY_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href={DOWNLOAD_PATH}
             className="btn btn-primary header-cta"
-            data-umami-event="descargar-google-play-header"
-            aria-label="Descargar en Google Play"
+            data-umami-event="descargar-header"
+            aria-label="Descargar MedicAI para Android"
           >
             <Download size={16} aria-hidden />
             <span className="header-cta-label">Descargar</span>
-          </a>
+          </Link>
           <button
             className="mobile-menu-btn"
             onClick={() => setMenuOpen(!menuOpen)}
@@ -161,7 +155,7 @@ export function SiteHeader() {
             <a key={l.hash} href={base + l.hash} onClick={() => setMenuOpen(false)}>{l.label}</a>
           ))}
           <Link href="/guias" onClick={() => setMenuOpen(false)}>Guías</Link>
-          <GooglePlayBadge />
+          <DownloadButton />
         </nav>
       </div>
     </header>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, Lock, ShieldCheck, WifiOff } from "lucide-react";
-import { SiteFooter, SiteHeader, GooglePlayBadge } from "./components/site-chrome";
+import { SiteFooter, SiteHeader, DownloadButton } from "./components/site-chrome";
 import { RevealItem, SectionReveal } from "./components/reveal";
 import { InteractivePhoneShowcase } from "./components/landing/hero-showcase";
 import { ChatDemo } from "./components/landing/chat-demo";
@@ -11,7 +11,7 @@ import { FAQS, FEATURES } from "./content/landing";
 import { AUDIENCES } from "./content/audiences";
 import { JsonLd } from "./components/json-ld";
 import { SnapRow } from "./components/snap-row";
-import { PLAY_URL, SITE_URL, SUPPORT_EMAIL } from "./content/site";
+import { DOWNLOAD_PATH, SITE_URL, SUPPORT_EMAIL } from "./content/site";
 
 // Un objeto con @graph (y no un array suelto): algunos scripts del navegador
 // leen data["@context"] del JSON-LD y fallan si la raíz es un array.
@@ -25,7 +25,7 @@ const STRUCTURED_DATA = {
       applicationCategory: "HealthApplication",
       inLanguage: "es",
       url: SITE_URL,
-      downloadUrl: PLAY_URL,
+      downloadUrl: SITE_URL + DOWNLOAD_PATH,
       description:
         "Recordatorios de medicamentos y citas médicas, Círculo de cuidado familiar y asistente de IA por voz.",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
@@ -63,7 +63,7 @@ export default function Home() {
                 que nada importante se te pase.
               </p>
               <div className="hero-actions">
-                <GooglePlayBadge />
+                <DownloadButton />
                 <a href="#como-funciona" className="btn btn-ghost">
                   Ver cómo funciona
                 </a>
@@ -287,7 +287,7 @@ export default function Home() {
                   vista la salud de tu familia.
                 </p>
                 <div className="cta-actions">
-                  <GooglePlayBadge />
+                  <DownloadButton />
                 </div>
                 <p className="cta-note">
                   Gratis para Android. ¿Usas iPhone?{" "}

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { AUDIENCES, getAudience } from "../../content/audiences";
 import { GUIDES } from "../../content/guides";
-import { SiteFooter, SiteHeader, GooglePlayBadge } from "../../components/site-chrome";
+import { SiteFooter, SiteHeader, DownloadButton } from "../../components/site-chrome";
 import { RevealItem, SectionReveal } from "../../components/reveal";
 import { FAQItem, FeatureCard } from "../../components/landing/cards";
 import { CircleDemo } from "../../components/landing/circle-demo";
@@ -63,7 +63,7 @@ export default async function AudiencePage({ params }: Props) {
               </h1>
               <p>{audience.intro}</p>
               <div className="hero-actions">
-                <GooglePlayBadge />
+                <DownloadButton />
               </div>
               <ul className="check-list">
                 {audience.checklist.map((item) => (
@@ -120,7 +120,7 @@ export default async function AudiencePage({ params }: Props) {
               <h2 className="font-display">Empieza hoy, es gratis</h2>
               <p>Configúrala en minutos y deja que MedicAI se encargue de recordar.</p>
               <div className="cta-actions">
-                <GooglePlayBadge />
+                <DownloadButton />
               </div>
               <p className="cta-note">
                 También para:{" "}
