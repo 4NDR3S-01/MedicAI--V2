@@ -5,7 +5,7 @@ import { ArrowRight, Clock } from "lucide-react";
 import { GUIDES, getGuide } from "../../content/guides";
 import { getAudience } from "../../content/audiences";
 import { SITE_URL } from "../../content/site";
-import { SiteFooter, SiteHeader, GooglePlayBadge } from "../../components/site-chrome";
+import { SiteFooter, SiteHeader, DownloadButton } from "../../components/site-chrome";
 import { JsonLd } from "../../components/json-ld";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -87,7 +87,7 @@ export default async function GuidePage({ params }: Props) {
           <aside className="guide-cta">
             <strong className="font-display">MedicAI lo hace por ti</strong>
             <p>Alarmas con nombre y dosis, registro de tomas, aviso de pastillas por acabarse y tu familia al tanto.</p>
-            <GooglePlayBadge />
+            <DownloadButton />
             {related && (
               <Link href={`/para/${related.slug}`} className="audience-card-link">
                 {related.eyebrow} <ArrowRight size={16} aria-hidden />
