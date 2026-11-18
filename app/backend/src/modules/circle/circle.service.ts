@@ -569,6 +569,7 @@ export class CircleService {
         data: { status: 'REVOKED', revokedAt: new Date(), revokedById: targetId },
       }),
     ]);
+    await this.handOverDependentZone(link);
     const otherId = link.userAId === targetId ? link.userBId : link.userAId;
     const target = await this.findPerson(targetId);
     if (otherId !== actorId) {
@@ -957,6 +958,32 @@ export class CircleService {
         `Nadie más administra a ${name}. Agrega a otro cuidador con permiso para administrar su Círculo, o elimina su perfil.`,
       );
     }
+  }
+
+  /**
+   * Un perfil a cargo vive en la zona horaria de quien lo creó. Si esa persona
+   * deja de cuidarlo, pasa a seguir a otro cuidador que lo administre (si no,
+   * se quedaría con la zona de alguien que ya no está).
+   */
+  private async handOverDependentZone(link: CircleLink) {
+    const people = await this.prisma.user.findMany({
+      where: { id: { in: [link.userAId, link.userBId] } },
+      select: { id: true, isManaged: true, managedById: true },
+    });
+    const dependent = people.find((person) => person.isManaged);
+    if (!dependent || !dependent.managedById) return;
+    const leaving = people.find((person) => person.id !== dependent.id);
+    if (dependent.managedById !== leaving?.id) return;
+    const next = await this.prisma.circleGrant.findFirst({
+      where: { ownerId: dependent.id, manageCircle: true, link: { status: 'ACTIVE' }, grantee: { isManaged: false } },
+      orderBy: { createdAt: 'asc' },
+      select: { grantee: { select: { id: true, timezone: true } } },
+    });
+    if (!next) return;
+    await this.prisma.user.update({
+      where: { id: dependent.id },
+      data: { managedById: next.grantee.id, ...(next.grantee.timezone ? { timezone: next.grantee.timezone } : {}) },
+    });
   }
 
   // ─── Ayudantes ─────────────────────────────────────────────────────────────

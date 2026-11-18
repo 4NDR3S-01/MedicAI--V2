@@ -466,7 +466,9 @@ export function MemberCareSheet({ theme, member, initialTab, onClose, onOpenDeta
 
         {tab === 'medications' && tabStatus === 'ready' && isForeignTimeZone(shown.person.timezone) ? (
           <InfoNote theme={theme} icon="earth">
-            {first} está en otra zona horaria ({shown.person.timezone?.split('/').pop()?.replace(/_/g, ' ')}). Las horas son las suyas; «tú» indica la hora para ti.
+            {shown.person.isManaged
+              ? `Las horas de ${first} siguen la zona horaria de quien creó su perfil (${shown.person.timezone?.split('/').pop()?.replace(/_/g, ' ')}); «tú» indica la hora para ti.`
+              : `${first} está en otra zona horaria (${shown.person.timezone?.split('/').pop()?.replace(/_/g, ' ')}). Las horas son las suyas; «tú» indica la hora para ti.`}
           </InfoNote>
         ) : null}
 
