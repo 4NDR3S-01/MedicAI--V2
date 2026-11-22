@@ -72,3 +72,23 @@ describe('asistente: modelos', () => {
     assert.equal(calls.length, 1);
   });
 });
+
+describe('asistente: salud mental', () => {
+  it('el prompt prohíbe dar horario de la 171 y prioriza el 911', async () => {
+    let system = '';
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      system = String((JSON.parse(init.body) as { messages: { content: unknown }[] }).messages[0].content);
+      return { ok: true, status: 200, json: async () => reply('Llama al 911.').body } as Response;
+    }) as typeof fetch;
+    await service().chat({ message: 'Tengo pensamientos de hacerme daño' }, 'u');
+    assert.match(system, /NUNCA digas que atiende 24\/7/);
+    assert.match(system, /llame YA al 911/);
+  });
+
+  it('si el modelo dice que la 171 atiende 24/7, se corrige antes de responder', async () => {
+    fakeGroq(() => reply('Llama al 911. También puedes llamar al 171, opción 6 (gratuita, 24/7).'));
+    const result = await service().chat({ message: 'Tengo pensamientos de hacerme daño' }, 'u');
+    assert.doesNotMatch(result.reply, /24\/7/);
+    assert.match(result.reply, /Confirma su horario al llamar/);
+  });
+});

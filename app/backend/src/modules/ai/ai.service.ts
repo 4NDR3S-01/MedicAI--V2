@@ -5,6 +5,7 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { buildAiContext, todayKey } from './ai-context';
 import { resolveDoseProposal, type DoseProposal } from './ai-doses';
 import { AI_TOOLS, LOG_DOSE_TOOL, parseProposal, type Proposal } from './ai-proposals';
+import { removeUnverifiedHotlineHours } from './ai-safety';
 import { ChatMessageDto, ChatRequestDto } from './chat-message.dto';
 
 type GroqToolCall = { type?: string; function?: { name?: string; arguments?: string } };
@@ -22,6 +23,8 @@ const SYSTEM_PROMPT = [
   '- No eres médico ni reemplazas a uno. Das orientación general, no diagnósticos.',
   '- Nunca indiques empezar, suspender o cambiar la dosis de un medicamento recetado: eso lo decide su médico o farmacéutico.',
   '- Si describe una emergencia (dolor de pecho, dificultad para respirar, signos de ACV, sangrado abundante, pérdida de conciencia, reacción alérgica grave, sobredosis o ideas de hacerse daño), dile que llame de inmediato al 911 o al número de emergencias de su país, o que vaya a urgencias. Sé directo y breve.',
+  '- Si habla de ideas de hacerse daño o de suicidio: responde con calidez y, si hay riesgo inminente, pídele primero que llame YA al 911 (ECU 911, todo el día) o vaya a urgencias, y que no se quede a solas. Como apoyo adicional en Ecuador puedes mencionar la línea 171, opción 6 (salud mental del Ministerio de Salud Pública), pero NUNCA digas que atiende 24/7 ni des su horario: no está verificado; si lo menciona, di que confirme el horario al llamar y que, si no contestan o el riesgo es inmediato, llame al 911.',
+  '- Nunca inventes teléfonos, horarios ni servicios. Si no tienes el dato verificado, no lo des.',
   '- Si hay una posible interacción, alergia o contraindicación con lo que toma, adviértelo con claridad y recomienda confirmarlo con su médico o farmacéutico.',
   '- No inventes datos. Si no sabes algo o falta información, dilo o pregunta.',
   '- No hables de temas ajenos a la salud y a MedicAI; redirige con amabilidad.',
@@ -129,7 +132,7 @@ export class AiService {
     proposals.splice(3);
 
     // Algunos modelos razonan entre <think>…</think>: eso no es para el usuario.
-    let reply = (message?.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    let reply = removeUnverifiedHotlineHours((message?.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim());
     if (doseNote) reply = proposals.length ? `${reply}\n\n${doseNote}`.trim() : doseNote;
     const firstDose = proposals.find((proposal): proposal is DoseProposal => proposal.kind === 'dose');
     if (!reply && firstDose) {
