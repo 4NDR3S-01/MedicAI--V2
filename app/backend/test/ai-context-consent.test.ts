@@ -1,6 +1,7 @@
 /**
  * RNF-06: sin `aiHealthContextConsent`, al modelo no le llega el perfil de
- * salud, los medicamentos ni las citas del usuario (ver ai-context.ts).
+ * salud, los medicamentos (con sus existencias y tomas de hoy) ni las citas
+ * del usuario (ver ai-context.ts). Con consentimiento sí (RF-07, RF-08).
  *
  * El usuario falso tiene TODOS los datos sensibles cargados; lo único que
  * cambia entre casos es el consentimiento. El control positivo (consentimiento
@@ -19,6 +20,7 @@ const SECRET = {
   conditions: 'DiabetesTipoDosZX',
   allergies: 'PenicilinaZX',
   medication: 'MetforminaZX',
+  stockedMedication: 'LosartanZX',
   dosage: '850mgZX',
   medicationNote: 'NotaMedicamentoZX',
   appointment: 'ControlEndocrinoZX',
@@ -28,11 +30,33 @@ const SECRET = {
 };
 const SENSITIVE_PATTERNS: RegExp[] = [
   ...Object.values(SECRET).map((value) => new RegExp(value)),
-  /Edad:/, /embarazo/, /lactancia/, /anticoagulante/, /inmunosupresi/, /cirug/,
+  /Edad:/, /Existencias:/, /Tomas de hoy:/, /quedan \d/, /tomada/, /omitida/, /pospuesta/, /embarazo/, /lactancia/, /anticoagulante/, /inmunosupresi/, /cirug/,
 ];
 
-function fakePrisma(consent: boolean) {
-  const calls = { medication: 0, appointment: 0 };
+const baseMedication = {
+  dosageSteps: null, startDate: '2026-11-01', frequency: 'DAILY', scheduleType: 'DAILY', weekDays: [], dayInterval: null,
+  maxDailyDoses: null, minHoursBetween: null, customEndDate: null, notes: null,
+  stockQuantity: null, stockPerDose: null, stockAlertAt: null,
+};
+
+/**
+ * Metformina sin control de existencias (08:00 pospuesta y luego tomada; 20:00
+ * pendiente) y losartán con 4 en existencias (aviso en 3), omitido hoy.
+ * Las 08:00 de Bogotá son las 13:00 UTC.
+ */
+const MEDICATIONS = [
+  { ...baseMedication, id: 'med-metformina', name: SECRET.medication, dosage: SECRET.dosage, times: ['08:00', '20:00'], notes: SECRET.medicationNote },
+  { ...baseMedication, id: 'med-losartan', name: SECRET.stockedMedication, dosage: '50 mg', times: ['09:00'], stockQuantity: 4, stockPerDose: 1, stockAlertAt: 3 },
+];
+const TODAY_LOGS = [
+  { medicationId: 'med-metformina', action: 'SNOOZED', takenAt: new Date('2026-11-22T13:00:00Z'), scheduledFor: new Date('2026-11-22T13:00:00Z') },
+  { medicationId: 'med-metformina', action: 'TAKEN', takenAt: new Date('2026-11-22T13:12:00Z'), scheduledFor: new Date('2026-11-22T13:00:00Z') },
+  { medicationId: 'med-losartan', action: 'SKIPPED', takenAt: new Date('2026-11-22T14:30:00Z'), scheduledFor: new Date('2026-11-22T14:00:00Z') },
+];
+
+function fakePrisma(consent: boolean, medications: unknown[] = MEDICATIONS, logs: unknown[] = TODAY_LOGS) {
+  const calls = { medication: 0, appointment: 0, medicationLog: 0 };
+  const logQueries: unknown[] = [];
   const prisma = {
     user: {
       findUnique: async () => ({
@@ -51,11 +75,14 @@ function fakePrisma(consent: boolean) {
     medication: {
       findMany: async () => {
         calls.medication += 1;
-        return [{
-          name: SECRET.medication, dosage: SECRET.dosage, dosageSteps: null, startDate: '2026-11-01', frequency: 'DAILY',
-          times: ['08:00'], scheduleType: 'DAILY', weekDays: [], dayInterval: null, maxDailyDoses: null,
-          minHoursBetween: null, customEndDate: null, notes: SECRET.medicationNote,
-        }];
+        return medications;
+      },
+    },
+    medicationLog: {
+      findMany: async (query: unknown) => {
+        calls.medicationLog += 1;
+        logQueries.push(query);
+        return logs;
       },
     },
     appointment: {
@@ -68,7 +95,20 @@ function fakePrisma(consent: boolean) {
       },
     },
   };
-  return { prisma, calls };
+  return { prisma, calls, logQueries };
+}
+
+/** Las líneas del medicamento `name` (la principal y sus sublíneas). */
+function medicationBlock(text: string, name: string) {
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) => line.startsWith(`  • ${name}:`));
+  assert.notEqual(start, -1, `no aparece ${name}`);
+  const block = [lines[start]];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.startsWith('    - ')) break;
+    block.push(line);
+  }
+  return block.join('\n');
 }
 
 const leaks = (text: string) => SENSITIVE_PATTERNS.filter((pattern) => pattern.test(text)).map(String);
@@ -95,11 +135,11 @@ const config = { get: () => undefined, getOrThrow: () => 'key' };
 const chatReply = { choices: [{ message: { content: 'Hola, ¿en qué te ayudo?' } }] };
 
 describe('RNF-06: contexto del asistente sin consentimiento', () => {
-  it('buildAiContext: sin consentimiento no consulta medicamentos ni citas y no incluye datos de salud', async () => {
+  it('buildAiContext: sin consentimiento no consulta medicamentos, existencias, tomas ni citas y no incluye datos de salud', async () => {
     const { prisma, calls } = fakePrisma(false);
     const context = await buildAiContext(prisma as never, 'user-a', NOW);
     assert.equal(context.personal, false);
-    assert.deepEqual(calls, { medication: 0, appointment: 0 });
+    assert.deepEqual(calls, { medication: 0, appointment: 0, medicationLog: 0 });
     assert.deepEqual(leaks(context.text), []);
     assert.match(context.text, /NO autorizó compartir/);
     assert.match(context.text, /Fecha y hora actual/);
@@ -109,10 +149,39 @@ describe('RNF-06: contexto del asistente sin consentimiento', () => {
     const { prisma, calls } = fakePrisma(true);
     const context = await buildAiContext(prisma as never, 'user-a', NOW);
     assert.equal(context.personal, true);
-    assert.deepEqual(calls, { medication: 1, appointment: 1 });
-    for (const value of [SECRET.conditions, SECRET.allergies, SECRET.medication, SECRET.appointment, SECRET.doctor]) {
+    assert.deepEqual(calls, { medication: 1, appointment: 1, medicationLog: 1 });
+    for (const value of [SECRET.conditions, SECRET.allergies, SECRET.medication, SECRET.stockedMedication, SECRET.appointment, SECRET.doctor]) {
       assert.match(context.text, new RegExp(value));
     }
+  });
+
+  it('con consentimiento: existencias y tomas de hoy (estado y hora en su zona) de cada medicamento', async () => {
+    const { prisma } = fakePrisma(true);
+    const { text } = await buildAiContext(prisma as never, 'user-a', NOW);
+    const losartan = medicationBlock(text, SECRET.stockedMedication);
+    assert.match(losartan, /Existencias: quedan 4, 1 por toma \(aviso al llegar a 3\)\./);
+    assert.match(losartan, /Tomas de hoy: toma de las 09:00: omitida a las 09:30\./);
+    const metformina = medicationBlock(text, SECRET.medication);
+    assert.match(metformina, /Tomas de hoy: toma de las 08:00: pospuesta a las 08:00; toma de las 08:00: tomada a las 08:12\./);
+  });
+
+  it('medicamento sin control de existencias: no inventa existencias', async () => {
+    const { prisma } = fakePrisma(true);
+    const { text } = await buildAiContext(prisma as never, 'user-a', NOW);
+    assert.doesNotMatch(medicationBlock(text, SECRET.medication), /Existencias/);
+    assert.match(text, /no muestra existencias, el usuario no lleva la cuenta/);
+  });
+
+  it('sin tomas hoy lo dice, y solo pide las tomas de hoy en la zona del usuario', async () => {
+    const { prisma, logQueries } = fakePrisma(true, MEDICATIONS, []);
+    const { text } = await buildAiContext(prisma as never, 'user-a', NOW);
+    assert.match(medicationBlock(text, SECRET.medication), /Tomas de hoy: ninguna registrada\./);
+    // 22 de nov. en Bogotá (UTC-5): de 05:00 UTC del 22 a 05:00 UTC del 23.
+    const today = { gte: new Date('2026-11-22T05:00:00Z'), lt: new Date('2026-11-23T05:00:00Z') };
+    assert.deepEqual((logQueries[0] as { where: unknown }).where, {
+      medication: { userId: 'user-a', active: true },
+      OR: [{ scheduledFor: today }, { scheduledFor: null, takenAt: today }],
+    });
   });
 
   it('usuario inexistente / sin dato de consentimiento: se trata como no autorizado', async () => {
@@ -128,7 +197,7 @@ describe('RNF-06: contexto del asistente sin consentimiento', () => {
     assert.equal(result.usedPersonalContext, false);
     assert.equal(sent.length, 1);
     assert.deepEqual(leaks(sent.join('\n')), []);
-    assert.deepEqual(calls, { medication: 0, appointment: 0 });
+    assert.deepEqual(calls, { medication: 0, appointment: 0, medicationLog: 0 });
   });
 
   it('/ai/chat control positivo: con consentimiento el payload sí los lleva', async () => {
@@ -144,6 +213,7 @@ describe('RNF-06: contexto del asistente sin consentimiento', () => {
     const sent = captureGroq({ text: 'hola' });
     await new AiService(config as never, prisma as never).transcribe({ buffer: Buffer.from('x'), mimetype: 'audio/m4a' }, 'user-a');
     assert.equal(calls.medication, 0);
+    assert.equal(calls.medicationLog, 0);
     assert.deepEqual(leaks(sent.join('\n')), []);
   });
 });
