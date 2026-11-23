@@ -14,6 +14,10 @@ function originOf(url: string | undefined) {
 }
 const umamiOrigin = originOf(process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL);
 const extra = umamiOrigin ? ` ${umamiOrigin}` : "";
+// Cloudflare (proxy delante de Vercel) inyecta su Web Analytics: el script
+// sale de static.cloudflareinsights.com y envía las métricas a cloudflareinsights.com.
+const cloudflareScript = " https://static.cloudflareinsights.com";
+const cloudflareConnect = " https://cloudflareinsights.com";
 
 // Las páginas son estáticas: Next.js inyecta scripts inline (datos de RSC y el
 // script de tamaño de texto del layout), así que script-src necesita
@@ -22,11 +26,11 @@ const extra = umamiOrigin ? ` ${umamiOrigin}` : "";
 // de formularios fuera del sitio y que otra web nos incruste (clickjacking).
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${extra}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${extra}${cloudflareScript}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  `connect-src 'self'${extra}${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self'${extra}${cloudflareConnect}${isDev ? " ws: wss:" : ""}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
