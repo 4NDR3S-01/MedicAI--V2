@@ -8,6 +8,7 @@ import { json, urlencoded } from 'express';
 import { AppModule } from './app/app.module';
 import { AppLogger } from './infrastructure/logging/app.logger';
 import { GlobalExceptionFilter } from './infrastructure/logging/global-exception.filter';
+import { securityHeadersMiddleware } from './infrastructure/http/security-headers';
 import { HttpRequestLoggerMiddleware } from './infrastructure/logging/http-request-logger.middleware';
 import { flushErrorReporting, initErrorReporting } from './infrastructure/monitoring/error-reporting';
 
@@ -29,6 +30,14 @@ async function bootstrap() {
 
   app.useLogger(logger);
   app.enableShutdownHooks();
+
+  // Cabeceras de seguridad (HSTS, nosniff, CSP, anti-clickjacking, no-store)
+  // y sin "X-Powered-By: Express". Va primero para cubrir también los errores.
+  const httpInstance = app.getHttpAdapter().getInstance();
+  if (typeof httpInstance.disable === 'function') {
+    httpInstance.disable('x-powered-by');
+  }
+  app.use(securityHeadersMiddleware);
 
   // Limitar tamaño de cuerpo de peticiones: JSON y formularios.
   // El chat (foto) y la voz (audio) van en base64: solo esas rutas admiten más.

@@ -21,6 +21,7 @@ import type { Request as ExpressRequest, Response } from 'express';
 
 type AuthBridgePageVariant = 'success' | 'warning' | 'error' | 'info';
 
+import { authBridgeCsp, createCspNonce } from '../../infrastructure/http/security-headers';
 import { AccountExportService } from './account-export.service';
 import { AuthService } from './auth.service';
 import { CheckEmailDto } from './dto/check-email.dto';
@@ -109,10 +110,13 @@ export class AuthController {
     const deepLinkUrl = `${deepLinkBase}/verify-email?token=${encodeURIComponent(token)}`;
     const validation = await this.authService.validateEmailVerificationToken(token);
 
+    const nonce = createCspNonce();
     res
       .status(200)
       .type('html')
+      .setHeader('Content-Security-Policy', authBridgeCsp(nonce))
       .send(this.renderAuthBridgePage({
+        nonce,
         pageTitle: 'Confirmar correo',
         badge: 'Verificación',
         title: this.getVerificationBridgeTitle(validation.status),
@@ -258,10 +262,13 @@ export class AuthController {
     const deepLinkUrl = `${deepLinkBase}/reset-password?token=${encodeURIComponent(token)}`;
     const validation = await this.authService.validatePasswordResetToken(token);
 
+    const nonce = createCspNonce();
     res
       .status(200)
       .type('html')
+      .setHeader('Content-Security-Policy', authBridgeCsp(nonce))
       .send(this.renderAuthBridgePage({
+        nonce,
         pageTitle: 'Restablecer contraseña',
         badge: 'Seguridad',
         title: this.getResetBridgeTitle(validation.status),
@@ -351,6 +358,7 @@ export class AuthController {
     actionLabel: string;
     deepLinkUrl: string;
     variant: AuthBridgePageVariant;
+    nonce: string;
   }) {
     const accentColor = this.getBridgeAccentColor(params.variant);
     const escapedTitle = this.escapeHtml(params.title);
@@ -359,6 +367,7 @@ export class AuthController {
     const escapedBadge = this.escapeHtml(params.badge);
     const escapedActionLabel = this.escapeHtml(params.actionLabel);
     const deepLinkJson = JSON.stringify(params.deepLinkUrl);
+    const nonce = params.nonce;
 
     return `<!doctype html>
 <html lang="es">
@@ -367,7 +376,7 @@ export class AuthController {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${this.escapeHtml(params.pageTitle)} | MedicAI</title>
     <meta name="theme-color" content="#10243A" />
-    <style>
+    <style nonce="${nonce}">
       :root {
         color-scheme: light;
         --bg-a: #0d2137;
@@ -552,7 +561,7 @@ export class AuthController {
       </section>
     </main>
 
-    <script>
+    <script nonce="${nonce}">
       const deepLinkUrl = ${deepLinkJson};
       const browserUrl = window.location.href;
       const openAppButton = document.getElementById('open-app');
