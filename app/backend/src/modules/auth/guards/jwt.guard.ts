@@ -11,14 +11,15 @@ import { AccessTokenService } from '../access-token.service';
 export class JwtAuthGuard implements CanActivate {
   constructor(private readonly accessTokenService: AccessTokenService) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
     if (!this.accessTokenService.hasBearerToken(request)) {
       throw new UnauthorizedException('Token requerido.');
     }
 
-    const payload = this.accessTokenService.verifyRequest(request);
+    // Firma válida y sesión (dispositivo) todavía abierta.
+    const payload = await this.accessTokenService.verifyActiveSession(request);
     if (!payload) {
       throw new UnauthorizedException('Token inválido o expirado.');
     }

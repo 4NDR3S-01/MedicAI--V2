@@ -54,11 +54,15 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  // Dice si un correo tiene cuenta (lo necesita el registro): limitado para que no sirva para enumerar.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('check-email')
   checkEmail(@Body() dto: CheckEmailDto) {
     return this.authService.checkEmailAvailability(dto.email);
   }
 
+  // Por IP; además AuthService bloquea la cuenta tras 10 fallos en 15 min.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
@@ -78,6 +82,8 @@ export class AuthController {
     return this.authService.logout(dto.refreshToken);
   }
 
+  // La web las llama desde su proxy (IP de Vercel, compartida por todos): sin límite
+  // propio para no bloquear a nadie; el token tiene 256 bits y no se puede adivinar.
   @Post('verify-email')
   verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.authService.verifyEmailToken(dto.token);
@@ -88,6 +94,7 @@ export class AuthController {
     return this.authService.validateEmailVerificationToken(dto.token);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Get('verify-email')
   async verifyEmailFromLink(
     @Query('token') token: string,
@@ -128,11 +135,13 @@ export class AuthController {
       }));
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('resend-verification')
   resendVerification(@Body() dto: ResendVerificationDto) {
     return this.authService.resendVerification(dto.email);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.requestPasswordReset(dto.email);
@@ -240,6 +249,7 @@ export class AuthController {
     return this.authService.updateProfile(userId, dto);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Get('reset-password')
   async redirectResetPasswordFromLink(
     @Query('token') token: string,

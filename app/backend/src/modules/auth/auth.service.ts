@@ -1,6 +1,8 @@
 import {
   NotFoundException,
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -12,6 +14,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { SignOptions } from 'jsonwebtoken';
 
+import { AttemptLimiter } from '../../common/attempt-limiter';
 import { getBirthDateIssue } from '../../common/birth-date';
 import { MailService } from '../../infrastructure/mail/mail.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
@@ -69,6 +72,15 @@ type PasswordResetTokenRecord = Prisma.PasswordResetTokenGetPayload<{
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  /**
+   * Contraseñas fallidas por correo: tras 10 en 15 min la cuenta se bloquea
+   * hasta que pase la ventana, aunque el atacante cambie de IP. Cuenta también
+   * correos inexistentes para no revelar cuáles tienen cuenta.
+   */
+  private readonly loginFailures = new AttemptLimiter(10, 15 * 60_000);
+  /** Correos de verificación / restablecimiento: 1 por minuto y 5 por hora por cuenta. */
+  private readonly authMailPerMinute = new AttemptLimiter(1, 60_000);
+  private readonly authMailPerHour = new AttemptLimiter(5, 60 * 60_000);
   private readonly recentlyRotatedRefreshTokens = new Map<
     string,
     { userId: string; tokens: AuthTokens; expiresAt: number }
@@ -212,9 +224,18 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const email = dto.email.trim().toLowerCase();
+    const waitMs = this.loginFailures.retryAfterMs(email);
+    if (waitMs) {
+      this.logger.warn('Login rejected', { reason: 'too_many_failures', emailDomain: this.getEmailDomain(email) });
+      throw new HttpException(
+        `Demasiados intentos fallidos. Intenta de nuevo en ${Math.ceil(waitMs / 60_000)} min o restablece tu contraseña.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user) {
+      this.loginFailures.record(email);
       this.logger.warn('Login rejected', {
         reason: 'invalid_credentials',
         emailDomain: this.getEmailDomain(email),
@@ -230,6 +251,7 @@ export class AuthService {
 
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
+      this.loginFailures.record(email);
       this.logger.warn('Login rejected', {
         reason: 'invalid_credentials',
         userId: user.id,
@@ -246,6 +268,7 @@ export class AuthService {
       throw new UnauthorizedException('Debes verificar tu correo electronico antes de iniciar sesion.');
     }
 
+    this.loginFailures.reset(email);
     const tokens = await this.createSession(user.id, user.email, {
       deviceName: dto.deviceName,
       platform: dto.platform,
@@ -503,6 +526,10 @@ export class AuthService {
       return { message: 'Este correo ya se encuentra verificado.' };
     }
 
+    if (!this.allowAuthMail(user.id)) {
+      this.logger.warn('Verification email skipped', { reason: 'mail_cooldown', userId: user.id });
+      return { message: 'Si el correo existe, se enviará un nuevo enlace.' };
+    }
     this.runInBackground(this.issueAndSendEmailVerification(user), 'resend-verification', user.id);
     this.logger.log('Verification email resent', { userId: user.id });
 
@@ -520,10 +547,25 @@ export class AuthService {
 
     // En segundo plano: además de responder antes, evita que el tiempo de
     // respuesta revele si el correo existe (enumeración de usuarios).
+    if (!this.allowAuthMail(user.id)) {
+      this.logger.warn('Password reset email skipped', { reason: 'mail_cooldown', userId: user.id });
+      return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
+    }
     this.runInBackground(this.issueAndSendPasswordReset(user), 'forgot-password', user.id);
     this.logger.log('Password reset requested', { userId: user.id });
 
     return { message: 'Si el correo existe, se enviará un enlace para restablecer la contraseña.' };
+  }
+
+  /**
+   * Evita usar MedicAI para llenar de correos el buzón de alguien (y agotar la
+   * cuota de Resend). La respuesta es la misma se envíe o no.
+   */
+  private allowAuthMail(userId: string) {
+    if (this.authMailPerMinute.retryAfterMs(userId) || this.authMailPerHour.retryAfterMs(userId)) return false;
+    this.authMailPerMinute.record(userId);
+    this.authMailPerHour.record(userId);
+    return true;
   }
 
   async validatePasswordResetToken(rawToken: string): Promise<AuthTokenValidationResult> {
@@ -728,6 +770,7 @@ export class AuthService {
         { sub: userId, email, sid: sessionId },
         {
           secret: accessSecret,
+          algorithm: 'HS256',
           expiresIn: accessTtl as SignOptions['expiresIn'],
         },
       ),
@@ -736,6 +779,7 @@ export class AuthService {
         { sub: userId, email, sid: sessionId, jti: randomUUID() },
         {
           secret: refreshSecret,
+          algorithm: 'HS256',
           expiresIn: refreshTtl as SignOptions['expiresIn'],
         },
       ),
@@ -809,6 +853,7 @@ export class AuthService {
         refreshToken,
         {
           secret: refreshSecret,
+          algorithms: ['HS256'],
         },
       );
     } catch {
