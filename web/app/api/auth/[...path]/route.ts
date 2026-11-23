@@ -8,6 +8,16 @@ type RouteContext = {
 
 const DEFAULT_DEVELOPMENT_BACKEND_API_URL = "http://localhost:4000";
 
+// Solo lo que usan las páginas /auth/* de la web. El resto de la API (login,
+// registro…) no se expone por aquí: el proxy no debe servir para saltarse los
+// límites por IP de la API usando las IP de Vercel.
+const ALLOWED_PATHS = new Set([
+  "verify-email",
+  "verify-email/validate",
+  "reset-password",
+  "reset-password/validate",
+]);
+
 export async function GET(request: NextRequest, context: RouteContext) {
   return proxyAuthRequest(request, context);
 }
@@ -19,6 +29,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 async function proxyAuthRequest(request: NextRequest, context: RouteContext) {
   try {
     const { path } = await context.params;
+    if (request.method !== "POST" || !ALLOWED_PATHS.has(path.join("/"))) {
+      return NextResponse.json({ message: "Not Found" }, { status: 404 });
+    }
     const backendUrl = resolveBackendUrl();
     const targetUrl = new URL(`/auth/${path.join("/")}`, backendUrl);
     targetUrl.search = request.nextUrl.search;
@@ -31,7 +44,7 @@ async function proxyAuthRequest(request: NextRequest, context: RouteContext) {
     const response = await fetch(targetUrl, {
       method: request.method,
       headers,
-      body: request.method === "GET" ? undefined : await request.text(),
+      body: await request.text(),
       cache: "no-store",
     });
 
